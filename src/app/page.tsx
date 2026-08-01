@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
+import { DashboardView } from "@/components/dashboard/dashboard-view";
 
-export default function Home() {
-  redirect("/leads");
+export const dynamic = "force-dynamic";
+
+export default function HomePage() {
+  return <DashboardView />;
 }

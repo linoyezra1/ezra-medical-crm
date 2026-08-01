@@ -1,36 +1,34 @@
 import type { Metadata, Viewport } from "next";
-import { Heebo } from "next/font/google";
-import { AppNav } from "@/components/AppNav";
+import { Assistant } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner";
+import { AppProviders } from "@/components/AppProviders";
 import "./globals.css";
 
-const heebo = Heebo({
-  variable: "--font-heebo",
+const assistant = Assistant({
   subsets: ["hebrew", "latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-assistant",
 });
 
 export const metadata: Metadata = {
   title: "עזרא ורפואה | CRM",
-  description: "מערכת CRM לניהול קורסי עזרה ראשונה ומכירת ציוד",
-  appleWebApp: {
-    capable: true,
-    title: "עזרא CRM",
-  },
+  description: "מערכת ניהול לידים, הדרכות, ציוד ולקוחות - מותאמת לשימוש מהשטח",
 };
 
 export const viewport: Viewport = {
+  colorScheme: "light",
+  themeColor: "#2563eb",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#0f6b4c",
+  userScalable: false,
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="he" dir="rtl" className={`${heebo.variable} h-full`}>
-      <body className="min-h-full flex flex-col antialiased">
-        <AppNav />
-        <main className="flex-1 w-full max-w-5xl mx-auto px-3 sm:px-4 pb-24 pt-3">{children}</main>
+    <html lang="he" dir="rtl" className="light bg-background">
+      <body className={`${assistant.variable} font-sans antialiased`}>
+        <AppProviders>{children}</AppProviders>
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   );

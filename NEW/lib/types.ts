@@ -1,0 +1,167 @@
+export type LeadStatus =
+  | "new" // ליד חדש
+  | "closed" // נסגר (מאושר) - דורש תאריך/שעה/כתובת
+  | "done" // הדרכה בוצעה - דורש משתתפים
+  | "pending_certificates" // ממתין לתעודות
+  | "completed" // הושלם
+  | "lost" // אבוד/בוטל
+
+export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  new: "ליד חדש",
+  closed: "נסגר / מאושר",
+  done: "הדרכה בוצעה",
+  pending_certificates: "ממתין לתעודות",
+  completed: "הושלם",
+  lost: "אבוד / בוטל",
+}
+
+export const LEAD_STATUS_ORDER: LeadStatus[] = [
+  "new",
+  "closed",
+  "done",
+  "pending_certificates",
+  "completed",
+]
+
+export type PricingType = "per_participant" | "global"
+export type CertificateDelivery = "digital" | "mail" | "physical"
+export type CustomerType = "new" | "existing"
+export type ActivityType = "training" | "equipment" | "combined"
+
+export interface Address {
+  street: string
+  houseNumber: string
+  city: string
+  zip?: string
+}
+
+export interface Participant {
+  id: string
+  name: string
+  idNumber: string
+}
+
+export interface Expense {
+  id: string
+  type: string
+  amount: number
+  hasReceipt: boolean
+  date: string
+}
+
+export interface Lead {
+  id: string
+  clientId: string
+  name: string
+  phone: string
+  email?: string
+  urgent: boolean
+  status: LeadStatus
+  customerType: CustomerType
+  courseType: string
+  courseHours?: number
+  category: string
+  categoryOther?: string
+  pricingType: PricingType
+  pricePerUnit: number
+  participantsCount: number
+  totalPrice: number
+  certificateDelivery: CertificateDelivery
+  address: Address
+  date?: string
+  time?: string
+  instructor?: string
+  contactName?: string
+  notes?: string
+  quoteSentAt?: string
+  kindergartenApproval?: boolean
+  participants: Participant[]
+  expenses: Expense[]
+  trainingIndex?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type EquipmentStatus =
+  | "inquiry" // פנייה
+  | "quote" // הצעה
+  | "order" // הזמנה
+  | "invoice" // חשבונית הופקה
+  | "paid" // שולם
+
+export const EQUIPMENT_STATUS_LABELS: Record<EquipmentStatus, string> = {
+  inquiry: "פנייה",
+  quote: "הצעה נשלחה",
+  order: "הזמנה",
+  invoice: "חשבונית הופקה",
+  paid: "שולם",
+}
+
+export const EQUIPMENT_STATUS_ORDER: EquipmentStatus[] = [
+  "inquiry",
+  "quote",
+  "order",
+  "invoice",
+  "paid",
+]
+
+export type PaymentTerms = "immediate" | "net30"
+
+export interface EquipmentDeal {
+  id: string
+  clientId: string
+  title: string
+  status: EquipmentStatus
+  amount: number
+  paymentTerms: PaymentTerms
+  contactName: string
+  phone: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Contact {
+  id: string
+  name: string
+  role: string
+  phone: string
+  email?: string
+}
+
+export interface Client {
+  id: string
+  name: string
+  phone: string
+  city?: string
+  contacts: Contact[]
+  createdAt: string
+}
+
+export interface Task {
+  id: string
+  title: string
+  date: string
+  time?: string
+  assignee: string
+  note?: string
+  done: boolean
+  relatedLeadId?: string
+  type: "callback" | "collection" | "general"
+}
+
+export interface CourseCatalogItem {
+  type: string
+  hours: number
+  syllabusUrl: string
+  presentationUrl: string
+  bookletUrl: string
+}
+
+export interface BusinessSettings {
+  businessName: string
+  tiktokUrl: string
+  facebookUrl: string
+  instagramUrl: string
+  courses: CourseCatalogItem[]
+}
