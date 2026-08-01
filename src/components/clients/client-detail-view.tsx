@@ -15,6 +15,7 @@ import {
 import { PageHeader } from "@/components/app-shell"
 import { StatusBadge } from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
+import { formatLeadCourseType } from "@/lib/course-type"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate, formatPhone } from "@/lib/helpers"
 
@@ -119,7 +120,9 @@ export function ClientDetailView({ id }: { id: string }) {
                 className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 active:scale-[0.99] transition-transform"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">{l.courseType}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {formatLeadCourseType(l)}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {formatDate(l.date)} · {formatCurrency(l.totalPrice)}
                   </p>

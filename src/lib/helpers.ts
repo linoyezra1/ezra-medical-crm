@@ -1,3 +1,4 @@
+import { formatCourseTypeLabel } from "./course-type";
 import type { CourseCatalogItem, Lead } from "./types";
 import {
   buildStructuredSummary,
@@ -87,10 +88,10 @@ export function whatsappSummary(
     "",
     `שלום ${vars.contactName || ""},`.trim(),
     "",
-    `📘 ${vars.courseTitle || lead.courseType || "קורס"}`,
+    `📘 ${vars.courseTitle || formatCourseTypeLabel(lead.courseType, { other: lead.courseTypeOther }) || "קורס"}`,
     lead.date ? `📅 תאריך: ${formatDate(lead.date)}${lead.time ? ` · ${lead.time}` : ""}` : "",
     vars.location ? `📍 מיקום: ${vars.location}` : "",
-    lead.totalPrice > 0 ? `💰 עלות: ${formatCurrency(lead.totalPrice)}` : "",
+    vars.pricingText ? `💰 עלות הקורס:\n${vars.pricingText}` : "",
     "",
     "תעדכני אותי בשביל שנוכל להתקדם",
   ].filter((l) => l !== undefined);
@@ -120,4 +121,49 @@ export function missingForClose(lead: Partial<Lead>): string[] {
 
 export function requiresPhysicalAddress(lead: Lead): boolean {
   return lead.certificateDelivery === "mail" || lead.certificateDelivery === "physical";
+}
+
+/** Google Calendar TEMPLATE link — opens pre-filled event for one-click save */
+export function buildGoogleCalendarUrl(lead: Lead): string {
+  const city = lead.address?.city?.trim() || "";
+  const courseType =
+    formatCourseTypeLabel(lead.courseType, { other: lead.courseTypeOther }) ||
+    "הדרכה";
+  const title = `הדרכה - ${courseType} - ${city || "ללא עיר"}`;
+
+  const street = [lead.address?.street, lead.address?.houseNumber]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const location = [street, city].filter(Boolean).join(", ");
+
+  const contactName = lead.contactName?.trim() || lead.name;
+  const price = Math.round(lead.totalPrice || 0);
+  const details = [
+    `איש קשר: ${contactName} (${lead.phone})`,
+    `מדריך: ${lead.instructor || "-"}`,
+    `מחיר: ₪${price}`,
+    `הערות: ${lead.notes?.trim() || "-"}`,
+  ].join(", ");
+
+  const durationHours = lead.courseHours && lead.courseHours > 0 ? lead.courseHours : 3;
+  const start =
+    lead.date && lead.time
+      ? new Date(`${lead.date}T${lead.time}`)
+      : new Date();
+  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const toGCalLocal = (d: Date) =>
+    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: title,
+    dates: `${toGCalLocal(start)}/${toGCalLocal(end)}`,
+    details,
+    location,
+  });
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }

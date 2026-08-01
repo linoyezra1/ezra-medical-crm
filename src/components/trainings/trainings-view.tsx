@@ -6,6 +6,7 @@ import { CalendarClock, ChevronLeft, MapPin, Users } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import { StatusBadge } from "@/components/status-badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { formatLeadCourseType } from "@/lib/course-type"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/helpers"
 import type { Lead } from "@/lib/types"
@@ -87,7 +88,9 @@ export function TrainingsView() {
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-semibold text-foreground">{l.name}</p>
                     </div>
-                    <p className="truncate text-xs text-muted-foreground">{l.courseType}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {formatLeadCourseType(l)}
+                    </p>
                     <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <MapPin className="size-3" />

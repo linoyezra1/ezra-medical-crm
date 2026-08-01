@@ -21,6 +21,13 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  COURSE_TYPE_OTHER,
+  collectCourseTypeOptions,
+  findCourseCatalog,
+  formatLeadCourseType,
+  resolveCourseTypeForSave,
+} from "@/lib/course-type"
+import {
   calcTotal,
   cleanPhone,
   formatCurrency,
@@ -63,6 +70,11 @@ export function LeadForm({ existing }: Props) {
     return uniqueSorted(fromDb)
   }, [leads])
 
+  const courseTypeOptions = useMemo(
+    () => collectCourseTypeOptions(leads, settings.courses),
+    [leads, settings.courses],
+  )
+
   const initialCategorySelect = (() => {
     if (!existing) return OTHER
     if (existing.category === OTHER || existing.categoryOther) return OTHER
@@ -76,6 +88,24 @@ export function LeadForm({ existing }: Props) {
     return OTHER
   })()
 
+  const initialCourseLabel = existing
+    ? formatLeadCourseType(existing, settings.courses)
+    : "44 שעות"
+  const initialCourseSelect =
+    !existing
+      ? "44 שעות"
+      : existing.courseType === "other" ||
+          existing.courseType === COURSE_TYPE_OTHER ||
+          !courseTypeOptions.includes(initialCourseLabel)
+        ? COURSE_TYPE_OTHER
+        : initialCourseLabel
+  const initialCourseOtherText =
+    initialCourseSelect === COURSE_TYPE_OTHER
+      ? existing?.courseTypeOther?.trim() ||
+        (initialCourseLabel !== COURSE_TYPE_OTHER ? initialCourseLabel : "") ||
+        ""
+      : ""
+
   const [form, setForm] = useState<Lead>(
     existing ?? {
       id: uid("l"),
@@ -86,11 +116,12 @@ export function LeadForm({ existing }: Props) {
       urgent: false,
       status: "new",
       customerType: "new",
-      courseType: settings.courses[0]?.type ?? "",
-      courseHours: settings.courses[0]?.hours,
+      courseType: "44_hours",
+      courseHours: settings.courses.find((c) => c.type === "44_hours")?.hours ?? 44,
       category: OTHER,
       pricingType: "per_participant",
       pricePerUnit: 0,
+      extraParticipantPrice: 50,
       participantsCount: 1,
       totalPrice: 0,
       certificateDelivery: "digital",
@@ -103,6 +134,8 @@ export function LeadForm({ existing }: Props) {
       updatedAt: new Date().toISOString(),
     },
   )
+  const [courseTypeSelect, setCourseTypeSelect] = useState(initialCourseSelect)
+  const [courseTypeOther, setCourseTypeOther] = useState(initialCourseOtherText)
   const [categorySelect, setCategorySelect] = useState(initialCategorySelect)
   const [instructorSelect, setInstructorSelect] = useState(initialInstructorSelect)
   const [instructorOther, setInstructorOther] = useState(
@@ -158,12 +191,13 @@ export function LeadForm({ existing }: Props) {
     }
   }
 
-  const selectedCourse = settings.courses.find((c) => c.type === form.courseType)
-
   const validate = () => {
     const e: Record<string, boolean> = {}
     if (!form.name.trim()) e.name = true
     if (!form.phone.trim()) e.phone = true
+    if (courseTypeSelect === COURSE_TYPE_OTHER && !courseTypeOther.trim()) {
+      e.courseTypeOther = true
+    }
     if (instructorSelect === OTHER && !instructorOther.trim()) {
       e.instructorOther = true
     }
@@ -191,11 +225,15 @@ export function LeadForm({ existing }: Props) {
       return
     }
     const { category, categoryOther } = resolveCategory()
+    const courseResolved = resolveCourseTypeForSave(courseTypeSelect, courseTypeOther)
+    const catalog = findCourseCatalog(courseResolved.courseType, settings.courses)
     const payload: Lead = {
       ...form,
       phone: cleanPhone(form.phone),
       totalPrice: total,
-      courseHours: selectedCourse?.hours,
+      courseType: courseResolved.courseType,
+      courseTypeOther: courseResolved.courseTypeOther,
+      courseHours: catalog?.hours,
       category,
       categoryOther,
       instructor: resolveInstructor(),
@@ -324,10 +362,23 @@ export function LeadForm({ existing }: Props) {
           </TabsContent>
 
           <TabsContent value="course" className="mt-4 space-y-4 overflow-visible">
-            <Field label="סוג קורס">
+            <Field label="סוג קורס" error={errors.courseTypeOther}>
               <Select
-                value={form.courseType}
-                onValueChange={(v) => set("courseType", v ?? "")}
+                value={courseTypeSelect}
+                onValueChange={(v) => {
+                  const next = v ?? COURSE_TYPE_OTHER
+                  setCourseTypeSelect(next)
+                  if (next !== COURSE_TYPE_OTHER) {
+                    const resolved = resolveCourseTypeForSave(next)
+                    set("courseType", resolved.courseType)
+                    set("courseTypeOther", undefined)
+                    setCourseTypeOther("")
+                    const cat = findCourseCatalog(resolved.courseType, settings.courses)
+                    if (cat?.hours) set("courseHours", cat.hours)
+                  } else {
+                    set("courseType", COURSE_TYPE_OTHER)
+                  }
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="בחר סוג קורס" />
@@ -338,14 +389,27 @@ export function LeadForm({ existing }: Props) {
                   alignItemWithTrigger={false}
                   className="max-h-[min(280px,70vh)]"
                 >
-                  {settings.courses.map((c) => (
-                    <SelectItem key={c.type} value={c.type}>
-                      {c.title || c.type}
+                  {courseTypeOptions.map((label) => (
+                    <SelectItem key={label} value={label}>
+                      {label}
                     </SelectItem>
                   ))}
+                  <SelectItem value={COURSE_TYPE_OTHER}>{COURSE_TYPE_OTHER}</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
+            {courseTypeSelect === COURSE_TYPE_OTHER && (
+              <Field label="סוג קורס חדש" required error={errors.courseTypeOther}>
+                <Input
+                  value={courseTypeOther}
+                  onChange={(e) => {
+                    setCourseTypeOther(e.target.value)
+                    set("courseTypeOther", e.target.value)
+                  }}
+                  placeholder='לדוגמה: קורס מגישי עזרה ראשונה 15 שעות'
+                />
+              </Field>
+            )}
 
             <Field label="קטגוריה" error={errors.categoryOther}>
               <Select
@@ -400,23 +464,57 @@ export function LeadForm({ existing }: Props) {
             </Field>
 
             {form.pricingType === "per_participant" ? (
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="מחיר ליחיד">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="מחיר ליחיד">
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      min={0}
+                      value={form.pricePerUnit || ""}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        set("pricePerUnit", v === "" ? 0 : Number(v))
+                      }}
+                      placeholder="0"
+                    />
+                  </Field>
+                  <Field label="מספר משתתפים">
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      step="any"
+                      min={0}
+                      value={form.participantsCount || ""}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        set("participantsCount", v === "" ? 0 : Number(v))
+                      }}
+                      placeholder="1"
+                    />
+                  </Field>
+                </div>
+                <Field label="תוספת למשתתף נוסף (₪)">
                   <Input
                     type="number"
-                    inputMode="numeric"
-                    value={form.pricePerUnit || ""}
-                    onChange={(e) => set("pricePerUnit", Number(e.target.value))}
-                  />
-                </Field>
-                <Field label="מספר משתתפים">
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    value={form.participantsCount || ""}
-                    onChange={(e) =>
-                      set("participantsCount", Number(e.target.value))
+                    inputMode="decimal"
+                    step="any"
+                    min={0}
+                    value={
+                      form.extraParticipantPrice === undefined ||
+                      form.extraParticipantPrice === null
+                        ? ""
+                        : form.extraParticipantPrice
                     }
+                    onChange={(e) => {
+                      const v = e.target.value
+                      set(
+                        "extraParticipantPrice",
+                        v === "" ? undefined : Number(v),
+                      )
+                    }}
+                    placeholder="50"
                   />
                 </Field>
               </div>
@@ -424,9 +522,15 @@ export function LeadForm({ existing }: Props) {
               <Field label="מחיר גלובלי">
                 <Input
                   type="number"
-                  inputMode="numeric"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
                   value={globalPrice || ""}
-                  onChange={(e) => setGlobalPrice(Number(e.target.value))}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setGlobalPrice(v === "" ? 0 : Number(v))
+                  }}
+                  placeholder="0"
                 />
               </Field>
             )}

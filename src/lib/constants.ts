@@ -52,7 +52,7 @@ export const COURSE_TYPES = [
   { value: "22_hours", label: "22 שעות" },
   { value: "44_hours", label: "44 שעות" },
   { value: "60_hours", label: "60 שעות" },
-  { value: "paramedic", label: "חובש" },
+  { value: "paramedic", label: "חובשים" },
   { value: "other", label: "אחר" },
 ] as const;
 

@@ -16,9 +16,11 @@ import {
   Wallet,
 } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
+import { ProfitHistoryDialog } from "@/components/dashboard/profit-history-dialog"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { formatLeadCourseType } from "@/lib/course-type"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate, whatsappLink } from "@/lib/helpers"
 
@@ -75,9 +77,12 @@ export function DashboardView() {
         {/* מטריקות פיננסיות */}
         <section className="grid grid-cols-2 gap-3">
           <Card className="col-span-2 gap-0 border-none bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/20">
-            <div className="flex items-center gap-2 text-sm opacity-90">
-              <Wallet className="size-4" />
-              רווח נקי (החודש)
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm opacity-90">
+                <Wallet className="size-4" />
+                רווח נקי (החודש)
+              </div>
+              <ProfitHistoryDialog />
             </div>
             <div className="mt-1 text-3xl font-extrabold tracking-tight">
               {formatCurrency(netProfit)}
@@ -125,7 +130,7 @@ export function DashboardView() {
                         <p className="truncate font-semibold">{l.name}</p>
                       </div>
                       <p className="truncate text-xs text-muted-foreground">
-                        {l.courseType}
+                        {formatLeadCourseType(l)}
                       </p>
                     </div>
                     <LeadStatusBadge status={l.status} />

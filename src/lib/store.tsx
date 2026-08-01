@@ -17,6 +17,7 @@ import {
   createTask,
   createLead,
   deleteExpense,
+  deleteScheduleEvent,
   removeParticipant,
   updateLead as updateLeadAction,
   updateSettings as updateSettingsAction,
@@ -44,6 +45,7 @@ interface AppState {
   updateEquipment: (id: string, patch: Partial<EquipmentDeal>) => void;
   addTask: (task: Task) => void;
   updateTask: (id: string, patch: Partial<Task>) => void;
+  removeScheduleEvent: (kind: "task" | "training", id: string) => Promise<boolean>;
   getClient: (id: string) => Client | undefined;
   clientLeads: (clientId: string) => Lead[];
   findClientByPhone: (phone: string) => Client | undefined;
@@ -63,10 +65,12 @@ function toDbPayload(lead: Lead, patch: Partial<Lead>): Record<string, unknown> 
     urgency: merged.urgent ? "urgent" : "normal",
     courseStatus: uiStatusToDb(merged.status),
     courseType: merged.courseType,
+    courseTypeOther: merged.courseTypeOther || null,
     courseCategory: merged.category,
     courseCategoryOther: merged.categoryOther || null,
     pricingModel: merged.pricingType === "per_participant" ? "per_participant" : "flat_rate",
     perParticipantRate: merged.pricingType === "per_participant" ? merged.pricePerUnit : null,
+    extraParticipantPrice: merged.extraParticipantPrice ?? 50,
     expectedParticipants: merged.participantsCount,
     agreedPrice: merged.totalPrice,
     instructor: merged.instructor || null,
@@ -269,6 +273,29 @@ export function AppProvider({
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   }, []);
 
+  const removeScheduleEvent = useCallback(
+    async (kind: "task" | "training", id: string) => {
+      if (kind === "task") {
+        setTasks((prev) => prev.filter((t) => t.id !== id));
+      } else {
+        setLeads((prev) =>
+          prev.map((l) =>
+            l.id === id ? { ...l, date: undefined, time: undefined } : l,
+          ),
+        );
+      }
+      const res = await deleteScheduleEvent({ kind, id });
+      if (!res.ok) {
+        toast.error(res.error);
+        refresh();
+        return false;
+      }
+      refresh();
+      return true;
+    },
+    [refresh],
+  );
+
   const getClient = useCallback((id: string) => clients.find((c) => c.id === id), [clients]);
 
   const clientLeads = useCallback(
@@ -320,6 +347,7 @@ export function AppProvider({
       updateEquipment,
       addTask,
       updateTask,
+      removeScheduleEvent,
       getClient,
       clientLeads,
       findClientByPhone,
@@ -338,6 +366,7 @@ export function AppProvider({
       updateEquipment,
       addTask,
       updateTask,
+      removeScheduleEvent,
       getClient,
       clientLeads,
       findClientByPhone,

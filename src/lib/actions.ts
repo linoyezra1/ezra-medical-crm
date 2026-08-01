@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/db";
 import { sanitizePhone } from "@/lib/utils";
-import { syncGoogleCalendar, validateStatusTransition } from "@/lib/conflicts";
+import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
 
 export type ActionResult<T = unknown> =
@@ -176,6 +176,9 @@ export async function updateLead(
   if (raw.perParticipantRate != null && raw.perParticipantRate !== "") {
     merged.perParticipantRate = Number(raw.perParticipantRate);
   }
+  if (raw.extraParticipantPrice != null && raw.extraParticipantPrice !== "") {
+    merged.extraParticipantPrice = Number(raw.extraParticipantPrice);
+  }
   if (raw.agreedPrice != null && raw.agreedPrice !== "") {
     merged.agreedPrice = Number(raw.agreedPrice);
   }
@@ -223,10 +226,7 @@ export async function updateLead(
     quoteSentAt = new Date();
   }
 
-  let googleCalendarEventId = existing.googleCalendarEventId;
-  if (nextStatus === "closed" && existing.courseStatus !== "closed") {
-    googleCalendarEventId = await syncGoogleCalendar(merged);
-  }
+  // Google Calendar: manual export via TEMPLATE link in UI (no background sync)
 
   await prisma.lead.update({
     where: { id: leadId },
@@ -257,6 +257,10 @@ export async function updateLead(
       instructor: merged.instructor,
       pricingModel: merged.pricingModel ?? "flat_rate",
       perParticipantRate: merged.perParticipantRate,
+      extraParticipantPrice:
+        merged.extraParticipantPrice != null
+          ? Number(merged.extraParticipantPrice)
+          : 50,
       agreedPrice,
       quoteStatus: merged.quoteStatus ?? "not_sent",
       quoteSentAt,
@@ -268,7 +272,6 @@ export async function updateLead(
       shippingZip: merged.shippingZip,
       deliveryMethod: merged.deliveryMethod,
       notes: merged.notes,
-      googleCalendarEventId,
       conflictBypassed: Boolean(opts.bypassConflict) || existing.conflictBypassed,
     },
   });
@@ -499,6 +502,38 @@ export async function createTask(data: {
       notes: task.notes ?? "",
     },
   };
+}
+
+/**
+ * מוחק אירוע מלוח הזמנים:
+ * - task → מוחק FollowUpTask
+ * - training → מנקה תאריך/שעה מתוזמנים מהליד (בלי למחוק את הליד)
+ */
+export async function deleteScheduleEvent(data: {
+  kind: "task" | "training";
+  id: string;
+}): Promise<ActionResult<{ id: string }>> {
+  if (data.kind === "task") {
+    const existing = await prisma.followUpTask.findUnique({ where: { id: data.id } });
+    if (!existing) return { ok: false, error: "המשימה לא נמצאה" };
+    await prisma.followUpTask.delete({ where: { id: data.id } });
+    if (existing.leadId) revalidatePath(`/leads/${existing.leadId}`);
+  } else {
+    const existing = await prisma.lead.findUnique({ where: { id: data.id } });
+    if (!existing) return { ok: false, error: "ההדרכה לא נמצאה" };
+    await prisma.lead.update({
+      where: { id: data.id },
+      data: { scheduledStart: null, scheduledEnd: null },
+    });
+    revalidatePath(`/leads/${data.id}`);
+    revalidatePath("/leads");
+    revalidatePath("/trainings");
+  }
+
+  revalidatePath("/calendar");
+  revalidatePath("/dashboard");
+  revalidatePath("/");
+  return { ok: true, data: { id: data.id } };
 }
 
 /** @deprecated use createTask */

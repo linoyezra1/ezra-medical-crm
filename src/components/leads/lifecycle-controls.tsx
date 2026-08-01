@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  buildGoogleCalendarUrl,
   findConflicts,
   formatDate,
   missingForClose,
@@ -32,6 +33,7 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
   const [conflictOpen, setConflictOpen] = useState(false)
   const [participantsOpen, setParticipantsOpen] = useState(false)
   const [confirmRegress, setConfirmRegress] = useState<LeadStatus | null>(null)
+  const [googleCalOpen, setGoogleCalOpen] = useState(false)
 
   const currentIdx = LEAD_STATUS_ORDER.indexOf(lead.status)
   const nextStatus =
@@ -46,7 +48,8 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
       status: "closed",
       ...(bypassConflict ? { conflictBypass: true } : {}),
     } as Partial<Lead>)
-    toast.success("ההדרכה נסגרה ואירוע נוצר ביומן")
+    toast.success("ההדרכה נסגרה / אושרה")
+    setGoogleCalOpen(true)
   }
 
   const advance = (target: LeadStatus) => {
@@ -260,6 +263,40 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
               }}
             >
               אשר בכל זאת ושמור
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* הוספה ל-Google Calendar */}
+      <Dialog open={googleCalOpen} onOpenChange={setGoogleCalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-right">Google Calendar</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            האם להוסיף את ההדרכה ל-Google Calendar?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            ייפתח חלון עם אירוע מוכן לשמירה: כותרת, מיקום, תאריך ופרטי איש קשר.
+          </p>
+          <DialogFooter className="flex-row gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setGoogleCalOpen(false)}
+            >
+              לא עכשיו
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                window.open(buildGoogleCalendarUrl(lead), "_blank", "noopener,noreferrer")
+                setGoogleCalOpen(false)
+                toast.success("נפתח Google Calendar — אפשר לשמור את האירוע")
+              }}
+            >
+              כן, פתח ב-Google Calendar
             </Button>
           </DialogFooter>
         </DialogContent>

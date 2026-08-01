@@ -9,12 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { upsertCourseAsset } from "@/lib/actions";
-import { fillSummaryTemplate, buildSummaryVars } from "@/lib/summary-template";
+import {
+  buildStructuredSummary,
+  buildSummaryVars,
+} from "@/lib/summary-template";
 import { useApp } from "@/lib/store";
 import type { CourseCatalogItem, Lead } from "@/lib/types";
-
-const VAR_HINT =
-  "{{contactName}} {{courseTitle}} {{audience}} {{duration}} {{nature}} {{contents}} {{pricingText}} {{price}} {{date}} {{time}} {{location}} {{city}} {{participantsCount}} {{instructor}}";
 
 export function SettingsView() {
   const { settings, updateSettings } = useApp();
@@ -50,8 +50,9 @@ export function SettingsView() {
       category: "",
       pricingType: "global" as const,
       pricePerUnit: 0,
+      extraParticipantPrice: 50,
       participantsCount: 12,
-      totalPrice: 0,
+      totalPrice: 1700,
       certificateDelivery: "digital" as const,
       address: { street: "רחוב הגן", houseNumber: "1", city: "תל אביב" },
       contactName: "אתי",
@@ -149,13 +150,14 @@ export function SettingsView() {
           {courses.map((c) => {
             const draft = getDraft(c);
             const open = openType === c.type;
-            const preview = fillSummaryTemplate(
-              draft.summaryTemplate ||
-                `סיכום שיחה\n\nשלום {{contactName}},\n\n📘 {{courseTitle}}\n\n{{contents}}\n\n💰 {{pricingText}}`,
-              buildSummaryVars(
-                { ...previewLead, courseType: draft.type, totalPrice: 0 },
-                draft
-              )
+            const previewLeadForCourse: Lead = {
+              ...previewLead,
+              courseType: draft.type,
+            };
+            const preview = buildStructuredSummary(
+              previewLeadForCourse,
+              draft,
+              buildSummaryVars(previewLeadForCourse, draft),
             );
 
             return (
@@ -225,26 +227,6 @@ export function SettingsView() {
                         onChange={(e) => setDraftField(c.type, "contents", e.target.value)}
                         rows={5}
                         placeholder={"החייאה\nחנק\n..."}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>טקסט מחיר (ברירת מחדל)</Label>
-                      <Textarea
-                        value={draft.pricingText || ""}
-                        onChange={(e) => setDraftField(c.type, "pricingText", e.target.value)}
-                        rows={2}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>תבנית סיכום שיחה</Label>
-                      <p className="text-[10px] leading-relaxed text-muted-foreground break-all">
-                        משתנים: {VAR_HINT}
-                      </p>
-                      <Textarea
-                        value={draft.summaryTemplate || ""}
-                        onChange={(e) => setDraftField(c.type, "summaryTemplate", e.target.value)}
-                        rows={12}
-                        className="font-mono text-xs"
                       />
                     </div>
                     <div className="space-y-1.5">

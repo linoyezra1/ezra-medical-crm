@@ -98,11 +98,15 @@ export interface Lead {
   status: LeadStatus;
   customerType: CustomerType;
   courseType: string;
+  /** טקסט חופשי כשנבחר "אחר" (או שם מותאם שנשמר ב-courseType) */
+  courseTypeOther?: string;
   courseHours?: number;
   category: string;
   categoryOther?: string;
   pricingType: PricingType;
   pricePerUnit: number;
+  /** תוספת למשתתף נוסף מעבר ל-25 — ברירת מחדל 50 ₪ */
+  extraParticipantPrice?: number;
   participantsCount: number;
   totalPrice: number;
   certificateDelivery: CertificateDelivery;

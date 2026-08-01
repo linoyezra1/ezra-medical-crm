@@ -1,5 +1,5 @@
+import { formatCourseTypeLabel } from "./course-type";
 import type { CourseCatalogItem, Lead } from "./types";
-import { formatCurrency } from "./utils";
 
 function formatDate(date?: string): string {
   if (!date) return "-";
@@ -10,37 +10,73 @@ function formatDate(date?: string): string {
   }).format(new Date(date));
 }
 
+/** עיצוב מחיר בסגנון "1,700 ₪" */
+export function formatShekelAmount(amount: number): string {
+  const n = Math.round(amount || 0);
+  return `${new Intl.NumberFormat("he-IL").format(n)} ₪`;
+}
+
+/**
+ * טקסט מחיר דינמי לסיכום שיחה לפי מודל התמחור של הליד.
+ */
+export function buildLeadPricingText(
+  lead: Lead,
+  course?: CourseCatalogItem | null,
+): string {
+  if (lead.pricingType === "global") {
+    const price = lead.totalPrice > 0 ? lead.totalPrice : 0;
+    if (!price && course?.pricingText?.trim()) return course.pricingText.trim();
+    return `${formatShekelAmount(price)} לקבוצה של עד 25 משתתפים`;
+  }
+
+  const unit = lead.pricePerUnit || 0;
+  const extra = lead.extraParticipantPrice ?? 50;
+  if (!unit && course?.pricingText?.trim()) return course.pricingText.trim();
+  return (
+    `${formatShekelAmount(unit)} למשתתף (עד 25 משתתפים). ` +
+    `במידה ויש משתתפים נוספים, תוספת ${formatShekelAmount(extra)} לכל משתתף נוסף`
+  );
+}
+
 /** משתנים זמינים בתבנית סיכום שיחה */
 export type SummaryVars = Record<string, string>;
 
 export function buildSummaryVars(
   lead: Lead,
-  course?: CourseCatalogItem | null
+  course?: CourseCatalogItem | null,
 ): SummaryVars {
   const location = [lead.address.street, lead.address.houseNumber, lead.address.city]
     .filter(Boolean)
     .join(" ")
     .trim();
 
-  const price =
-    lead.totalPrice > 0
-      ? formatCurrency(lead.totalPrice)
-      : course?.pricingText || "";
+  const pricingText = buildLeadPricingText(lead, course);
+  const displayPrice =
+    lead.pricingType === "per_participant"
+      ? lead.pricePerUnit || 0
+      : lead.totalPrice || 0;
+  const price = formatShekelAmount(displayPrice);
+  const extra = formatShekelAmount(lead.extraParticipantPrice ?? 50);
+  const courseLabel = formatCourseTypeLabel(lead.courseType, {
+    other: lead.courseTypeOther,
+    catalog: course ? [course] : undefined,
+  });
 
   return {
     name: lead.name || "",
     contactName: lead.contactName || lead.name || "",
     phone: lead.phone || "",
-    courseTitle: course?.title || lead.courseType || "",
-    courseType: lead.courseType || "",
+    courseTitle: courseLabel || course?.title || lead.courseType || "",
+    courseType: courseLabel,
     hours: String(course?.hours || lead.courseHours || ""),
     audience: course?.audience || "",
     duration: course?.durationText || "",
     nature: course?.natureText || "",
     contents: course?.contents || "",
-    pricingText: course?.pricingText || "",
+    pricingText,
     price,
     totalPrice: price,
+    extraParticipantPrice: extra,
     date: lead.date ? formatDate(lead.date) : "",
     time: lead.time || "",
     location: location || lead.address.city || "",
@@ -59,14 +95,8 @@ export function buildSummaryVars(
 export function fillSummaryTemplate(template: string, vars: SummaryVars): string {
   let text = template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? "");
 
-  // הסרת שורות ריקות כפולות אחרי החלפה
   text = text
     .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim();
-      // שמור על שורות ריקות בודדות להפרדה, הסר רצפים
-      return true;
-    })
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -78,12 +108,12 @@ export function fillSummaryTemplate(template: string, vars: SummaryVars): string
 export function buildStructuredSummary(
   lead: Lead,
   course: CourseCatalogItem,
-  vars: SummaryVars
+  vars: SummaryVars,
 ): string {
   const blocks: string[] = ["סיכום שיחה", "", `שלום ${vars.contactName || ""},`.trim()];
 
-  if (course.title || lead.courseType) {
-    blocks.push("", `📘 ${course.title || lead.courseType}`);
+  if (vars.courseTitle || course.title || lead.courseType) {
+    blocks.push("", `📘 ${vars.courseTitle || course.title || lead.courseType}`);
   }
   if (course.audience) {
     blocks.push("", "👥 למי הקורס מתאים:", course.audience);
@@ -98,10 +128,7 @@ export function buildStructuredSummary(
     blocks.push("", "📚 תכני הקורס:", course.contents);
   }
 
-  const priceLine =
-    lead.totalPrice > 0
-      ? formatCurrency(lead.totalPrice)
-      : course.pricingText || "";
+  const priceLine = vars.pricingText || buildLeadPricingText(lead, course);
   if (priceLine) {
     blocks.push("", "💰 עלות הקורס:", priceLine);
   }

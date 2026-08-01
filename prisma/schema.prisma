@@ -78,6 +78,8 @@ model Lead {
   // Tab 3 – Pricing & delivery
   pricingModel       String  @default("flat_rate") // flat_rate | per_participant
   perParticipantRate Float?
+  /** תוספת למשתתף מעבר ל-25 (ברירת מחדל 50) */
+  extraParticipantPrice Float? @default(50)
   agreedPrice        Float?
   quoteStatus        String  @default("not_sent") // sent | not_sent
   quoteSentAt        DateTime?

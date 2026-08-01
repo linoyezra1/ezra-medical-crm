@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,13 @@ interface Props {
   leadName?: string
   onAdd: (task: Task) => void
   triggerClassName?: string
+  /** Prefill task description when dialog opens */
+  defaultTitle?: string
+  /** Controlled open (omit for uncontrolled trigger button) */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Hide the built-in trigger (use with controlled open) */
+  hideTrigger?: boolean
 }
 
 export function AddTaskDialog({
@@ -30,11 +37,28 @@ export function AddTaskDialog({
   leadName,
   onAdd,
   triggerClassName,
+  defaultTitle = "",
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
 }: Props) {
-  const [open, setOpen] = useState(false)
-  const [title, setTitle] = useState("")
+  const isControlled = controlledOpen !== undefined
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = isControlled ? controlledOpen : internalOpen
+  const setOpen = (next: boolean) => {
+    if (!isControlled) setInternalOpen(next)
+    onOpenChange?.(next)
+  }
+
+  const [title, setTitle] = useState(defaultTitle)
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
+
+  useEffect(() => {
+    if (open) {
+      setTitle(defaultTitle)
+    }
+  }, [open, defaultTitle])
 
   const submit = () => {
     if (!title.trim()) {
@@ -65,17 +89,19 @@ export function AddTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="secondary"
-            className={triggerClassName ?? "col-span-2 rounded-2xl py-6"}
-          >
-            <Plus className="size-4" />
-            הוסף משימה
-          </Button>
-        }
-      />
+      {!hideTrigger && (
+        <DialogTrigger
+          render={
+            <Button
+              variant="secondary"
+              className={triggerClassName ?? "col-span-2 rounded-2xl py-6"}
+            >
+              <Plus className="size-4" />
+              הוסף משימה
+            </Button>
+          }
+        />
+      )}
       <DialogContent className="max-w-[calc(100%-2rem)] rounded-2xl">
         <DialogHeader className="text-right">
           <DialogTitle>הוסף משימה</DialogTitle>

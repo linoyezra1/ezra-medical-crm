@@ -25,12 +25,17 @@ import { ExpensesSection } from "@/components/leads/expenses-section"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
+  findCourseCatalog,
+  formatLeadCourseType,
+} from "@/lib/course-type"
+import {
   formatCurrency,
   formatDate,
   whatsappLink,
   whatsappSummary,
 } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
+import type { Lead } from "@/lib/types"
 
 export function LeadDetailView({ leadId }: { leadId: string }) {
   const router = useRouter()
@@ -49,10 +54,8 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
     )
   }
 
-  const course =
-    settings.courses.find((c) => c.type === lead.courseType) ||
-    settings.courses.find((c) => c.title === lead.courseType) ||
-    null
+  const course = findCourseCatalog(lead.courseType, settings.courses)
+  const courseLabel = formatLeadCourseType(lead, settings.courses)
 
   const summaryText = () => whatsappSummary(lead, course)
 
@@ -70,7 +73,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
       toast.error(`לא הוגדר ${label} לקורס זה`)
       return
     }
-    const text = `${label} - ${lead.courseType}\n${url}`
+    const text = `${label} - ${courseLabel}\n${url}`
     window.open(whatsappLink(lead.phone, text), "_blank")
   }
 
@@ -80,7 +83,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
       toast.error("לא הוגדרה חוברת לסוג הקורס של ליד זה. הגדר בהגדרות → תוכן קורסים")
       return
     }
-    const text = `שלום ${lead.contactName || lead.name},\nמצורפת חוברת הקורס (${course?.title || lead.courseType}):\n${url}`
+    const text = `שלום ${lead.contactName || lead.name},\nמצורפת חוברת הקורס (${courseLabel}):\n${url}`
     window.open(whatsappLink(lead.phone, text), "_blank")
   }
 
@@ -96,7 +99,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
     <div>
       <PageHeader
         title={lead.name}
-        subtitle={course?.title || lead.courseType}
+        subtitle={courseLabel}
         back={
           <button
             type="button"
@@ -208,35 +211,59 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
 
         <ExpensesSection lead={lead} />
 
-        <Card className="flex-row items-center justify-between p-4">
-          <div>
-            <p className="text-sm font-semibold">הצעת מחיר</p>
-            <p className="text-xs text-muted-foreground">
-              {lead.quoteSentAt
-                ? `נשלחה ב-${formatDate(lead.quoteSentAt)}`
-                : "טרם נשלחה"}
-            </p>
-          </div>
-          <QuoteButton leadId={lead.id} sent={!!lead.quoteSentAt} />
-        </Card>
+        <SmartBeeQuoteCard lead={lead} />
       </div>
     </div>
   )
 }
 
-function QuoteButton({ leadId, sent }: { leadId: string; sent: boolean }) {
-  const { updateLead } = useApp()
+function SmartBeeQuoteCard({ lead }: { lead: Lead }) {
+  const { updateLead, addTask } = useApp()
+  const [reminderOpen, setReminderOpen] = useState(false)
+  const sent = !!lead.quoteSentAt
+
   return (
-    <Button
-      variant={sent ? "secondary" : "default"}
-      size="sm"
-      onClick={() => {
-        updateLead(leadId, { quoteSentAt: new Date().toISOString() })
-        toast.success("סומן כנשלחה הצעה")
-      }}
-    >
-      {sent ? "שלח שוב" : "סמן כנשלחה"}
-    </Button>
+    <Card className="gap-3 p-4">
+      <div>
+        <p className="text-sm font-semibold">הצעת מחיר · SmartBee</p>
+        <p className="text-xs text-muted-foreground">
+          {sent
+            ? `סומן כנשלח ב-${formatDate(lead.quoteSentAt)}`
+            : "טרם סומן כנשלח ב-SmartBee"}
+        </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Button
+          variant={sent ? "secondary" : "default"}
+          className="h-auto whitespace-normal py-3 text-right text-sm leading-snug"
+          disabled={sent}
+          onClick={() => {
+            updateLead(lead.id, { quoteSentAt: new Date().toISOString() })
+            toast.success("סומן שנשלחה הצעת מחיר ב-SmartBee")
+          }}
+        >
+          {sent
+            ? "✓ נשלחה הצעת מחיר ב-SmartBee"
+            : "סמן שנשלחה הצעת מחיר ב-SmartBee"}
+        </Button>
+        <Button
+          variant="outline"
+          className="h-auto whitespace-normal py-3 text-right text-sm leading-snug"
+          onClick={() => setReminderOpen(true)}
+        >
+          הוסף תזכורת לשלוח הצעת מחיר ב-SmartBee
+        </Button>
+      </div>
+      <AddTaskDialog
+        leadId={lead.id}
+        leadName={lead.name}
+        onAdd={addTask}
+        hideTrigger
+        open={reminderOpen}
+        onOpenChange={setReminderOpen}
+        defaultTitle={`לשלוח הצעת מחיר ב-SmartBee ל${lead.name}`}
+      />
+    </Card>
   )
 }
 

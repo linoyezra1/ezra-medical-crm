@@ -4,6 +4,10 @@ import { useRouter } from "next/navigation"
 import { MapPin, MessageCircle, Phone } from "lucide-react"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
+import {
+  findCourseCatalog,
+  formatLeadCourseType,
+} from "@/lib/course-type"
 import { formatCurrency, formatDate, whatsappLink, whatsappSummary } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
@@ -12,10 +16,8 @@ import { cn } from "@/lib/utils"
 export function LeadCard({ lead }: { lead: Lead }) {
   const router = useRouter()
   const { settings } = useApp()
-  const course =
-    settings.courses.find((c) => c.type === lead.courseType) ||
-    settings.courses.find((c) => c.title === lead.courseType) ||
-    null
+  const course = findCourseCatalog(lead.courseType, settings.courses)
+  const courseLabel = formatLeadCourseType(lead, settings.courses)
   const stop = (e: React.MouseEvent) => {
     e.stopPropagation()
   }
@@ -47,7 +49,7 @@ export function LeadCard({ lead }: { lead: Lead }) {
               <h3 className="truncate font-bold text-foreground">{lead.name}</h3>
             </div>
             <p className="truncate text-sm text-muted-foreground">
-              {course?.title || lead.courseType}
+              {courseLabel}
               {lead.customerType === "existing" && (
                 <span className="mr-1 text-primary"> · לקוח קיים</span>
               )}

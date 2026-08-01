@@ -7,9 +7,9 @@ import {
   CheckCircle2,
   Circle,
   GraduationCap,
-  MapPin,
   Phone,
   Plus,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
@@ -33,9 +33,16 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { formatLeadCourseType } from "@/lib/course-type"
 import { useApp } from "@/lib/store"
 import { formatDate, uid } from "@/lib/helpers"
-import type { Task } from "@/lib/types"
+import type { Lead, Task } from "@/lib/types"
+
+type PendingDelete = {
+  kind: "task" | "training"
+  id: string
+  title: string
+}
 
 const TASK_TYPE_LABELS: Record<Task["type"], string> = {
   callback: "חזרה טלפונית",
@@ -43,9 +50,32 @@ const TASK_TYPE_LABELS: Record<Task["type"], string> = {
   general: "כללי",
 }
 
+/** מקור המשימה — איש קשר מהליד המשויך, או מקור כללי */
+function taskOriginLabel(task: Task, leads: Lead[]): string {
+  if (task.relatedLeadId) {
+    const lead = leads.find((l) => l.id === task.relatedLeadId)
+    const contact = lead?.contactName?.trim() || lead?.name?.trim()
+    if (contact) return `איש קשר: ${contact}`
+  }
+  return "מקור כללי"
+}
+
 export function CalendarView() {
-  const { tasks, leads, addTask, updateTask } = useApp()
+  const { tasks, leads, addTask, updateTask, removeScheduleEvent } = useApp()
   const [tab, setTab] = useState<"agenda" | "tasks">("agenda")
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    const ok = await removeScheduleEvent(pendingDelete.kind, pendingDelete.id)
+    setDeleting(false)
+    if (ok) {
+      toast.success("האירוע הוסר מלוח הזמנים")
+      setPendingDelete(null)
+    }
+  }
 
   // אירועים = הדרכות מתוזמנות + משימות, מקובצות לפי יום
   const agenda = useMemo(() => {
@@ -60,7 +90,7 @@ export function CalendarView() {
           id: l.id,
           date: l.date,
           time: l.time,
-          title: l.courseType,
+          title: formatLeadCourseType(l),
           sub: `${l.name} · ${l.address.city || ""}`,
         })
       }
@@ -73,7 +103,7 @@ export function CalendarView() {
         date: t.date,
         time: t.time,
         title: t.title,
-        sub: `${TASK_TYPE_LABELS[t.type]} · ${t.assignee}`,
+        sub: taskOriginLabel(t, leads),
         done: t.done,
       })
     }
@@ -126,36 +156,69 @@ export function CalendarView() {
               <div className="space-y-2">
                 {items.map((it) =>
                   it.kind === "training" ? (
-                    <Link
+                    <div
                       key={it.id}
-                      href={`/leads/${it.id}`}
-                      className="flex items-center gap-3 rounded-2xl border-r-4 border-primary bg-card p-3 active:scale-[0.99] transition-transform"
+                      className="flex items-center gap-2 rounded-2xl border-r-4 border-primary bg-card p-3"
                     >
-                      <div className="flex w-12 shrink-0 flex-col items-center">
-                        <span className="text-sm font-bold text-primary">{it.time || "--:--"}</span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-foreground">
-                          <GraduationCap className="size-3.5 text-primary" />
-                          {it.title}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">{it.sub}</p>
-                      </div>
-                    </Link>
+                      <Link
+                        href={`/leads/${it.id}`}
+                        className="flex min-w-0 flex-1 items-center gap-3 active:scale-[0.99] transition-transform"
+                      >
+                        <div className="flex w-12 shrink-0 flex-col items-center">
+                          <span className="text-sm font-bold text-primary">
+                            {it.time || "--:--"}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+                            <GraduationCap className="size-3.5 text-primary" />
+                            {it.title}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">{it.sub}</p>
+                        </div>
+                      </Link>
+                      <DeleteEventButton
+                        onClick={() =>
+                          setPendingDelete({
+                            kind: "training",
+                            id: it.id,
+                            title: it.title,
+                          })
+                        }
+                      />
+                    </div>
                   ) : (
                     <div
                       key={it.id}
-                      className="flex items-center gap-3 rounded-2xl border-r-4 border-warning bg-card p-3"
+                      className="flex items-center gap-2 rounded-2xl border-r-4 border-warning bg-card p-3"
                     >
                       <div className="flex w-12 shrink-0 flex-col items-center">
-                        <span className="text-sm font-bold text-warning-foreground">{it.time || "--:--"}</span>
+                        <span className="text-sm font-bold text-warning-foreground">
+                          {it.time || "--:--"}
+                        </span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className={"truncate text-sm font-semibold " + (it.done ? "text-muted-foreground line-through" : "text-foreground")}>
+                        <p
+                          className={
+                            "truncate text-sm font-semibold " +
+                            (it.done
+                              ? "text-muted-foreground line-through"
+                              : "text-foreground")
+                          }
+                        >
                           {it.title}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">{it.sub}</p>
                       </div>
+                      <DeleteEventButton
+                        onClick={() =>
+                          setPendingDelete({
+                            kind: "task",
+                            id: it.id,
+                            title: it.title,
+                          })
+                        }
+                      />
                     </div>
                   ),
                 )}
@@ -165,11 +228,53 @@ export function CalendarView() {
         </div>
       )}
 
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && !deleting && setPendingDelete(null)}
+      >
+        <DialogContent className="max-w-[calc(100%-2rem)] rounded-2xl">
+          <DialogHeader className="text-right">
+            <DialogTitle>מחיקת אירוע</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            האם את/ה בטוח/ה שברצונך למחוק אירוע זה מלוח הזמנים?
+          </p>
+          {pendingDelete?.title ? (
+            <p className="rounded-xl bg-secondary/50 px-3 py-2 text-sm font-medium">
+              {pendingDelete.title}
+            </p>
+          ) : null}
+          <DialogFooter className="flex-row gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 rounded-xl"
+              disabled={deleting}
+              onClick={() => setPendingDelete(null)}
+            >
+              ביטול
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1 rounded-xl"
+              disabled={deleting}
+              onClick={() => void confirmDelete()}
+            >
+              {deleting ? "מוחק..." : "מחק אירוע"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {tab === "tasks" && (
         <div className="space-y-4 p-4">
           <div className="space-y-2">
             {openTasks.map((t) => (
-              <TaskRow key={t.id} task={t} onToggle={() => updateTask(t.id, { done: true })} />
+              <TaskRow
+                key={t.id}
+                task={t}
+                origin={taskOriginLabel(t, leads)}
+                onToggle={() => updateTask(t.id, { done: true })}
+              />
             ))}
             {openTasks.length === 0 && (
               <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -182,7 +287,12 @@ export function CalendarView() {
               <p className="mb-2 px-1 text-xs font-semibold text-muted-foreground">הושלמו</p>
               <div className="space-y-2">
                 {doneTasks.map((t) => (
-                  <TaskRow key={t.id} task={t} onToggle={() => updateTask(t.id, { done: false })} />
+                  <TaskRow
+                    key={t.id}
+                    task={t}
+                    origin={taskOriginLabel(t, leads)}
+                    onToggle={() => updateTask(t.id, { done: false })}
+                  />
                 ))}
               </div>
             </div>
@@ -193,7 +303,32 @@ export function CalendarView() {
   )
 }
 
-function TaskRow({ task, onToggle }: { task: Task; onToggle: () => void }) {
+function DeleteEventButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onClick()
+      }}
+      aria-label="מחק אירוע מלוח הזמנים"
+      className="flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500"
+    >
+      <Trash2 className="size-4" />
+    </button>
+  )
+}
+
+function TaskRow({
+  task,
+  origin,
+  onToggle,
+}: {
+  task: Task
+  origin: string
+  onToggle: () => void
+}) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
       <button type="button" onClick={onToggle} className="shrink-0 text-primary">
@@ -207,13 +342,15 @@ function TaskRow({ task, onToggle }: { task: Task; onToggle: () => void }) {
         <p className={"truncate text-sm font-medium " + (task.done ? "text-muted-foreground line-through" : "text-foreground")}>
           {task.title}
         </p>
-        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           <span>
             {task.date
               ? `${formatDate(task.date)}${task.time ? ` · ${task.time}` : ""}`
               : "ללא תאריך"}
           </span>
-          <span className="rounded-full bg-secondary px-2 py-0.5">{TASK_TYPE_LABELS[task.type]}</span>
+          <span className="rounded-full bg-secondary px-2 py-0.5 font-medium text-foreground/80">
+            מקור: {origin}
+          </span>
         </div>
       </div>
       {task.relatedLeadId && (

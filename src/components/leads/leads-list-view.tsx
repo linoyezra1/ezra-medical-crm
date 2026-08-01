@@ -41,6 +41,7 @@ export function LeadsListView() {
           l.name.includes(q) ||
           l.phone.includes(q) ||
           l.courseType.includes(q) ||
+          (l.courseTypeOther?.includes(q) ?? false) ||
           l.address.city.includes(q)
         )
       })

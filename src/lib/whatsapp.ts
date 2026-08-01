@@ -1,5 +1,5 @@
-import { COURSE_TYPES } from "@/lib/constants";
-import { labelOf, toWhatsAppNumber } from "@/lib/utils";
+import { formatCourseTypeLabel } from "@/lib/course-type";
+import { toWhatsAppNumber } from "@/lib/utils";
 
 export type WhatsAppLeadContext = {
   fullName: string;
@@ -12,8 +12,9 @@ export type WhatsAppLeadContext = {
 };
 
 function courseTypeLabel(lead: WhatsAppLeadContext): string {
-  if (lead.courseType === "other" && lead.courseTypeOther) return lead.courseTypeOther;
-  return labelOf(COURSE_TYPES, lead.courseType, "קורס עזרה ראשונה");
+  return formatCourseTypeLabel(lead.courseType, {
+    other: lead.courseTypeOther,
+  });
 }
 
 function formatDateTime(value: Date | string | null | undefined): { date: string; time: string } {
