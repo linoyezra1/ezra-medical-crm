@@ -1,21 +1,16 @@
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import path from "path";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-function resolveDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL ?? "file:./dev.db";
-  if (!url.startsWith("file:")) return url;
-  const filePath = url.slice("file:".length);
-  if (path.isAbsolute(filePath)) return url;
-  return `file:${path.join(process.cwd(), filePath)}`;
-}
-
 function createPrismaClient() {
-  const adapter = new PrismaBetterSqlite3({ url: resolveDatabaseUrl() });
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not set");
+  }
+  const adapter = new PrismaPg({ connectionString });
   return new PrismaClient({ adapter });
 }
 

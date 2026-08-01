@@ -28,17 +28,13 @@ npm run dev
 ## סטאק
 
 - Next.js (App Router) + TypeScript + Tailwind
-- Prisma 7 + SQLite (מקומי) / PostgreSQL (Railway בפרודקשן)
+- Prisma 7 + PostgreSQL (Railway)
 - ממשק עברית RTL
 
-## מסד נתונים
+## מסד נתונים (Railway)
 
-ברירת מחדל מקומית: SQLite (`file:./dev.db`).
+1. חברו שירות Postgres לאפליקציה ב־Railway (משתנה `DATABASE_URL` נוצר אוטומטית).
+2. בסכמה: `provider = "postgresql"`.
+3. ב־Deploy, `npm start` מריץ `prisma db push` ואז `next start`.
 
-ל־Railway Postgres – השתמשו ב־**Public Networking URL** (לא `*.railway.internal`), החליפו `provider` ל־`postgresql` ב־`prisma/schema.prisma`, והריצו:
-
-```bash
-npx prisma generate
-npx prisma db push
-npm run db:seed
-```
+מקומית: השתמשו ב־**Public URL** מ־Railway Connect (לא `*.railway.internal`).
