@@ -4,6 +4,9 @@ import { Toaster } from "@/components/ui/sonner";
 import { AppProviders } from "@/components/AppProviders";
 import "./globals.css";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const assistant = Assistant({
   subsets: ["hebrew", "latin"],
   variable: "--font-assistant",
