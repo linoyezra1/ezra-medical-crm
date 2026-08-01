@@ -137,7 +137,7 @@ model FollowUpTask {
   leadId      String?
   lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   title       String
-  dueDate     DateTime
+  dueDate     DateTime? // null = משימה פתוחה ללא תאריך
   assignee    String?
   notes       String?
   completed   Boolean   @default(false)
@@ -149,9 +149,18 @@ model FollowUpTask {
 model CourseAsset {
   id               String  @id @default(cuid())
   courseType       String  @unique
+  title            String  @default("")
+  hours            Int     @default(0)
+  audience         String?
+  durationText     String?
+  natureText       String?
+  contents         String?
+  pricingText      String?
+  summaryTemplate  String?
   bookletUrl       String?
   presentationUrl  String?
   presentationFile String?
+  syllabusUrl      String?
   summaryText      String?
 }
 

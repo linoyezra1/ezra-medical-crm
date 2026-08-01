@@ -7,7 +7,7 @@ export type LeadStatus =
   | "lost";
 
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
-  new: "ליד חדש",
+  new: "ליד חדש / בטיפול",
   closed: "נסגר / מאושר",
   done: "הדרכה בוצעה",
   pending_certificates: "ממתין לתעודות",
@@ -222,6 +222,7 @@ export interface Client {
 export interface Task {
   id: string;
   title: string;
+  /** ריק = משימה פתוחה ללא תאריך */
   date: string;
   time?: string;
   assignee: string;
@@ -233,7 +234,15 @@ export interface Task {
 
 export interface CourseCatalogItem {
   type: string;
+  title: string;
   hours: number;
+  audience?: string;
+  durationText?: string;
+  natureText?: string;
+  contents?: string;
+  pricingText?: string;
+  /** תבנית סיכום שיחה עם משתנים כמו {{name}}, {{price}}, {{contents}} */
+  summaryTemplate?: string;
   syllabusUrl: string;
   presentationUrl: string;
   bookletUrl: string;

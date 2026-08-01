@@ -7,7 +7,6 @@ import {
   ArrowRight,
   BookOpen,
   Copy,
-  FileText,
   GraduationCap,
   MapPin,
   MessageCircle,
@@ -20,6 +19,7 @@ import {
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { LeadStatusBadge } from "@/components/status-badge"
+import { AddTaskDialog } from "@/components/leads/add-task-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
 import { Button } from "@/components/ui/button"
@@ -49,12 +49,17 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
     )
   }
 
-  const course = settings.courses.find((c) => c.type === lead.courseType)
+  const course =
+    settings.courses.find((c) => c.type === lead.courseType) ||
+    settings.courses.find((c) => c.title === lead.courseType) ||
+    null
+
+  const summaryText = () => whatsappSummary(lead, course)
 
   const copySummary = async () => {
     try {
-      await navigator.clipboard.writeText(whatsappSummary(lead))
-      toast.success("סיכום ההדרכה הועתק")
+      await navigator.clipboard.writeText(summaryText())
+      toast.success("סיכום השיחה הועתק")
     } catch {
       toast.error("לא ניתן להעתיק")
     }
@@ -66,6 +71,16 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
       return
     }
     const text = `${label} - ${lead.courseType}\n${url}`
+    window.open(whatsappLink(lead.phone, text), "_blank")
+  }
+
+  const sendBooklet = () => {
+    const url = course?.bookletUrl
+    if (!url) {
+      toast.error("לא הוגדרה חוברת לסוג הקורס של ליד זה. הגדר בהגדרות → תוכן קורסים")
+      return
+    }
+    const text = `שלום ${lead.contactName || lead.name},\nמצורפת חוברת הקורס (${course?.title || lead.courseType}):\n${url}`
     window.open(whatsappLink(lead.phone, text), "_blank")
   }
 
@@ -81,7 +96,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
     <div>
       <PageHeader
         title={lead.name}
-        subtitle={lead.courseType}
+        subtitle={course?.title || lead.courseType}
         back={
           <button
             type="button"
@@ -108,7 +123,6 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
       />
 
       <div className="space-y-4 p-4">
-        {/* כרטיס עליון */}
         <Card className="gap-3 p-4">
           <div className="flex items-center justify-between">
             <LeadStatusBadge status={lead.status} />
@@ -137,7 +151,6 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
           )}
         </Card>
 
-        {/* פעולות מהירות */}
         <div className="grid grid-cols-2 gap-2">
           <a
             href={`tel:${lead.phone}`}
@@ -146,66 +159,42 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
             <Phone className="size-4" /> חיוג מהיר
           </a>
           <a
-            href={whatsappLink(lead.phone, whatsappSummary(lead))}
+            href={whatsappLink(lead.phone, summaryText())}
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-center gap-2 rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground active:scale-95 transition-transform"
           >
             <MessageCircle className="size-4" /> וואטסאפ
           </a>
-          <Button
-            variant="secondary"
-            className="col-span-2 rounded-2xl py-6"
-            onClick={() => {
-              addTask({
-                id: `tmp_${Date.now()}`,
-                title: "להתקשר שוב",
-                date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-                time: "10:00",
-                assignee: "מכירות",
-                note: `להתקשר שוב אל ${lead.name}`,
-                done: false,
-                relatedLeadId: lead.id,
-                type: "callback",
-              })
-              toast.success("נוצרה משימת להתקשר שוב")
-            }}
-          >
-            להתקשר שוב
-          </Button>
+          <AddTaskDialog
+            leadId={lead.id}
+            leadName={lead.name}
+            onAdd={addTask}
+            triggerClassName="col-span-2 rounded-2xl py-6"
+          />
         </div>
 
-        {/* ניהול סטטוס / מחזור חיים */}
         <LifecycleControls lead={lead} />
 
-        {/* סרגל פעולות הדרכה */}
         <Card className="gap-3 p-4">
           <h2 className="text-sm font-bold">שליחת חומרים ללקוח</h2>
           <div className="grid grid-cols-2 gap-2">
             <ActionButton
               icon={BookOpen}
-              label="חוברת הדרכה"
-              onClick={() => sendFile("חוברת הדרכה", course?.bookletUrl)}
+              label="שלח חוברת"
+              onClick={sendBooklet}
             />
             <ActionButton
               icon={Presentation}
               label="קישור מצגת"
               onClick={() => sendFile("מצגת", course?.presentationUrl)}
             />
-            <ActionButton
-              icon={FileText}
-              label="סילבוס"
-              onClick={() => sendFile("סילבוס", course?.syllabusUrl)}
-            />
             <ActionButton icon={Copy} label="העתק סיכום" onClick={copySummary} />
             <ActionButton
               icon={Send}
-              label="סיכום ללקוח"
+              label="סיכום שיחה"
               onClick={() =>
-                window.open(
-                  whatsappLink(lead.phone, whatsappSummary(lead)),
-                  "_blank",
-                )
+                window.open(whatsappLink(lead.phone, summaryText()), "_blank")
               }
             />
             <ActionButton
@@ -217,10 +206,8 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
           </div>
         </Card>
 
-        {/* הוצאות */}
         <ExpensesSection lead={lead} />
 
-        {/* הצעת מחיר */}
         <Card className="flex-row items-center justify-between p-4">
           <div>
             <p className="text-sm font-semibold">הצעת מחיר</p>

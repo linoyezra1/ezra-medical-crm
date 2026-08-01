@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { DEFAULT_COURSES } from "../src/lib/demo-data";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -25,42 +26,24 @@ async function main() {
     update: {},
   });
 
-  const assets = [
-    {
-      courseType: "22_hours",
-      bookletUrl: "https://example.com/booklets/22h.pdf",
-      presentationUrl: "https://docs.google.com/presentation/d/22h",
-      presentationFile: "https://example.com/pptx/22h.pptx",
-      summaryText: "סיכום קורס 22 שעות – עזרה ראשונה בסיסית.",
-    },
-    {
-      courseType: "44_hours",
-      bookletUrl: "https://example.com/booklets/44h.pdf",
-      presentationUrl: "https://docs.google.com/presentation/d/44h",
-      presentationFile: "https://example.com/pptx/44h.pptx",
-      summaryText: "סיכום קורס 44 שעות.",
-    },
-    {
-      courseType: "60_hours",
-      bookletUrl: "https://example.com/booklets/60h.pdf",
-      presentationUrl: "https://docs.google.com/presentation/d/60h",
-      presentationFile: "https://example.com/pptx/60h.pptx",
-      summaryText: "סיכום קורס 60 שעות.",
-    },
-    {
-      courseType: "paramedic",
-      bookletUrl: "https://example.com/booklets/paramedic.pdf",
-      presentationUrl: "https://docs.google.com/presentation/d/paramedic",
-      presentationFile: "https://example.com/pptx/paramedic.pptx",
-      summaryText: "סיכום קורס חובשים.",
-    },
-  ];
-
-  for (const a of assets) {
+  for (const c of DEFAULT_COURSES) {
+    const data = {
+      title: c.title,
+      hours: c.hours,
+      audience: c.audience || null,
+      durationText: c.durationText || null,
+      natureText: c.natureText || null,
+      contents: c.contents || null,
+      pricingText: c.pricingText || null,
+      summaryTemplate: c.summaryTemplate || null,
+      bookletUrl: c.bookletUrl || null,
+      presentationUrl: c.presentationUrl || null,
+      syllabusUrl: c.syllabusUrl || null,
+    };
     await prisma.courseAsset.upsert({
-      where: { courseType: a.courseType },
-      create: a,
-      update: a,
+      where: { courseType: c.type },
+      create: { courseType: c.type, ...data },
+      update: data,
     });
   }
 
@@ -102,25 +85,24 @@ async function main() {
       urgency: "normal",
       activityType: "course",
       courseStatus: "pending",
-      courseType: "22_hours",
+      courseType: "44_hours",
       courseCategory: "yeshiva_students",
       expectedParticipants: 25,
       sessionsCount: 2,
       sessionDuration: "3_hours",
-      pricingModel: "per_participant",
-      perParticipantRate: 120,
-      agreedPrice: 3000,
+      pricingModel: "flat_rate",
+      agreedPrice: 1700,
       quoteStatus: "sent",
       quoteSentAt: new Date(),
       paymentTerms: "net_30",
       paymentStatus: "pending_official_order",
       location: "אולם הספורט, רחוב הרצל 12",
-      notes: "ליד הדגמה מהסיד",
+      notes: "ליד הדגמה",
     },
     update: {},
   });
 
-  console.log("Seed completed.");
+  console.log("Seed completed with course summary templates.");
 }
 
 main()

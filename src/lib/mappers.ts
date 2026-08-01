@@ -1,4 +1,5 @@
 import type { Lead as DbLead, Participant, Expense, Account, Contact, FollowUpTask, CourseAsset, Settings } from "@/generated/prisma/client";
+import { DEFAULT_COURSES } from "@/lib/demo-data";
 import {
   dbEquipmentToUi,
   dbStatusToUi,
@@ -123,6 +124,19 @@ export function mapClient(
 }
 
 export function mapTask(t: FollowUpTask): Task {
+  if (!t.dueDate) {
+    return {
+      id: t.id,
+      title: t.title,
+      date: "",
+      time: undefined,
+      assignee: t.assignee || "מכירות",
+      note: t.notes || undefined,
+      done: t.completed,
+      relatedLeadId: t.leadId || undefined,
+      type: t.title.includes("Net") ? "collection" : "general",
+    };
+  }
   const d = new Date(t.dueDate);
   return {
     id: t.id,
@@ -133,7 +147,7 @@ export function mapTask(t: FollowUpTask): Task {
     note: t.notes || undefined,
     done: t.completed,
     relatedLeadId: t.leadId || undefined,
-    type: t.title.includes("להתקשר") ? "callback" : t.title.includes("Net") ? "collection" : "general",
+    type: t.title.includes("Net") ? "collection" : "general",
   };
 }
 
@@ -141,17 +155,46 @@ export function mapSettings(
   settings: Settings | null,
   assets: CourseAsset[]
 ): BusinessSettings {
+  const fromDb = assets.map((a) => ({
+    type: a.courseType,
+    title: a.title || a.courseType,
+    hours: a.hours || 0,
+    audience: a.audience || undefined,
+    durationText: a.durationText || undefined,
+    natureText: a.natureText || undefined,
+    contents: a.contents || undefined,
+    pricingText: a.pricingText || undefined,
+    summaryTemplate: a.summaryTemplate || undefined,
+    syllabusUrl: a.syllabusUrl || "",
+    presentationUrl: a.presentationUrl || "",
+    bookletUrl: a.bookletUrl || "",
+  }));
+
+  // מיזוג עם ברירות מחדל – כדי שתבניות הסיכום יופיעו גם אם ב-DB חסרים שדות חדשים
+  const courses = [
+    ...DEFAULT_COURSES.map((def) => {
+      const found = fromDb.find((a) => a.type === def.type);
+      if (!found) return def;
+      return {
+        ...def,
+        ...found,
+        title: found.title && found.title !== found.type ? found.title : def.title,
+        audience: found.audience || def.audience,
+        durationText: found.durationText || def.durationText,
+        natureText: found.natureText || def.natureText,
+        contents: found.contents || def.contents,
+        pricingText: found.pricingText || def.pricingText,
+        summaryTemplate: found.summaryTemplate || def.summaryTemplate,
+      };
+    }),
+    ...fromDb.filter((a) => !DEFAULT_COURSES.some((d) => d.type === a.type)),
+  ];
+
   return {
     businessName: settings?.businessName || "עזרא ורפואה",
     tiktokUrl: settings?.tiktokUrl || "",
     facebookUrl: settings?.facebookUrl || "",
     instagramUrl: settings?.instagramUrl || "",
-    courses: assets.map((a) => ({
-      type: a.courseType,
-      hours: a.courseType.includes("22") ? 22 : a.courseType.includes("44") ? 44 : a.courseType.includes("60") ? 60 : 0,
-      syllabusUrl: a.summaryText || "",
-      presentationUrl: a.presentationUrl || "",
-      bookletUrl: a.bookletUrl || "",
-    })),
+    courses,
   };
 }

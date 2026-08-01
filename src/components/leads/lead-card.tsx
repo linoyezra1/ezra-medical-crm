@@ -5,11 +5,17 @@ import { MapPin, MessageCircle, Phone } from "lucide-react"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
 import { formatCurrency, formatDate, whatsappLink, whatsappSummary } from "@/lib/helpers"
+import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export function LeadCard({ lead }: { lead: Lead }) {
   const router = useRouter()
+  const { settings } = useApp()
+  const course =
+    settings.courses.find((c) => c.type === lead.courseType) ||
+    settings.courses.find((c) => c.title === lead.courseType) ||
+    null
   const stop = (e: React.MouseEvent) => {
     e.stopPropagation()
   }
@@ -41,7 +47,7 @@ export function LeadCard({ lead }: { lead: Lead }) {
               <h3 className="truncate font-bold text-foreground">{lead.name}</h3>
             </div>
             <p className="truncate text-sm text-muted-foreground">
-              {lead.courseType}
+              {course?.title || lead.courseType}
               {lead.customerType === "existing" && (
                 <span className="mr-1 text-primary"> · לקוח קיים</span>
               )}
@@ -70,13 +76,13 @@ export function LeadCard({ lead }: { lead: Lead }) {
             <Phone className="size-4" /> חיוג
           </a>
           <a
-            href={whatsappLink(lead.phone, whatsappSummary(lead))}
+            href={whatsappLink(lead.phone, whatsappSummary(lead, course))}
             target="_blank"
             rel="noreferrer"
             onClick={stop}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-success/10 py-2 text-xs font-semibold text-success active:scale-95 transition-transform"
           >
-            <MessageCircle className="size-4" /> וואטסאפ
+            <MessageCircle className="size-4" /> סיכום שיחה
           </a>
         </div>
       </Card>

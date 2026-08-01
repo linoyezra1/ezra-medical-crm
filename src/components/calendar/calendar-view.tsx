@@ -66,6 +66,7 @@ export function CalendarView() {
       }
     }
     for (const t of tasks) {
+      if (!t.date) continue // משימות ללא תאריך מופיעות בלשונית משימות בלבד
       items.push({
         kind: "task",
         id: t.id,
@@ -207,7 +208,11 @@ function TaskRow({ task, onToggle }: { task: Task; onToggle: () => void }) {
           {task.title}
         </p>
         <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span>{formatDate(task.date)}{task.time ? ` · ${task.time}` : ""}</span>
+          <span>
+            {task.date
+              ? `${formatDate(task.date)}${task.time ? ` · ${task.time}` : ""}`
+              : "ללא תאריך"}
+          </span>
           <span className="rounded-full bg-secondary px-2 py-0.5">{TASK_TYPE_LABELS[task.type]}</span>
         </div>
       </div>
@@ -223,7 +228,7 @@ function TaskRow({ task, onToggle }: { task: Task; onToggle: () => void }) {
 function AddTaskDialog({ onAdd }: { onAdd: (t: Task) => void }) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState("")
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState("")
   const [time, setTime] = useState("")
   const [type, setType] = useState<Task["type"]>("general")
   const [note, setNote] = useState("")
@@ -233,17 +238,20 @@ function AddTaskDialog({ onAdd }: { onAdd: (t: Task) => void }) {
     onAdd({
       id: uid("task"),
       title: title.trim(),
-      date,
-      time: time || undefined,
+      date: date.trim(),
+      time: date.trim() && time ? time : undefined,
       assignee: "אני",
       note: note.trim() || undefined,
       done: false,
       type,
     })
-    toast.success("המשימה נוספה")
+    toast.success(
+      date.trim() ? "המשימה נוספה ליומן" : "המשימה נשמרה כמשימה פתוחה (ללא תאריך)",
+    )
     setOpen(false)
     setTitle("")
     setNote("")
+    setDate("")
     setTime("")
     setType("general")
   }
@@ -263,23 +271,29 @@ function AddTaskDialog({ onAdd }: { onAdd: (t: Task) => void }) {
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>כותרת *</Label>
+            <Label>תיאור המשימה *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="למשל: לחזור לגן שקד" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>תאריך</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Label>תאריך (אופציונלי)</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} dir="ltr" />
             </div>
             <div className="space-y-1.5">
-              <Label>שעה</Label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              <Label>שעה (אופציונלי)</Label>
+              <Input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                dir="ltr"
+                disabled={!date}
+              />
             </div>
           </div>
           <div className="space-y-1.5">
             <Label>סוג</Label>
             <Select value={type} onValueChange={(v) => setType(v as Task["type"])}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

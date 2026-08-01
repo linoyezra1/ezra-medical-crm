@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import {
   addExpense,
   addParticipant,
-  createCallBackTask,
+  createTask,
   createLead,
   deleteExpense,
   removeParticipant,
@@ -145,6 +145,7 @@ export function AppProvider({
         fd.set("urgency", lead.urgent ? "urgent" : "normal");
         fd.set("activityType", "course");
         fd.set("leadSource", lead.customerType === "existing" ? "returning" : "website");
+        fd.set("notes", lead.notes || "");
         const res = await createLead(fd);
         if (!res.ok) {
           toast.error(res.error);
@@ -250,13 +251,18 @@ export function AppProvider({
 
   const addTask = useCallback((task: Task) => {
     setTasks((prev) => [task, ...prev]);
-    if (task.relatedLeadId && task.type === "callback") {
-      startTransition(async () => {
-        const res = await createCallBackTask(task.relatedLeadId!);
-        if (!res.ok) toast.error(res.error);
-        refresh();
+    startTransition(async () => {
+      const res = await createTask({
+        leadId: task.relatedLeadId,
+        title: task.title,
+        date: task.date || undefined,
+        time: task.time,
+        notes: task.note,
+        assignee: task.assignee,
       });
-    }
+      if (!res.ok) toast.error(res.error);
+      refresh();
+    });
   }, [refresh]);
 
   const updateTask = useCallback((id: string, patch: Partial<Task>) => {
@@ -281,6 +287,12 @@ export function AppProvider({
   const updateSettings = useCallback(
     (patch: Partial<BusinessSettings>) => {
       setSettings((prev) => ({ ...prev, ...patch }));
+      const hasBusinessFields =
+        patch.businessName != null ||
+        patch.tiktokUrl != null ||
+        patch.facebookUrl != null ||
+        patch.instagramUrl != null;
+      if (!hasBusinessFields) return;
       startTransition(async () => {
         await updateSettingsAction({
           businessName: patch.businessName,

@@ -1,4 +1,9 @@
-import type { Lead } from "./types";
+import type { CourseCatalogItem, Lead } from "./types";
+import {
+  buildStructuredSummary,
+  buildSummaryVars,
+  fillSummaryTemplate,
+} from "./summary-template";
 import { sanitizePhone } from "./utils";
 
 export function cleanPhone(raw: string): string {
@@ -57,18 +62,39 @@ export function findConflicts(
   });
 }
 
-export function whatsappSummary(lead: Lead): string {
+/**
+ * סיכום שיחה מותאם לקורס:
+ * 1) אם יש summaryTemplate – ממלא משתנים
+ * 2) אחרת בונה מבנה מסודר משדות תכני הקורס
+ * 3) נפילה לסיכום בסיסי
+ */
+export function whatsappSummary(
+  lead: Lead,
+  course?: CourseCatalogItem | null
+): string {
+  const vars = buildSummaryVars(lead, course);
+
+  if (course?.summaryTemplate?.trim()) {
+    return fillSummaryTemplate(course.summaryTemplate, vars);
+  }
+
+  if (course && (course.contents || course.audience || course.pricingText || course.title)) {
+    return buildStructuredSummary(lead, course, vars);
+  }
+
   const lines = [
-    `סיכום הדרכה - ${lead.name}`,
-    `סוג קורס: ${lead.courseType}${lead.courseHours ? ` (${lead.courseHours} שעות)` : ""}`,
-    lead.date ? `תאריך: ${formatDate(lead.date)}` : "תאריך: טרם נקבע",
-    lead.time ? `שעה: ${lead.time}` : "שעה: טרם נקבעה",
-    `כתובת: ${lead.address.street} ${lead.address.houseNumber}, ${lead.address.city}`,
-    lead.instructor ? `מדריך: ${lead.instructor}` : "",
-    lead.contactName ? `איש קשר: ${lead.contactName}` : "",
-    `מספר משתתפים: ${lead.participantsCount}`,
-  ].filter(Boolean);
-  return lines.join("\n");
+    "סיכום שיחה",
+    "",
+    `שלום ${vars.contactName || ""},`.trim(),
+    "",
+    `📘 ${vars.courseTitle || lead.courseType || "קורס"}`,
+    lead.date ? `📅 תאריך: ${formatDate(lead.date)}${lead.time ? ` · ${lead.time}` : ""}` : "",
+    vars.location ? `📍 מיקום: ${vars.location}` : "",
+    lead.totalPrice > 0 ? `💰 עלות: ${formatCurrency(lead.totalPrice)}` : "",
+    "",
+    "תעדכני אותי בשביל שנוכל להתקדם",
+  ].filter((l) => l !== undefined);
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export function whatsappLink(phone: string, text: string): string {

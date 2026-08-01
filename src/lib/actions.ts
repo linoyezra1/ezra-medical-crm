@@ -104,6 +104,7 @@ export async function createLead(formData: FormData): Promise<
       leadSource: String(formData.get("leadSource") ?? "") || null,
       urgency: String(formData.get("urgency") ?? "normal"),
       activityType: String(formData.get("activityType") ?? "course"),
+      notes: String(formData.get("notes") ?? "") || null,
     },
   });
 
@@ -360,6 +361,50 @@ export async function updateSettings(data: {
   return { ok: true as const };
 }
 
+export async function upsertCourseAsset(data: {
+  courseType: string;
+  title?: string;
+  hours?: number;
+  audience?: string;
+  durationText?: string;
+  natureText?: string;
+  contents?: string;
+  pricingText?: string;
+  summaryTemplate?: string;
+  bookletUrl?: string;
+  presentationUrl?: string;
+  syllabusUrl?: string;
+}) {
+  if (!data.courseType.trim()) {
+    return { ok: false as const, error: "סוג קורס הוא שדה חובה" };
+  }
+
+  const payload = {
+    title: data.title ?? "",
+    hours: data.hours ?? 0,
+    audience: data.audience || null,
+    durationText: data.durationText || null,
+    natureText: data.natureText || null,
+    contents: data.contents || null,
+    pricingText: data.pricingText || null,
+    summaryTemplate: data.summaryTemplate || null,
+    bookletUrl: data.bookletUrl || null,
+    presentationUrl: data.presentationUrl || null,
+    syllabusUrl: data.syllabusUrl || null,
+  };
+
+  await prisma.courseAsset.upsert({
+    where: { courseType: data.courseType },
+    create: { courseType: data.courseType, ...payload },
+    update: payload,
+  });
+
+  revalidatePath("/");
+  revalidatePath("/settings");
+  revalidatePath("/leads");
+  return { ok: true as const };
+}
+
 export async function createLmsUser(leadId: string): Promise<
   ActionResult<{ username: string; password: string; loginUrl: string; message: string }>
 > {
@@ -403,6 +448,60 @@ export async function createLmsUser(leadId: string): Promise<
   };
 }
 
+export async function createTask(data: {
+  leadId?: string;
+  title: string;
+  date?: string; // YYYY-MM-DD
+  time?: string; // HH:mm
+  notes?: string;
+  assignee?: string;
+}): Promise<
+  ActionResult<{
+    id: string;
+    title: string;
+    dueDate: string | null;
+    assignee: string;
+    notes: string;
+  }>
+> {
+  const title = data.title.trim();
+  if (!title) return { ok: false, error: "יש להזין תיאור משימה" };
+
+  let dueDate: Date | null = null;
+  if (data.date?.trim()) {
+    const time = data.time?.trim() || "09:00";
+    dueDate = new Date(`${data.date}T${time}`);
+    if (Number.isNaN(dueDate.getTime())) {
+      return { ok: false, error: "תאריך/שעה לא תקינים" };
+    }
+  }
+
+  const task = await prisma.followUpTask.create({
+    data: {
+      leadId: data.leadId || null,
+      title,
+      dueDate,
+      assignee: data.assignee || "מכירות",
+      notes: data.notes || null,
+    },
+  });
+
+  if (data.leadId) revalidatePath(`/leads/${data.leadId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  return {
+    ok: true,
+    data: {
+      id: task.id,
+      title: task.title,
+      dueDate: task.dueDate?.toISOString() ?? null,
+      assignee: task.assignee ?? "מכירות",
+      notes: task.notes ?? "",
+    },
+  };
+}
+
+/** @deprecated use createTask */
 export async function createCallBackTask(leadId: string): Promise<
   ActionResult<{
     id: string;
@@ -412,38 +511,18 @@ export async function createCallBackTask(leadId: string): Promise<
     notes: string;
   }>
 > {
-  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-  if (!lead) return { ok: false, error: "ליד לא נמצא" };
-
-  // Default: tomorrow at 10:00 local
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 1);
-  dueDate.setHours(10, 0, 0, 0);
-
-  const title = "להתקשר שוב";
-  const assignee = "מכירות";
-  const notes = `להתקשר שוב אל ${lead.fullName} (${lead.phone})`;
-
-  const task = await prisma.followUpTask.create({
-    data: {
-      leadId,
-      title,
-      dueDate,
-      assignee,
-      notes,
-    },
+  const res = await createTask({
+    leadId,
+    title: "להתקשר שוב",
+    date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+    time: "10:00",
   });
-
-  revalidatePath(`/leads/${leadId}`);
-  revalidatePath("/dashboard");
+  if (!res.ok) return res;
   return {
     ok: true,
     data: {
-      id: task.id,
-      title: task.title,
-      dueDate: task.dueDate.toISOString(),
-      assignee: task.assignee ?? assignee,
-      notes: task.notes ?? notes,
+      ...res.data,
+      dueDate: res.data.dueDate ?? new Date().toISOString(),
     },
   };
 }

@@ -20,7 +20,6 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { CATEGORIES, INSTRUCTORS } from "@/lib/demo-data"
 import {
   calcTotal,
   cleanPhone,
@@ -34,10 +33,48 @@ interface Props {
   existing?: Lead
 }
 
+const OTHER = "אחר"
+const DEFAULT_INSTRUCTOR = "יצחק"
+
+function uniqueSorted(values: Iterable<string>): string[] {
+  return Array.from(new Set(Array.from(values).map((v) => v.trim()).filter(Boolean))).sort(
+    (a, b) => a.localeCompare(b, "he"),
+  )
+}
+
 export function LeadForm({ existing }: Props) {
   const router = useRouter()
-  const { addLead, updateLead, settings, findClientByPhone, clients, leads } =
-    useApp()
+  const { addLead, updateLead, settings, findClientByPhone, leads } = useApp()
+
+  const categoryOptions = useMemo(() => {
+    const fromDb: string[] = []
+    for (const l of leads) {
+      if (l.category && l.category !== OTHER) fromDb.push(l.category)
+      if (l.categoryOther) fromDb.push(l.categoryOther)
+    }
+    return uniqueSorted(fromDb)
+  }, [leads])
+
+  const instructorOptions = useMemo(() => {
+    const fromDb: string[] = [DEFAULT_INSTRUCTOR]
+    for (const l of leads) {
+      if (l.instructor && l.instructor !== OTHER) fromDb.push(l.instructor)
+    }
+    return uniqueSorted(fromDb)
+  }, [leads])
+
+  const initialCategorySelect = (() => {
+    if (!existing) return OTHER
+    if (existing.category === OTHER || existing.categoryOther) return OTHER
+    if (categoryOptions.includes(existing.category)) return existing.category
+    return existing.category || OTHER
+  })()
+
+  const initialInstructorSelect = (() => {
+    if (!existing?.instructor) return DEFAULT_INSTRUCTOR
+    if (instructorOptions.includes(existing.instructor)) return existing.instructor
+    return OTHER
+  })()
 
   const [form, setForm] = useState<Lead>(
     existing ?? {
@@ -51,18 +88,25 @@ export function LeadForm({ existing }: Props) {
       customerType: "new",
       courseType: settings.courses[0]?.type ?? "",
       courseHours: settings.courses[0]?.hours,
-      category: CATEGORIES[0],
+      category: OTHER,
       pricingType: "per_participant",
       pricePerUnit: 0,
       participantsCount: 1,
       totalPrice: 0,
       certificateDelivery: "digital",
+      instructor: DEFAULT_INSTRUCTOR,
+      notes: "",
       address: { street: "", houseNumber: "", city: "", zip: "" },
       participants: [],
       expenses: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
+  )
+  const [categorySelect, setCategorySelect] = useState(initialCategorySelect)
+  const [instructorSelect, setInstructorSelect] = useState(initialInstructorSelect)
+  const [instructorOther, setInstructorOther] = useState(
+    initialInstructorSelect === OTHER ? existing?.instructor ?? "" : "",
   )
   const [globalPrice, setGlobalPrice] = useState(
     existing?.pricingType === "global" ? existing.totalPrice : 0,
@@ -87,7 +131,6 @@ export function LeadForm({ existing }: Props) {
     [form.pricingType, form.pricePerUnit, form.participantsCount, globalPrice],
   )
 
-  // Auto-save simulation (draft) — flashes indicator so field data isn't "lost"
   const firstRender = useRef(true)
   useEffect(() => {
     if (firstRender.current) {
@@ -121,20 +164,41 @@ export function LeadForm({ existing }: Props) {
     const e: Record<string, boolean> = {}
     if (!form.name.trim()) e.name = true
     if (!form.phone.trim()) e.phone = true
+    if (instructorSelect === OTHER && !instructorOther.trim()) {
+      e.instructorOther = true
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
+  const resolveCategory = (): { category: string; categoryOther?: string } => {
+    if (categorySelect === OTHER) {
+      const custom = form.categoryOther?.trim() || ""
+      // שומרים את השם החדש כקטגוריה כדי שיופיע ברשימה בפעם הבאה
+      return { category: custom || OTHER, categoryOther: custom || undefined }
+    }
+    return { category: categorySelect, categoryOther: undefined }
+  }
+
+  const resolveInstructor = (): string => {
+    if (instructorSelect === OTHER) return instructorOther.trim()
+    return instructorSelect
+  }
+
   const save = () => {
     if (!validate()) {
-      toast.error("יש למלא שם וטלפון")
+      toast.error("יש למלא את השדות הנדרשים")
       return
     }
+    const { category, categoryOther } = resolveCategory()
     const payload: Lead = {
       ...form,
       phone: cleanPhone(form.phone),
       totalPrice: total,
       courseHours: selectedCourse?.hours,
+      category,
+      categoryOther,
+      instructor: resolveInstructor(),
     }
     if (existing) {
       updateLead(existing.id, payload)
@@ -143,9 +207,15 @@ export function LeadForm({ existing }: Props) {
     } else {
       addLead(payload)
       toast.success("ליד חדש נוצר")
-      // ניווט לליד האמיתי מתבצע ב-store אחרי שמירה בשרת
     }
   }
+
+  const categorySelectValue =
+    categorySelect === OTHER
+      ? OTHER
+      : categoryOptions.includes(categorySelect)
+        ? categorySelect
+        : categorySelect || OTHER
 
   return (
     <div>
@@ -171,7 +241,7 @@ export function LeadForm({ existing }: Props) {
         }
       />
 
-      <div className="p-4">
+      <div className="overflow-visible p-4">
         {dupWarn && (
           <Card className="mb-3 gap-1 border-warning/40 bg-warning/10 p-3">
             <p className="text-sm font-semibold text-warning-foreground">
@@ -186,15 +256,14 @@ export function LeadForm({ existing }: Props) {
           </Card>
         )}
 
-        <Tabs defaultValue="details" dir="rtl">
+        <Tabs defaultValue="details" dir="rtl" className="overflow-visible">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="details">פרטים</TabsTrigger>
             <TabsTrigger value="course">קורס ותמחור</TabsTrigger>
-            <TabsTrigger value="logistics">לוגיסטיקה</TabsTrigger>
+            <TabsTrigger value="logistics">מיקום הדרכה</TabsTrigger>
           </TabsList>
 
-          {/* פרטים */}
-          <TabsContent value="details" className="mt-4 space-y-4">
+          <TabsContent value="details" className="mt-4 space-y-4 overflow-visible">
             <Field label="שם הלקוח / הארגון" error={errors.name} required>
               <Input
                 value={form.name}
@@ -231,6 +300,15 @@ export function LeadForm({ existing }: Props) {
               />
             </Field>
 
+            <Field label="הערות">
+              <Textarea
+                value={form.notes ?? ""}
+                onChange={(e) => set("notes", e.target.value)}
+                rows={3}
+                placeholder="הערות פנימיות לליד"
+              />
+            </Field>
+
             <Card className="flex-row items-center justify-between p-4">
               <div>
                 <p className="text-sm font-semibold">סימון כדחוף</p>
@@ -245,49 +323,63 @@ export function LeadForm({ existing }: Props) {
             </Card>
           </TabsContent>
 
-          {/* קורס ותמחור */}
-          <TabsContent value="course" className="mt-4 space-y-4">
+          <TabsContent value="course" className="mt-4 space-y-4 overflow-visible">
             <Field label="סוג קורס">
               <Select
                 value={form.courseType}
                 onValueChange={(v) => set("courseType", v ?? "")}
               >
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="בחר סוג קורס" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  side="bottom"
+                  align="start"
+                  alignItemWithTrigger={false}
+                  className="max-h-[min(280px,70vh)]"
+                >
                   {settings.courses.map((c) => (
                     <SelectItem key={c.type} value={c.type}>
-                      {c.type}
+                      {c.title || c.type}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
 
-            <Field label="קטגוריה">
+            <Field label="קטגוריה" error={errors.categoryOther}>
               <Select
-                value={form.category}
-                onValueChange={(v) => set("category", v ?? "")}
+                value={categorySelectValue}
+                onValueChange={(v) => {
+                  const next = v ?? OTHER
+                  setCategorySelect(next)
+                  if (next !== OTHER) {
+                    set("category", next)
+                    set("categoryOther", undefined)
+                  } else {
+                    set("category", OTHER)
+                  }
+                }}
               >
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="בחר קטגוריה" />
                 </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((c) => (
+                <SelectContent alignItemWithTrigger={false} className="max-h-[min(280px,70vh)]">
+                  {categoryOptions.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
                     </SelectItem>
                   ))}
+                  <SelectItem value={OTHER}>{OTHER}</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
-            {form.category === "אחר" && (
-              <Field label="פירוט קטגוריה" required>
+            {categorySelect === OTHER && (
+              <Field label="קטגוריה חדשה" required error={errors.categoryOther}>
                 <Input
                   value={form.categoryOther ?? ""}
                   onChange={(e) => set("categoryOther", e.target.value)}
-                  placeholder="הזן קטגוריה"
+                  placeholder="לדוגמה: גננות, מורים…"
                 />
               </Field>
             )}
@@ -347,8 +439,7 @@ export function LeadForm({ existing }: Props) {
             </Card>
           </TabsContent>
 
-          {/* לוגיסטיקה */}
-          <TabsContent value="logistics" className="mt-4 space-y-4">
+          <TabsContent value="logistics" className="mt-4 space-y-4 overflow-visible">
             <div className="grid grid-cols-2 gap-3">
               <Field label="תאריך">
                 <Input
@@ -368,23 +459,40 @@ export function LeadForm({ existing }: Props) {
               </Field>
             </div>
 
-            <Field label="מדריך">
+            <Field label="מדריך" error={errors.instructorOther}>
               <Select
-                value={form.instructor ?? ""}
-                onValueChange={(v) => set("instructor", v ?? "")}
+                value={instructorSelect}
+                onValueChange={(v) => {
+                  const next = v ?? DEFAULT_INSTRUCTOR
+                  setInstructorSelect(next)
+                  if (next !== OTHER) {
+                    set("instructor", next)
+                    setInstructorOther("")
+                  }
+                }}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="בחר מדריך" />
                 </SelectTrigger>
-                <SelectContent>
-                  {INSTRUCTORS.map((i) => (
+                <SelectContent alignItemWithTrigger={false} className="max-h-[min(280px,70vh)]">
+                  {instructorOptions.map((i) => (
                     <SelectItem key={i} value={i}>
                       {i}
                     </SelectItem>
                   ))}
+                  <SelectItem value={OTHER}>{OTHER}</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
+            {instructorSelect === OTHER && (
+              <Field label="שם מדריך חדש" required error={errors.instructorOther}>
+                <Input
+                  value={instructorOther}
+                  onChange={(e) => setInstructorOther(e.target.value)}
+                  placeholder="הזן שם מדריך"
+                />
+              </Field>
+            )}
 
             <Field label="אופן אספקת תעודות">
               <Select
@@ -393,10 +501,10 @@ export function LeadForm({ existing }: Props) {
                   set("certificateDelivery", (v ?? "digital") as Lead["certificateDelivery"])
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent alignItemWithTrigger={false}>
                   <SelectItem value="digital">דיגיטלי</SelectItem>
                   <SelectItem value="mail">דואר</SelectItem>
                   <SelectItem value="physical">כרטיסים פיזיים</SelectItem>
@@ -445,7 +553,9 @@ export function LeadForm({ existing }: Props) {
               </Field>
             </div>
 
-            {form.category === "גני ילדים" && (
+            {(form.category === "גני ילדים" ||
+              form.categoryOther === "גני ילדים" ||
+              categorySelect === "גני ילדים") && (
               <Card className="flex-row items-center gap-3 p-4">
                 <Checkbox
                   id="kg"
@@ -459,15 +569,6 @@ export function LeadForm({ existing }: Props) {
                 </Label>
               </Card>
             )}
-
-            <Field label="הערות">
-              <Textarea
-                value={form.notes ?? ""}
-                onChange={(e) => set("notes", e.target.value)}
-                rows={3}
-                placeholder="הערות פנימיות"
-              />
-            </Field>
           </TabsContent>
         </Tabs>
 

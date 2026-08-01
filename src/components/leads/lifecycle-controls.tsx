@@ -116,23 +116,56 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
     <Card className="gap-3 p-4">
       <h2 className="text-sm font-bold">מחזור חיים של הליד</h2>
 
-      {/* מחוון שלבים */}
-      <div className="flex items-center gap-1">
-        {LEAD_STATUS_ORDER.map((s, i) => (
-          <div
-            key={s}
-            className={
-              "h-1.5 flex-1 rounded-full " +
-              (i <= currentIdx && lead.status !== "lost"
-                ? "bg-primary"
-                : "bg-border")
-            }
-          />
-        ))}
+      {/* מחוון שלבים ממוספר */}
+      <div className="grid grid-cols-5 gap-1">
+        {LEAD_STATUS_ORDER.map((s, i) => {
+          const active = i <= currentIdx && lead.status !== "lost"
+          const current = s === lead.status
+          return (
+            <div
+              key={s}
+              className={
+                "flex flex-col items-center gap-1 rounded-xl px-0.5 py-1.5 text-center " +
+                (current
+                  ? "bg-primary/15 ring-1 ring-primary/40"
+                  : active
+                    ? "bg-primary/5"
+                    : "bg-secondary/40")
+              }
+            >
+              <span
+                className={
+                  "flex size-6 items-center justify-center rounded-full text-[10px] font-bold " +
+                  (active
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-border text-muted-foreground")
+                }
+              >
+                {i + 1}
+              </span>
+              <p
+                className={
+                  "text-[9px] leading-tight " +
+                  (current
+                    ? "font-bold text-primary"
+                    : "font-medium text-muted-foreground")
+                }
+              >
+                שלב {i + 1}: {LEAD_STATUS_LABELS[s]}
+              </p>
+            </div>
+          )
+        })}
       </div>
-      <p className="text-xs text-muted-foreground">
-        שלב נוכחי: {LEAD_STATUS_LABELS[lead.status]}
-      </p>
+      {lead.status === "lost" ? (
+        <p className="text-xs font-medium text-destructive">
+          סטטוס נוכחי: {LEAD_STATUS_LABELS.lost}
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          שלב נוכחי: שלב {currentIdx + 1} — {LEAD_STATUS_LABELS[lead.status]}
+        </p>
+      )}
 
       {lead.status === "lost" ? (
         <Button variant="outline" onClick={() => advance("new")}>

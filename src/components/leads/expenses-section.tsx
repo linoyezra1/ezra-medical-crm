@@ -19,12 +19,13 @@ import { formatCurrency, uid } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 
-const EXPENSE_TYPES = ["נסיעות", "ציוד מתכלה", "הדפסת תעודות", "עמלת מדריך", "אחר"]
+const EXPENSE_PRESETS = ["דלק", "מדריך", "אח", "אחר"] as const
 
 export function ExpensesSection({ lead }: { lead: Lead }) {
   const { updateLead } = useApp()
   const [adding, setAdding] = useState(false)
-  const [type, setType] = useState(EXPENSE_TYPES[0])
+  const [preset, setPreset] = useState<string>(EXPENSE_PRESETS[0])
+  const [otherLabel, setOtherLabel] = useState("")
   const [amount, setAmount] = useState("")
   const [hasReceipt, setHasReceipt] = useState(false)
 
@@ -33,6 +34,12 @@ export function ExpensesSection({ lead }: { lead: Lead }) {
   const add = () => {
     if (!amount || Number(amount) <= 0) {
       toast.error("יש להזין סכום תקין")
+      return
+    }
+    const type =
+      preset === "אחר" ? otherLabel.trim() || "אחר" : preset
+    if (preset === "אחר" && !otherLabel.trim()) {
+      toast.error("יש לפרט את סוג ההוצאה")
       return
     }
     updateLead(lead.id, {
@@ -49,6 +56,8 @@ export function ExpensesSection({ lead }: { lead: Lead }) {
     })
     setAmount("")
     setHasReceipt(false)
+    setOtherLabel("")
+    setPreset(EXPENSE_PRESETS[0])
     setAdding(false)
     toast.success("ההוצאה נוספה")
   }
@@ -105,18 +114,25 @@ export function ExpensesSection({ lead }: { lead: Lead }) {
 
       {adding ? (
         <div className="space-y-3 rounded-xl border border-border p-3">
-          <Select value={type} onValueChange={(v) => setType(v ?? "")}>
-            <SelectTrigger>
+          <Select value={preset} onValueChange={(v) => setPreset(v ?? "דלק")}>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
-              {EXPENSE_TYPES.map((t) => (
+            <SelectContent alignItemWithTrigger={false} className="z-[200]">
+              {EXPENSE_PRESETS.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {preset === "אחר" && (
+            <Input
+              value={otherLabel}
+              onChange={(e) => setOtherLabel(e.target.value)}
+              placeholder="פירוט הוצאה"
+            />
+          )}
           <Input
             type="number"
             inputMode="numeric"

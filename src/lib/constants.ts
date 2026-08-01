@@ -91,10 +91,9 @@ export const DELIVERY_METHODS = [
 ] as const;
 
 export const EXPENSE_TYPES = [
-  { value: "instructor_fee", label: "שכר מדריך" },
-  { value: "fuel_travel", label: "דלק / נסיעות" },
-  { value: "disposables_supplies", label: "מתכלים / ציוד" },
-  { value: "venue_refreshments", label: "אולם / כיבוד" },
+  { value: "fuel", label: "דלק" },
+  { value: "instructor", label: "מדריך" },
+  { value: "medic", label: "אח" },
   { value: "other", label: "אחר" },
 ] as const;
 

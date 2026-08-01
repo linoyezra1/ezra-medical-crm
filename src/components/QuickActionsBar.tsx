@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
   Phone,
@@ -10,9 +9,8 @@ import {
   FileSpreadsheet,
   StickyNote,
   UserPlus,
-  PhoneForwarded,
 } from "lucide-react";
-import { createCallBackTask, createLmsUser } from "@/lib/actions";
+import { createLmsUser } from "@/lib/actions";
 import { buildWhatsAppUrl, summaryMessage } from "@/lib/whatsapp";
 import { sanitizePhone } from "@/lib/utils";
 
@@ -39,7 +37,6 @@ type Props = {
 };
 
 export function QuickActionsBar({ lead, asset }: Props) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
 
@@ -93,26 +90,6 @@ export function QuickActionsBar({ lead, asset }: Props) {
     });
   }
 
-  function handleCallAgain() {
-    startTransition(async () => {
-      const res = await createCallBackTask(lead.id);
-      if (!res.ok) {
-        setToast(res.error);
-        return;
-      }
-      const when = new Date(res.data.dueDate).toLocaleString("he-IL", {
-        day: "2-digit",
-        month: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      setToast(
-        `נוצרה משימה: ${res.data.title} · ${when} · אחראי: ${res.data.assignee} · ${res.data.notes}`
-      );
-      router.refresh();
-    });
-  }
-
   const actions = [
     {
       label: "חייג",
@@ -122,17 +99,11 @@ export function QuickActionsBar({ lead, asset }: Props) {
       },
     },
     {
-      label: "להתקשר שוב",
-      icon: PhoneForwarded,
-      onClick: handleCallAgain,
-      disabled: pending,
-    },
-    {
       label: "סיכום WhatsApp",
       icon: MessageCircle,
       onClick: () => openWhatsApp(summaryMessage(lead)),
     },
-    { label: "חוברת קורס", icon: BookOpen, onClick: sendBooklet },
+    { label: "שלח חוברת", icon: BookOpen, onClick: sendBooklet },
     { label: "קישור מצגת", icon: Link2, onClick: sendPresentationLink },
     { label: "קובץ מצגת", icon: FileSpreadsheet, onClick: sendPresentationFile },
     { label: "סיכום קורס", icon: StickyNote, onClick: sendCourseSummary },
