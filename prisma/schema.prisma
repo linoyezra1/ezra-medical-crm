@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Account {
+  id            String    @id @default(cuid())
+  name          String
+  classification String   @default("new") // new | returning
+  city          String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  contacts      Contact[]
+  leads         Lead[]
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  fullName  String
+  phone     String
+  email     String?
+  role      String?  // director, secretary, etc.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leads     Lead[]
+
+  @@index([phone])
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  // Tab 1 – Contact info (denormalized for fast mobile edit)
+  fullName   String
+  phone      String
+  email      String?
+  city       String?
+  leadSource String?  // website, friends, facebook, returning, other
+  urgency    String   @default("normal") // normal | urgent
+
+  // Pipelines
+  activityType      String  @default("course") // course | equipment | combined
+  courseStatus      String  @default("new")
+  // new | cold | pending | closed | completed | certificates_pending | closed_won | canceled
+  equipmentStatus   String?
+  // inquiry | requisition_received | supplied_invoiced | pending_payment | completed_paid
+
+  // Tab 2 – Course details
+  reason               String?
+  courseType           String?  // 22_hours | 44_hours | 60_hours | paramedic | other
+  courseTypeOther      String?
+  courseCategory       String?  // yeshiva_students | shipping_raspan | firearms | other
+  courseCategoryOther  String?
+  kindergartenApproved Boolean  @default(false)
+  expectedParticipants Int?
+  sessionsCount        Int?
+  sessionDuration      String?  // 2.5_hours | 3_hours | 4_hours | 4+_hours | other
+  sessionDurationOther String?
+  bookletRequired      Boolean  @default(false)
+
+  // Schedule (required for closed)
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  location       String?
+  instructor     String?
+
+  // Tab 3 – Pricing & delivery
+  pricingModel       String  @default("flat_rate") // flat_rate | per_participant
+  perParticipantRate Float?
+  agreedPrice        Float?
+  quoteStatus        String  @default("not_sent") // sent | not_sent
+  quoteSentAt        DateTime?
+  paymentTerms       String? // immediate | net_30 | net_60 | other
+  paymentStatus      String  @default("pending_official_order")
+  // pending_official_order | invoice_issued_pending_net | paid_in_full
+  shippingStreet     String?
+  shippingHouseNo    String?
+  shippingCity       String?
+  shippingZip        String?
+  deliveryMethod     String? // digital_email | physical_print | postal_mail
+  notes              String?
+
+  // Calendar
+  googleCalendarEventId String?
+  conflictBypassed      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants Participant[]
+  expenses     Expense[]
+  tasks        FollowUpTask[]
+
+  @@index([phone])
+  @@index([courseStatus])
+  @@index([urgency])
+  @@index([scheduledStart])
+}
+
+model Participant {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fullName  String
+  idNumber  String
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type        String   // instructor_fee | fuel_travel | disposables_supplies | venue_refreshments | other
+  amount      Float
+  notes       String?
+  receiptPath String?
+  createdAt   DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model FollowUpTask {
+  id          String    @id @default(cuid())
+  leadId      String?
+  lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime
+  completed   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@index([dueDate])
+}
+
+model CourseAsset {
+  id               String  @id @default(cuid())
+  courseType       String  @unique
+  bookletUrl       String?
+  presentationUrl  String?
+  presentationFile String?
+  summaryText      String?
+}
+
+model Settings {
+  id            String @id @default("default")
+  businessName  String @default("עזרא ורפואה")
+  tiktokUrl     String?
+  facebookUrl   String?
+  instagramUrl  String?
+  lmsApiUrl     String?
+  lmsLoginUrl   String?
+  calendarEnabled Boolean @default(false)
+}
