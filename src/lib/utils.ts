@@ -1,10 +1,27 @@
-/** Normalize Israeli phone to digits only, keep leading 0 or convert +972 */
+/** Normalize Israeli phone to digits only (05XXXXXXXX). Handles dashes, spaces, +972. */
 export function sanitizePhone(raw: string): string {
   let digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("972")) {
+  if (digits.startsWith("9720")) {
+    digits = digits.slice(3);
+  } else if (digits.startsWith("972")) {
     digits = "0" + digits.slice(3);
   }
+  // Strip leading 00 international dial prefix leftover (e.g. 00972…)
+  if (digits.startsWith("00972")) {
+    digits = "0" + digits.slice(5);
+  }
   return digits;
+}
+
+export function isValidIsraeliMobile(phone: string): boolean {
+  const p = sanitizePhone(phone);
+  return /^0\d{8,9}$/.test(p);
+}
+
+/** Display helper – keeps stored format (digits) for consistency */
+export function formatPhoneDisplay(phone: string | null | undefined): string {
+  if (!phone) return "";
+  return sanitizePhone(phone);
 }
 
 /** WhatsApp wa.me expects country code without + */

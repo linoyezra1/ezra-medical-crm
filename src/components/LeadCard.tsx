@@ -30,10 +30,10 @@ export function LeadCard(lead: LeadCardProps) {
   return (
     <Link
       href={`/leads/${lead.id}`}
-      className={cn(
-        "card-surface block p-4 transition hover:shadow-sm",
-        urgent && "border-[var(--urgent)] bg-[var(--urgent-soft)]"
-      )}
+        className={cn(
+          "card-surface block p-4 transition hover:shadow-sm",
+          urgent && "border-2 border-[var(--urgent)] bg-[var(--urgent-soft)] shadow-[0_0_0_1px_var(--urgent)]"
+        )}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -41,7 +41,7 @@ export function LeadCard(lead: LeadCardProps) {
             <h3 className="font-bold text-base">{lead.fullName}</h3>
             {urgent && (
               <span className="rounded-md bg-[var(--urgent)] px-1.5 py-0.5 text-[10px] font-bold text-white">
-                דחוף
+                🔴 דחוף
               </span>
             )}
           </div>

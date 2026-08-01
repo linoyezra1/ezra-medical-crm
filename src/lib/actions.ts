@@ -64,11 +64,35 @@ export async function checkDuplicatePhone(phone: string, excludeLeadId?: string)
   return { duplicates };
 }
 
-export async function createLead(formData: FormData): Promise<ActionResult<{ id: string }>> {
+export async function createLead(formData: FormData): Promise<
+  ActionResult<{ id: string }> & { fieldErrors?: { fullName?: string; phone?: string }; duplicate?: { id: string; fullName: string } }
+> {
   const fullName = String(formData.get("fullName") ?? "").trim();
-  const phone = sanitizePhone(String(formData.get("phone") ?? ""));
-  if (!fullName || !phone) {
-    return { ok: false, error: "שם מלא וטלפון הם שדות חובה" };
+  const phoneRaw = String(formData.get("phone") ?? "");
+  const phone = sanitizePhone(phoneRaw);
+
+  const fieldErrors: { fullName?: string; phone?: string } = {};
+  if (!fullName) fieldErrors.fullName = "שדה חובה";
+  if (!phone) fieldErrors.phone = "שדה חובה";
+
+  if (fieldErrors.fullName || fieldErrors.phone) {
+    return {
+      ok: false,
+      error: "שם מלא וטלפון הם שדות חובה",
+      code: "required_fields",
+      fieldErrors,
+    };
+  }
+
+  const { duplicates } = await checkDuplicatePhone(phone);
+  if (duplicates.length > 0) {
+    const dup = duplicates[0];
+    return {
+      ok: false,
+      error: `קיים כבר ליד פעיל בשם ${dup.fullName}`,
+      code: "duplicate_phone",
+      duplicate: dup,
+    };
   }
 
   const lead = await prisma.lead.create({
@@ -97,9 +121,31 @@ export async function updateLead(
   if (!existing) return { ok: false, error: "ליד לא נמצא" };
 
   const phone = raw.phone != null ? sanitizePhone(String(raw.phone)) : existing.phone;
+  const fullName =
+    raw.fullName != null ? String(raw.fullName).trim() : existing.fullName;
+
+  if (!fullName || !phone) {
+    return {
+      ok: false,
+      error: "שם מלא וטלפון הם שדות חובה",
+      code: "required_fields",
+    };
+  }
+
+  if (phone !== existing.phone) {
+    const { duplicates } = await checkDuplicatePhone(phone, leadId);
+    if (duplicates.length > 0) {
+      return {
+        ok: false,
+        error: `קיים כבר ליד פעיל בשם ${duplicates[0].fullName}`,
+        code: "duplicate_phone",
+      };
+    }
+  }
 
   const nextStatus =
     raw.courseStatus != null ? String(raw.courseStatus) : existing.courseStatus;
+
 
   const merged = {
     ...existing,
@@ -184,7 +230,7 @@ export async function updateLead(
   await prisma.lead.update({
     where: { id: leadId },
     data: {
-      fullName: String(merged.fullName),
+      fullName,
       phone,
       email: merged.email,
       city: merged.city,
@@ -354,6 +400,51 @@ export async function createLmsUser(leadId: string): Promise<
   return {
     ok: true,
     data: { username: lead.email, password, loginUrl, message },
+  };
+}
+
+export async function createCallBackTask(leadId: string): Promise<
+  ActionResult<{
+    id: string;
+    title: string;
+    dueDate: string;
+    assignee: string;
+    notes: string;
+  }>
+> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return { ok: false, error: "ליד לא נמצא" };
+
+  // Default: tomorrow at 10:00 local
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 1);
+  dueDate.setHours(10, 0, 0, 0);
+
+  const title = "להתקשר שוב";
+  const assignee = "מכירות";
+  const notes = `להתקשר שוב אל ${lead.fullName} (${lead.phone})`;
+
+  const task = await prisma.followUpTask.create({
+    data: {
+      leadId,
+      title,
+      dueDate,
+      assignee,
+      notes,
+    },
+  });
+
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/dashboard");
+  return {
+    ok: true,
+    data: {
+      id: task.id,
+      title: task.title,
+      dueDate: task.dueDate.toISOString(),
+      assignee: task.assignee ?? assignee,
+      notes: task.notes ?? notes,
+    },
   };
 }
 

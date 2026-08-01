@@ -100,13 +100,24 @@ export default async function LeadDetailPage({
       {lead.tasks.length > 0 && (
         <section className="card-surface p-3">
           <h2 className="text-sm font-extrabold mb-2">משימות מעקב</h2>
-          <ul className="space-y-1 text-sm">
+          <ul className="space-y-2 text-sm">
             {lead.tasks.map((t) => (
-              <li key={t.id} className="flex justify-between gap-2">
-                <span>{t.title}</span>
-                <span className="text-[var(--muted)] text-xs">
-                  {new Date(t.dueDate).toLocaleDateString("he-IL")}
-                </span>
+              <li key={t.id} className="rounded-xl border border-[var(--border)] px-3 py-2">
+                <div className="flex justify-between gap-2">
+                  <span className="font-bold">{t.title}</span>
+                  <span className="text-[var(--muted)] text-xs">
+                    {new Date(t.dueDate).toLocaleString("he-IL", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+                {t.assignee && (
+                  <div className="mt-1 text-xs text-[var(--muted)]">אחראי: {t.assignee}</div>
+                )}
+                {t.notes && <div className="mt-0.5 text-xs">{t.notes}</div>}
               </li>
             ))}
           </ul>

@@ -138,6 +138,8 @@ model FollowUpTask {
   lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   title       String
   dueDate     DateTime
+  assignee    String?
+  notes       String?
   completed   Boolean   @default(false)
   createdAt   DateTime  @default(now())
 

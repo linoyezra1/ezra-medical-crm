@@ -93,6 +93,30 @@ button {
   border-color: var(--brand);
 }
 
+.field.has-error label {
+  color: var(--urgent);
+}
+
+.field.has-error input,
+.field.has-error select,
+.field.has-error textarea {
+  border-color: var(--urgent);
+  background: var(--urgent-soft);
+}
+
+.field.has-error input:focus,
+.field.has-error select:focus,
+.field.has-error textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--urgent) 40%, white);
+  border-color: var(--urgent);
+}
+
+.field-error-msg {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--urgent);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

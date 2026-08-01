@@ -27,8 +27,9 @@ import {
   removeParticipant,
   updateLead,
 } from "@/lib/actions";
-import { datetimeLocalValue, formatCurrency } from "@/lib/utils";
+import { datetimeLocalValue, formatCurrency, cn, sanitizePhone } from "@/lib/utils";
 import { ConflictModal, type ConflictItem } from "@/components/ConflictModal";
+import Link from "next/link";
 
 type LeadRecord = {
   id: string;
@@ -129,6 +130,7 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
   const [form, setForm] = useState(() => toFormState(lead));
   const [duplicates, setDuplicates] = useState<{ id: string; fullName: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ fullName?: string; phone?: string }>({});
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<ConflictItem[] | null>(null);
   const [pending, startTransition] = useTransition();
@@ -148,8 +150,29 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
 
   async function persist(bypassConflict = false) {
     setError(null);
+    const current = formRef.current;
+    const cleanedPhone = sanitizePhone(current.phone);
+    const nextFieldErrors: { fullName?: string; phone?: string } = {};
+    if (!current.fullName.trim()) nextFieldErrors.fullName = "שדה חובה";
+    if (!cleanedPhone) nextFieldErrors.phone = "שדה חובה";
+    if (nextFieldErrors.fullName || nextFieldErrors.phone) {
+      setFieldErrors(nextFieldErrors);
+      setError("שם מלא וטלפון הם שדות חובה");
+      setTab("contact");
+      return false;
+    }
+    setFieldErrors({});
+
+    // Normalize phone in UI after successful sanitization path
+    if (current.phone !== cleanedPhone) {
+      setForm((prev) => ({ ...prev, phone: cleanedPhone }));
+      formRef.current = { ...formRef.current, phone: cleanedPhone };
+    }
+
     const payload = {
       ...formRef.current,
+      phone: cleanedPhone,
+      fullName: current.fullName.trim(),
       kindergartenApproved: formRef.current.kindergartenApproved,
       bookletRequired: formRef.current.bookletRequired,
       expectedParticipants: formRef.current.expectedParticipants
@@ -266,31 +289,51 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
 
       {duplicates.length > 0 && (
         <div className="rounded-xl border border-[var(--warning)] bg-[#fff8e8] px-3 py-2 text-sm">
-          ליד פעיל קיים:{" "}
           {duplicates.map((d) => (
-            <a key={d.id} href={`/leads/${d.id}`} className="font-bold text-[var(--brand)] underline ms-1">
-              {d.fullName}
-            </a>
+            <span key={d.id}>
+              קיים כבר ליד פעיל בשם{" "}
+              <Link href={`/leads/${d.id}`} className="font-bold text-[var(--brand)] underline">
+                {d.fullName}
+              </Link>
+            </span>
           ))}
         </div>
       )}
 
       {tab === "contact" && (
         <section className="card-surface grid gap-3 p-4 sm:grid-cols-2">
-          <div className="field sm:col-span-2">
+          <div className={cn("field sm:col-span-2", fieldErrors.fullName && "has-error")}>
             <label>שם מלא *</label>
-            <input value={form.fullName} onChange={(e) => setField("fullName", e.target.value)} required />
+            <input
+              value={form.fullName}
+              onChange={(e) => {
+                setField("fullName", e.target.value);
+                if (fieldErrors.fullName) setFieldErrors((f) => ({ ...f, fullName: undefined }));
+              }}
+            />
+            {fieldErrors.fullName && <span className="field-error-msg">{fieldErrors.fullName}</span>}
           </div>
-          <div className="field">
+          <div className={cn("field", fieldErrors.phone && "has-error")}>
             <label>טלפון *</label>
             <input
               value={form.phone}
-              onChange={(e) => setField("phone", e.target.value)}
+              onChange={(e) => {
+                setField("phone", e.target.value);
+                if (fieldErrors.phone) setFieldErrors((f) => ({ ...f, phone: undefined }));
+              }}
+              onBlur={() => {
+                const cleaned = sanitizePhone(form.phone);
+                if (cleaned && cleaned !== form.phone) setField("phone", cleaned);
+              }}
               inputMode="tel"
               dir="ltr"
               className="text-right"
-              required
+              placeholder="050-123-4567 או +972..."
             />
+            {fieldErrors.phone && <span className="field-error-msg">{fieldErrors.phone}</span>}
+            {form.phone && sanitizePhone(form.phone) && form.phone !== sanitizePhone(form.phone) && (
+              <span className="text-[11px] text-[var(--muted)]">יישמר כ־{sanitizePhone(form.phone)}</span>
+            )}
           </div>
           <div className="field">
             <label>אימייל</label>
@@ -321,7 +364,7 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
             <label>דחיפות</label>
             <select value={form.urgency} onChange={(e) => setField("urgency", e.target.value)}>
               <option value="normal">רגיל</option>
-              <option value="urgent">דחוף (אדום ברשימה)</option>
+              <option value="urgent">🔴 דחוף</option>
             </select>
           </div>
           <div className="field sm:col-span-2">
@@ -410,7 +453,7 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
             </div>
           )}
           <div className="field">
-            <label>משתתפים צפויים</label>
+            <label>כמות משתתפים</label>
             <input
               type="number"
               min={0}
@@ -418,6 +461,15 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
               onChange={(e) => setField("expectedParticipants", e.target.value)}
             />
           </div>
+          {form.pricingModel === "per_participant" && (
+            <div className="sm:col-span-2 rounded-xl bg-[var(--brand-soft)] px-3 py-2 text-sm">
+              <div className="font-bold">מחיר כולל (עדכון בזמן אמת)</div>
+              <div className="mt-1 text-[var(--muted)]">
+                {Number(form.perParticipantRate) || 0} ₪ × {Number(form.expectedParticipants) || 0} משתתפים ={" "}
+                <span className="font-extrabold text-[var(--fg)]">{formatCurrency(computedPrice)}</span>
+              </div>
+            </div>
+          )}
           <div className="field">
             <label>מספר מפגשים</label>
             <input
@@ -483,37 +535,65 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
 
       {tab === "pricing" && (
         <section className="card-surface grid gap-3 p-4 sm:grid-cols-2">
-          <div className="field">
+          <div className="field sm:col-span-2">
             <label>מודל תמחור</label>
             <select value={form.pricingModel} onChange={(e) => setField("pricingModel", e.target.value)}>
-              <option value="flat_rate">מחיר קבוע</option>
-              <option value="per_participant">למשתתף</option>
+              <option value="flat_rate">מחיר גלובלי</option>
+              <option value="per_participant">פר משתתף</option>
             </select>
           </div>
+
           {form.pricingModel === "per_participant" ? (
-            <div className="field">
-              <label>תעריף למשתתף (₪)</label>
-              <input
-                type="number"
-                min={0}
-                value={form.perParticipantRate}
-                onChange={(e) => setField("perParticipantRate", e.target.value)}
-              />
-            </div>
+            <>
+              <div className="field">
+                <label>מחיר ליחיד / למשתתף (₪)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={form.perParticipantRate}
+                  onChange={(e) => setField("perParticipantRate", e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>כמות משתתפים</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={form.expectedParticipants}
+                  onChange={(e) => setField("expectedParticipants", e.target.value)}
+                />
+              </div>
+              <div className="sm:col-span-2 rounded-xl bg-[var(--brand-soft)] px-3 py-3 text-sm">
+                <div className="text-xs font-semibold text-[var(--muted)]">חישוב אוטומטי</div>
+                <div className="mt-1 font-bold text-base">
+                  {Number(form.perParticipantRate) || 0} × {Number(form.expectedParticipants) || 0} ={" "}
+                  {formatCurrency(computedPrice)}
+                </div>
+                <div className="mt-1 text-xs text-[var(--muted)]">
+                  מחיר כולל = מחיר למשתתף × כמות (מתעדכן בזמן אמת)
+                </div>
+              </div>
+            </>
           ) : (
-            <div className="field">
-              <label>מחיר מוסכם (₪)</label>
-              <input
-                type="number"
-                min={0}
-                value={form.agreedPrice}
-                onChange={(e) => setField("agreedPrice", e.target.value)}
-              />
-            </div>
+            <>
+              <div className="field sm:col-span-2">
+                <label>מחיר גלובלי מוסכם (₪) – הזנה ידנית</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={form.agreedPrice}
+                  onChange={(e) => setField("agreedPrice", e.target.value)}
+                />
+              </div>
+              <div className="sm:col-span-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--muted)]">
+                מחיר גלובלי – ללא חישוב אוטומטי. הסכום נקבע ידנית בלבד.
+              </div>
+            </>
           )}
-          <div className="sm:col-span-2 rounded-xl bg-[var(--brand-soft)] px-3 py-2 text-sm font-bold">
-            מחיר מחושב: {formatCurrency(computedPrice)}
-          </div>
+
           <div className="field">
             <label>סטטוס הצעה</label>
             <select value={form.quoteStatus} onChange={(e) => setField("quoteStatus", e.target.value)}>
@@ -571,7 +651,6 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
           </div>
         </section>
       )}
-
       {tab === "people" && (
         <section className="card-surface space-y-3 p-4">
           <form

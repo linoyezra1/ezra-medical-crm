@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
   Phone,
@@ -9,8 +10,9 @@ import {
   FileSpreadsheet,
   StickyNote,
   UserPlus,
+  PhoneForwarded,
 } from "lucide-react";
-import { createLmsUser } from "@/lib/actions";
+import { createCallBackTask, createLmsUser } from "@/lib/actions";
 import { buildWhatsAppUrl, summaryMessage } from "@/lib/whatsapp";
 import { sanitizePhone } from "@/lib/utils";
 
@@ -37,6 +39,7 @@ type Props = {
 };
 
 export function QuickActionsBar({ lead, asset }: Props) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
 
@@ -74,9 +77,7 @@ export function QuickActionsBar({ lead, asset }: Props) {
   }
 
   function sendCourseSummary() {
-    const text =
-      asset?.summaryText ||
-      summaryMessage(lead);
+    const text = asset?.summaryText || summaryMessage(lead);
     openWhatsApp(text);
   }
 
@@ -92,6 +93,26 @@ export function QuickActionsBar({ lead, asset }: Props) {
     });
   }
 
+  function handleCallAgain() {
+    startTransition(async () => {
+      const res = await createCallBackTask(lead.id);
+      if (!res.ok) {
+        setToast(res.error);
+        return;
+      }
+      const when = new Date(res.data.dueDate).toLocaleString("he-IL", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      setToast(
+        `נוצרה משימה: ${res.data.title} · ${when} · אחראי: ${res.data.assignee} · ${res.data.notes}`
+      );
+      router.refresh();
+    });
+  }
+
   const actions = [
     {
       label: "חייג",
@@ -99,6 +120,12 @@ export function QuickActionsBar({ lead, asset }: Props) {
       onClick: () => {
         window.location.href = dialHref;
       },
+    },
+    {
+      label: "להתקשר שוב",
+      icon: PhoneForwarded,
+      onClick: handleCallAgain,
+      disabled: pending,
     },
     {
       label: "סיכום WhatsApp",
@@ -130,7 +157,7 @@ export function QuickActionsBar({ lead, asset }: Props) {
         ))}
       </div>
       {toast && (
-        <p className="mt-2 text-xs text-[var(--warning)]" role="status">
+        <p className="mt-2 text-xs text-[var(--success)]" role="status">
           {toast}
         </p>
       )}

@@ -12,7 +12,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
   const status = params.status;
   const q = params.q?.trim();
 
-  const leads = await prisma.lead.findMany({
+  const leadsRaw = await prisma.lead.findMany({
     where: {
       ...(status ? { courseStatus: status } : {}),
       ...(q
@@ -25,7 +25,15 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
           }
         : {}),
     },
-    orderBy: [{ urgency: "desc" }, { updatedAt: "desc" }],
+    orderBy: [{ updatedAt: "desc" }],
+  });
+
+  // A2.4 – urgent leads always float to the top
+  const leads = [...leadsRaw].sort((a, b) => {
+    const ua = a.urgency === "urgent" ? 1 : 0;
+    const ub = b.urgency === "urgent" ? 1 : 0;
+    if (ua !== ub) return ub - ua;
+    return b.updatedAt.getTime() - a.updatedAt.getTime();
   });
 
   const counts = await prisma.lead.groupBy({
