@@ -22,7 +22,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { useApp } from "@/lib/store"
-import { formatCurrency, formatDate, whatsappLink } from "@/lib/helpers"
+import { formatCurrency, formatDate } from "@/lib/helpers"
 
 export function DashboardView() {
   const { leads, tasks, settings } = useApp()
@@ -47,11 +47,10 @@ export function DashboardView() {
     (l) => l.urgent && l.status !== "completed",
   )
 
-  const shareText = `היי! הכירו את ${settings.businessName} - הדרכות עזרה ראשונה, בטיחות וציוד. לפרטים ולתיאום:`
   const socials = [
-    { name: "טיקטוק", icon: Music2, url: settings.tiktokUrl },
-    { name: "פייסבוק", icon: Share2, url: settings.facebookUrl },
-    { name: "אינסטגרם", icon: Video, url: settings.instagramUrl },
+    { name: "טיקטוק", icon: Music2, url: settings.tiktokUrl?.trim() || "" },
+    { name: "פייסבוק", icon: Share2, url: settings.facebookUrl?.trim() || "" },
+    { name: "אינסטגרם", icon: Video, url: settings.instagramUrl?.trim() || "" },
   ]
 
   return (
@@ -184,13 +183,24 @@ export function DashboardView() {
             <div className="grid grid-cols-3 gap-3">
               {socials.map((s) => {
                 const Icon = s.icon
+                const profileUrl = s.url
+                const href = profileUrl
+                  ? `https://wa.me/?text=${encodeURIComponent(profileUrl)}`
+                  : undefined
                 return (
                   <a
                     key={s.name}
-                    href={whatsappLink("", `${shareText}\n${s.url}`)}
+                    href={href}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-secondary/40 p-3 text-xs font-medium active:scale-95 transition-transform"
+                    aria-disabled={!profileUrl}
+                    onClick={(e) => {
+                      if (!profileUrl) e.preventDefault()
+                    }}
+                    className={
+                      "flex flex-col items-center gap-2 rounded-2xl border border-border bg-secondary/40 p-3 text-xs font-medium active:scale-95 transition-transform " +
+                      (!profileUrl ? "pointer-events-none opacity-50" : "")
+                    }
                   >
                     <Icon className="size-6 text-primary" />
                     {s.name}

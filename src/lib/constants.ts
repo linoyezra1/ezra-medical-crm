@@ -15,7 +15,7 @@ export const COURSE_STATUS_LABELS: Record<CourseStatus, string> = {
   new: "חדש / בטיפול",
   cold: "ליד קר",
   pending: "ממתין לאישור",
-  closed: "נסגר – נקבע",
+  closed: "סגרנו נרשם ביומן",
   completed: "הדרכה הושלמה",
   certificates_pending: "ממתין לתעודות",
   closed_won: "נסגר בהצלחה",
@@ -85,9 +85,9 @@ export const PAYMENT_STATUSES = [
 ] as const;
 
 export const DELIVERY_METHODS = [
-  { value: "digital_email", label: "דיגיטלי / אימייל" },
-  { value: "physical_print", label: "הדפסה פיזית" },
-  { value: "postal_mail", label: "דואר" },
+  { value: "עזרה ורפואה", label: "עזרה ורפואה" },
+  { value: "ניתאי", label: "ניתאי" },
+  { value: "יוסי", label: "יוסי" },
 ] as const;
 
 export const EXPENSE_TYPES = [

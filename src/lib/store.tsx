@@ -82,12 +82,7 @@ function toDbPayload(lead: Lead, patch: Partial<Lead>): Record<string, unknown> 
     shippingZip: merged.address.zip || null,
     city: merged.address.city,
     location: `${merged.address.street} ${merged.address.houseNumber}`.trim() || merged.address.city,
-    deliveryMethod:
-      merged.certificateDelivery === "mail"
-        ? "postal_mail"
-        : merged.certificateDelivery === "physical"
-          ? "physical_print"
-          : "digital_email",
+    deliveryMethod: merged.certificateDelivery || "עזרה ורפואה",
     leadSource: merged.customerType === "existing" ? "returning" : "website",
   };
 

@@ -53,7 +53,7 @@ export function SettingsView() {
       extraParticipantPrice: 50,
       participantsCount: 12,
       totalPrice: 1700,
-      certificateDelivery: "digital" as const,
+      certificateDelivery: "עזרה ורפואה" as const,
       address: { street: "רחוב הגן", houseNumber: "1", city: "תל אביב" },
       contactName: "אתי",
       participants: [],

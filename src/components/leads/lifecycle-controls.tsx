@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  buildGoogleCalendarUrl,
+  downloadLeadIcs,
   findConflicts,
   formatDate,
   missingForClose,
@@ -268,17 +268,18 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
         </DialogContent>
       </Dialog>
 
-      {/* הוספה ל-Google Calendar */}
+      {/* הוספה ליומן המכשיר (.ics) */}
       <Dialog open={googleCalOpen} onOpenChange={setGoogleCalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-right">Google Calendar</DialogTitle>
+            <DialogTitle className="text-right">הוסף ליומן</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            האם להוסיף את ההדרכה ל-Google Calendar?
+            האם להוסיף את ההדרכה ליומן במכשיר?
           </p>
           <p className="text-xs text-muted-foreground">
-            ייפתח חלון עם אירוע מוכן לשמירה: כותרת, מיקום, תאריך ופרטי איש קשר.
+            ייפתח קובץ יומן (.ics) — באייפון/אנדרואיד אפשר לשמור ישירות ביומן
+            המכשיר.
           </p>
           <DialogFooter className="flex-row gap-2">
             <Button
@@ -291,12 +292,12 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
             <Button
               className="flex-1"
               onClick={() => {
-                window.open(buildGoogleCalendarUrl(lead), "_blank", "noopener,noreferrer")
+                downloadLeadIcs(lead)
                 setGoogleCalOpen(false)
-                toast.success("נפתח Google Calendar — אפשר לשמור את האירוע")
+                toast.success("קובץ היומן נפתח — שמרו את האירוע ביומן")
               }}
             >
-              כן, פתח ב-Google Calendar
+              כן, הוסף ליומן
             </Button>
           </DialogFooter>
         </DialogContent>

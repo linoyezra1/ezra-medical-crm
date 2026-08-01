@@ -24,10 +24,14 @@ function splitDateTime(d: Date | null | undefined): { date?: string; time?: stri
   return { date, time };
 }
 
+const CERTIFICATE_VIA = new Set(["עזרה ורפואה", "ניתאי", "יוסי"]);
+
 function mapDelivery(method: string | null | undefined): Lead["certificateDelivery"] {
-  if (method === "postal_mail") return "mail";
-  if (method === "physical_print") return "physical";
-  return "digital";
+  if (method && CERTIFICATE_VIA.has(method)) {
+    return method as Lead["certificateDelivery"];
+  }
+  // ערכים ישנים (דיגיטלי/דואר/הדפסה) → ברירת מחדל
+  return "עזרה ורפואה";
 }
 
 export function mapLead(db: DbLeadFull): Lead {

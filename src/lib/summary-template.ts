@@ -61,12 +61,14 @@ export function buildSummaryVars(
     other: lead.courseTypeOther,
     catalog: course ? [course] : undefined,
   });
+  const courseTitleRaw = courseLabel || course?.title || lead.courseType || "";
+  const courseTitleLine = courseTitleRaw ? `קורס: ${courseTitleRaw}` : "";
 
   return {
     name: lead.name || "",
     contactName: lead.contactName || lead.name || "",
     phone: lead.phone || "",
-    courseTitle: courseLabel || course?.title || lead.courseType || "",
+    courseTitle: courseTitleLine,
     courseType: courseLabel,
     hours: String(course?.hours || lead.courseHours || ""),
     audience: course?.audience || "",
@@ -112,8 +114,14 @@ export function buildStructuredSummary(
 ): string {
   const blocks: string[] = ["סיכום שיחה", "", `שלום ${vars.contactName || ""},`.trim()];
 
-  if (vars.courseTitle || course.title || lead.courseType) {
-    blocks.push("", `📘 ${vars.courseTitle || course.title || lead.courseType}`);
+  if (vars.courseTitle) {
+    blocks.push("", `📘 ${vars.courseTitle}`);
+  } else {
+    const fallback = formatCourseTypeLabel(lead.courseType, {
+      other: lead.courseTypeOther,
+      catalog: [course],
+    });
+    if (fallback) blocks.push("", `📘 קורס: ${fallback}`);
   }
   if (course.audience) {
     blocks.push("", "👥 למי הקורס מתאים:", course.audience);
@@ -134,12 +142,14 @@ export function buildStructuredSummary(
   }
 
   if (vars.date && vars.date !== "-") {
-    blocks.push("", `📅 תאריך: ${vars.date}${vars.time ? ` · ${vars.time}` : ""}`);
+    blocks.push("", `📅 תאריך: ${vars.date}`);
+    if (vars.time) {
+      blocks.push(`⏰ שעה: ${vars.time}`);
+    }
   }
   if (vars.location) {
     blocks.push(`📍 מיקום: ${vars.location}`);
   }
 
-  blocks.push("", "תעדכני אותי בשביל שנוכל להתקדם");
   return blocks.filter((b, i, arr) => !(b === "" && arr[i - 1] === "")).join("\n").trim();
 }

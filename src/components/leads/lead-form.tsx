@@ -124,7 +124,7 @@ export function LeadForm({ existing }: Props) {
       extraParticipantPrice: 50,
       participantsCount: 1,
       totalPrice: 0,
-      certificateDelivery: "digital",
+      certificateDelivery: "עזרה ורפואה",
       instructor: DEFAULT_INSTRUCTOR,
       notes: "",
       address: { street: "", houseNumber: "", city: "", zip: "" },
@@ -598,20 +598,23 @@ export function LeadForm({ existing }: Props) {
               </Field>
             )}
 
-            <Field label="אופן אספקת תעודות">
+            <Field label="תעודות דרך מי">
               <Select
                 value={form.certificateDelivery}
                 onValueChange={(v) =>
-                  set("certificateDelivery", (v ?? "digital") as Lead["certificateDelivery"])
+                  set(
+                    "certificateDelivery",
+                    (v ?? "עזרה ורפואה") as Lead["certificateDelivery"],
+                  )
                 }
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="בחר" />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  <SelectItem value="digital">דיגיטלי</SelectItem>
-                  <SelectItem value="mail">דואר</SelectItem>
-                  <SelectItem value="physical">כרטיסים פיזיים</SelectItem>
+                  <SelectItem value="עזרה ורפואה">עזרה ורפואה</SelectItem>
+                  <SelectItem value="ניתאי">ניתאי</SelectItem>
+                  <SelectItem value="יוסי">יוסי</SelectItem>
                 </SelectContent>
               </Select>
             </Field>

@@ -46,9 +46,20 @@ export function TrainingsView() {
     return Array.from(map.entries())
   }, [filtered])
 
+  const todayLabel = formatDate(new Date().toISOString().slice(0, 10))
+
   return (
     <div>
-      <PageHeader title="הדרכות" subtitle={`${trainings.length} הדרכות במערכת`} />
+      <PageHeader
+        title="הדרכות"
+        subtitle={`${trainings.length} הדרכות במערכת`}
+        action={
+          <div className="shrink-0 rounded-xl bg-primary/10 px-2.5 py-1.5 text-left">
+            <p className="text-[10px] font-medium text-muted-foreground">היום</p>
+            <p className="text-xs font-bold tabular-nums text-primary">{todayLabel}</p>
+          </div>
+        }
+      />
 
       <div className="px-4 pt-3">
         <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>

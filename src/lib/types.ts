@@ -8,7 +8,7 @@ export type LeadStatus =
 
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new: "ליד חדש / בטיפול",
-  closed: "נסגר / מאושר",
+  closed: "סגרנו נרשם ביומן",
   done: "הדרכה בוצעה",
   pending_certificates: "ממתין לתעודות",
   completed: "הושלם",
@@ -64,7 +64,15 @@ export function uiStatusToDb(status: LeadStatus): string {
 }
 
 export type PricingType = "per_participant" | "global";
-export type CertificateDelivery = "digital" | "mail" | "physical";
+/** תעודות דרך מי */
+export type CertificateDelivery = "עזרה ורפואה" | "ניתאי" | "יוסי";
+
+export const CERTIFICATE_VIA_OPTIONS: CertificateDelivery[] = [
+  "עזרה ורפואה",
+  "ניתאי",
+  "יוסי",
+];
+
 export type CustomerType = "new" | "existing";
 
 export interface Address {

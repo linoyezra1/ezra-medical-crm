@@ -6,13 +6,17 @@ import { useState } from "react"
 import {
   ArrowRight,
   BookOpen,
+  ClipboardList,
   Copy,
+  FileSpreadsheet,
+  FileText,
   GraduationCap,
   MapPin,
   MessageCircle,
   Pencil,
   Phone,
   Presentation,
+  Printer,
   Send,
   UserPlus,
 } from "lucide-react"
@@ -22,8 +26,13 @@ import { LeadStatusBadge } from "@/components/status-badge"
 import { AddTaskDialog } from "@/components/leads/add-task-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
+import { SendBookletDialog } from "@/components/leads/send-booklet-dialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  courseMaterialUrl,
+  type CourseMaterialKey,
+} from "@/lib/course-materials"
 import {
   findCourseCatalog,
   formatLeadCourseType,
@@ -35,13 +44,13 @@ import {
   whatsappSummary,
 } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
-import type { Lead } from "@/lib/types"
 
 export function LeadDetailView({ leadId }: { leadId: string }) {
   const router = useRouter()
   const { getLead, settings, addTask } = useApp()
   const lead = getLead(leadId)
   const [lmsOpen, setLmsOpen] = useState(false)
+  const [bookletOpen, setBookletOpen] = useState(false)
 
   if (!lead) {
     return (
@@ -77,14 +86,11 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
     window.open(whatsappLink(lead.phone, text), "_blank")
   }
 
-  const sendBooklet = () => {
-    const url = course?.bookletUrl
-    if (!url) {
-      toast.error("לא הוגדרה חוברת לסוג הקורס של ליד זה. הגדר בהגדרות → תוכן קורסים")
-      return
-    }
-    const text = `שלום ${lead.contactName || lead.name},\nמצורפת חוברת הקורס (${courseLabel}):\n${url}`
-    window.open(whatsappLink(lead.phone, text), "_blank")
+  const sendStaticMaterial = (key: CourseMaterialKey, label: string) => {
+    const url = courseMaterialUrl(key)
+    const name = lead.contactName?.trim() || lead.name
+    const text = `היי ${name}, מצורף קישור להורדת ${label}:\n${url}`
+    window.open(whatsappLink(lead.phone, text), "_blank", "noopener,noreferrer")
   }
 
   const openLms = () => {
@@ -162,7 +168,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
             <Phone className="size-4" /> חיוג מהיר
           </a>
           <a
-            href={whatsappLink(lead.phone, summaryText())}
+            href={whatsappLink(lead.phone)}
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-center gap-2 rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground active:scale-95 transition-transform"
@@ -185,7 +191,31 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
             <ActionButton
               icon={BookOpen}
               label="שלח חוברת"
-              onClick={sendBooklet}
+              onClick={() => setBookletOpen(true)}
+            />
+            <ActionButton
+              icon={Printer}
+              label="חוברת להדפסה"
+              onClick={() =>
+                sendStaticMaterial("booklet44WordPrint", "חוברת להדפסה (Word)")
+              }
+            />
+            <ActionButton
+              icon={FileText}
+              label="מבחן גרסה 1"
+              onClick={() => sendStaticMaterial("exam44v1", "מבחן 44 גרסה 1")}
+            />
+            <ActionButton
+              icon={ClipboardList}
+              label="מבחן גרסה 2"
+              onClick={() => sendStaticMaterial("exam44v2", "מבחן 44 גרסה 2")}
+            />
+            <ActionButton
+              icon={FileSpreadsheet}
+              label="טבלת משתתפים"
+              onClick={() =>
+                sendStaticMaterial("participantsTable", "פורמט טבלת משתתפים")
+              }
             />
             <ActionButton
               icon={Presentation}
@@ -209,61 +239,15 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
           </div>
         </Card>
 
-        <ExpensesSection lead={lead} />
+        <SendBookletDialog
+          lead={lead}
+          open={bookletOpen}
+          onOpenChange={setBookletOpen}
+        />
 
-        <SmartBeeQuoteCard lead={lead} />
+        <ExpensesSection lead={lead} />
       </div>
     </div>
-  )
-}
-
-function SmartBeeQuoteCard({ lead }: { lead: Lead }) {
-  const { updateLead, addTask } = useApp()
-  const [reminderOpen, setReminderOpen] = useState(false)
-  const sent = !!lead.quoteSentAt
-
-  return (
-    <Card className="gap-3 p-4">
-      <div>
-        <p className="text-sm font-semibold">הצעת מחיר · SmartBee</p>
-        <p className="text-xs text-muted-foreground">
-          {sent
-            ? `סומן כנשלח ב-${formatDate(lead.quoteSentAt)}`
-            : "טרם סומן כנשלח ב-SmartBee"}
-        </p>
-      </div>
-      <div className="flex flex-col gap-2">
-        <Button
-          variant={sent ? "secondary" : "default"}
-          className="h-auto whitespace-normal py-3 text-right text-sm leading-snug"
-          disabled={sent}
-          onClick={() => {
-            updateLead(lead.id, { quoteSentAt: new Date().toISOString() })
-            toast.success("סומן שנשלחה הצעת מחיר ב-SmartBee")
-          }}
-        >
-          {sent
-            ? "✓ נשלחה הצעת מחיר ב-SmartBee"
-            : "סמן שנשלחה הצעת מחיר ב-SmartBee"}
-        </Button>
-        <Button
-          variant="outline"
-          className="h-auto whitespace-normal py-3 text-right text-sm leading-snug"
-          onClick={() => setReminderOpen(true)}
-        >
-          הוסף תזכורת לשלוח הצעת מחיר ב-SmartBee
-        </Button>
-      </div>
-      <AddTaskDialog
-        leadId={lead.id}
-        leadName={lead.name}
-        onAdd={addTask}
-        hideTrigger
-        open={reminderOpen}
-        onOpenChange={setReminderOpen}
-        defaultTitle={`לשלוח הצעת מחיר ב-SmartBee ל${lead.name}`}
-      />
-    </Card>
   )
 }
 

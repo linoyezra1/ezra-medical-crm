@@ -39,9 +39,7 @@ export const DEFAULT_COURSES: CourseCatalogItem[] = [
 {{contents}}
 
 💰 עלות הקורס:
-{{pricingText}}
-
-תעדכני אותי בשביל שנוכל להתקדם`,
+{{pricingText}}`,
     syllabusUrl: "",
     presentationUrl: "",
     bookletUrl: "",
@@ -86,9 +84,7 @@ export const DEFAULT_COURSES: CourseCatalogItem[] = [
 
 עלות 450 להצטרפות לקבוצה
 750 פרטי.
-המחיר כולל מיסים
-
-תעדכני אותי בשביל שנוכל להתקדם`,
+המחיר כולל מיסים`,
     syllabusUrl: "",
     presentationUrl: "",
     bookletUrl: "",
