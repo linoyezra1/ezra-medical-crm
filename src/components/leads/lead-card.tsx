@@ -1,9 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useState } from "react"
-import { MapPin, MessageCircle, Phone, UserPlus } from "lucide-react"
-import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
+import { MapPin, MessageCircle, Phone } from "lucide-react"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
 import {
@@ -18,11 +16,8 @@ import { cn } from "@/lib/utils"
 export function LeadCard({ lead }: { lead: Lead }) {
   const router = useRouter()
   const { settings } = useApp()
-  const [collectOpen, setCollectOpen] = useState(false)
   const course = findCourseCatalog(lead.courseType, settings.courses)
   const courseLabel = formatLeadCourseType(lead, settings.courses)
-  const canCollect =
-    lead.status === "closed" || lead.status === "done"
   const stop = (e: React.MouseEvent) => {
     e.stopPropagation()
   }
@@ -30,7 +25,10 @@ export function LeadCard({ lead }: { lead: Lead }) {
   const go = () => router.push(`/leads/${lead.id}`)
 
   return (
-    <div role="link" tabIndex={0} onClick={go}
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={go}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
@@ -68,7 +66,12 @@ export function LeadCard({ lead }: { lead: Lead }) {
             <MapPin className="size-3.5" />
             {lead.address.city || "ללא כתובת"}
           </span>
-          {lead.date && <span>{formatDate(lead.date)}{lead.time ? ` · ${lead.time}` : ""}</span>}
+          {lead.date && (
+            <span>
+              {formatDate(lead.date)}
+              {lead.time ? ` · ${lead.time}` : ""}
+            </span>
+          )}
           <span className="font-semibold text-foreground">
             {formatCurrency(lead.totalPrice)}
           </span>
@@ -92,29 +95,7 @@ export function LeadCard({ lead }: { lead: Lead }) {
             <MessageCircle className="size-4" /> סיכום שיחה
           </a>
         </div>
-
-        {canCollect && (
-          <button
-            type="button"
-            onClick={(e) => {
-              stop(e)
-              setCollectOpen(true)
-            }}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-xs font-bold text-primary-foreground active:scale-95 transition-transform"
-          >
-            <UserPlus className="size-4" />
-            הוסף משתתפים
-          </button>
-        )}
       </Card>
-
-      {canCollect && (
-        <CollectParticipantsDialog
-          lead={lead}
-          open={collectOpen}
-          onOpenChange={setCollectOpen}
-        />
-      )}
     </div>
   )
 }

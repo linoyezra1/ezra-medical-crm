@@ -28,19 +28,25 @@ import {
   type BusinessSettings,
   type Client,
   type EquipmentDeal,
+  type InventoryItem,
   type Lead,
   type Task,
+  type Trainee,
 } from "@/lib/types";
+import type { AppData } from "@/lib/load-app-data";
 
 interface AppState {
   leads: Lead[];
   clients: Client[];
+  trainees: Trainee[];
+  inventory: InventoryItem[];
   equipment: EquipmentDeal[];
   tasks: Task[];
   settings: BusinessSettings;
   addLead: (lead: Lead) => void;
   updateLead: (id: string, patch: Partial<Lead>) => void;
   getLead: (id: string) => Lead | undefined;
+  setLeadParticipants: (id: string, participants: Lead["participants"]) => void;
   addEquipment: (deal: EquipmentDeal) => void;
   updateEquipment: (id: string, patch: Partial<EquipmentDeal>) => void;
   addTask: (task: Task) => void;
@@ -49,7 +55,10 @@ interface AppState {
   getClient: (id: string) => Client | undefined;
   clientLeads: (clientId: string) => Lead[];
   findClientByPhone: (phone: string) => Client | undefined;
+  updateTraineeLocal: (id: string, patch: Partial<Trainee>) => void;
+  setInventoryLocal: (items: InventoryItem[]) => void;
   updateSettings: (patch: Partial<BusinessSettings>) => void;
+  refresh: () => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -106,19 +115,15 @@ export function AppProvider({
   initial,
   children,
 }: {
-  initial: {
-    leads: Lead[];
-    clients: Client[];
-    equipment: EquipmentDeal[];
-    tasks: Task[];
-    settings: BusinessSettings;
-  };
+  initial: AppData;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [leads, setLeads] = useState(initial.leads);
   const [clients, setClients] = useState(initial.clients);
+  const [trainees, setTrainees] = useState(initial.trainees);
+  const [inventory, setInventory] = useState(initial.inventory);
   const [equipment, setEquipment] = useState(initial.equipment);
   const [tasks, setTasks] = useState(initial.tasks);
   const [settings, setSettings] = useState(initial.settings);
@@ -126,12 +131,42 @@ export function AppProvider({
   useEffect(() => {
     setLeads(initial.leads);
     setClients(initial.clients);
+    setTrainees(initial.trainees);
+    setInventory(initial.inventory);
     setEquipment(initial.equipment);
     setTasks(initial.tasks);
     setSettings(initial.settings);
   }, [initial]);
 
   const refresh = useCallback(() => router.refresh(), [router]);
+
+  const setLeadParticipants = useCallback(
+    (id: string, participants: Lead["participants"]) => {
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === id
+            ? {
+                ...l,
+                participants,
+                participantsCount: Math.max(l.participantsCount, participants.length),
+                updatedAt: new Date().toISOString(),
+              }
+            : l,
+        ),
+      );
+    },
+    [],
+  );
+
+  const updateTraineeLocal = useCallback((id: string, patch: Partial<Trainee>) => {
+    setTrainees((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t)),
+    );
+  }, []);
+
+  const setInventoryLocal = useCallback((items: InventoryItem[]) => {
+    setInventory(items);
+  }, []);
 
   const addLead = useCallback(
     (lead: Lead) => {
@@ -335,12 +370,15 @@ export function AppProvider({
     () => ({
       leads,
       clients,
+      trainees,
+      inventory,
       equipment,
       tasks,
       settings,
       addLead,
       updateLead,
       getLead,
+      setLeadParticipants,
       addEquipment,
       updateEquipment,
       addTask,
@@ -349,17 +387,23 @@ export function AppProvider({
       getClient,
       clientLeads,
       findClientByPhone,
+      updateTraineeLocal,
+      setInventoryLocal,
       updateSettings,
+      refresh,
     }),
     [
       leads,
       clients,
+      trainees,
+      inventory,
       equipment,
       tasks,
       settings,
       addLead,
       updateLead,
       getLead,
+      setLeadParticipants,
       addEquipment,
       updateEquipment,
       addTask,
@@ -368,7 +412,10 @@ export function AppProvider({
       getClient,
       clientLeads,
       findClientByPhone,
+      updateTraineeLocal,
+      setInventoryLocal,
       updateSettings,
+      refresh,
     ]
   );
 

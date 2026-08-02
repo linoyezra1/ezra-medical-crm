@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowRight, Check } from "lucide-react"
+import { ArrowRight, Check, ContactRound } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
@@ -191,6 +191,54 @@ export function LeadForm({ existing }: Props) {
     }
   }
 
+  const importFromContacts = async () => {
+    type ContactInfo = { name?: string[]; tel?: string[] }
+    type ContactsManager = {
+      select: (
+        properties: string[],
+        options?: { multiple?: boolean },
+      ) => Promise<ContactInfo[]>
+    }
+    const nav = navigator as Navigator & { contacts?: ContactsManager }
+    if (!nav.contacts || !("select" in nav.contacts)) {
+      toast.message(
+        "אפשרות ייבוא אנשי קשר זמינה בעיקר מכשירים ניידים בדפדפני Chrome/Safari",
+      )
+      return
+    }
+    try {
+      const selected = await nav.contacts.select(["name", "tel"], {
+        multiple: false,
+      })
+      const contact = selected?.[0]
+      if (!contact) return
+      const importedName = contact.name?.[0]?.trim() || ""
+      const importedTel = contact.tel?.[0]?.trim() || ""
+      if (importedName) set("name", importedName)
+      if (importedTel) {
+        const cleaned = cleanPhone(importedTel)
+        set("phone", cleaned)
+        const existingClient = findClientByPhone(cleaned)
+        if (
+          existingClient &&
+          (!existing || existing.clientId !== existingClient.id)
+        ) {
+          setDupWarn({ name: existingClient.name, id: existingClient.id })
+          set("customerType", "existing")
+        } else {
+          setDupWarn(null)
+        }
+      }
+      if (importedName || importedTel) {
+        toast.success("איש הקשר יובא לטופס")
+      } else {
+        toast.message("לא נמצאו שם או טלפון באיש הקשר שנבחר")
+      }
+    } catch {
+      // משתמש ביטל את הבחירה / הרשאה נדחתה
+    }
+  }
+
   const validate = () => {
     const e: Record<string, boolean> = {}
     if (!form.name.trim()) e.name = true
@@ -303,11 +351,25 @@ export function LeadForm({ existing }: Props) {
 
           <TabsContent value="details" className="mt-4 space-y-4 overflow-visible">
             <Field label="שם הלקוח / הארגון" error={errors.name} required>
-              <Input
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-                placeholder="לדוגמה: גן שמש"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  value={form.name}
+                  onChange={(e) => set("name", e.target.value)}
+                  placeholder="לדוגמה: גן שמש"
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-10 shrink-0 rounded-xl"
+                  title="ייבא מאישי קשר"
+                  aria-label="ייבא מאישי קשר"
+                  onClick={importFromContacts}
+                >
+                  <ContactRound className="size-5" />
+                </Button>
+              </div>
             </Field>
             <Field label="טלפון" error={errors.phone} required>
               <Input

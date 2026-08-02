@@ -27,9 +27,12 @@ import { AddTaskDialog } from "@/components/leads/add-task-dialog"
 import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
+import { ParticipantsSection } from "@/components/leads/participants-section"
+import { TrainingSalesSection } from "@/components/leads/training-sales-section"
 import { SendBookletDialog } from "@/components/leads/send-booklet-dialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import {
   courseMaterialUrl,
   type CourseMaterialKey,
@@ -207,8 +210,13 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
           </>
         )}
 
-        <Card className="gap-3 p-4">
-          <h2 className="text-sm font-bold">שליחת חומרים ללקוח</h2>
+        <ParticipantsSection lead={lead} />
+
+        <CollapsibleSection
+          title="שליחת חומרי הדרכה"
+          subtitle="חוברות, מבחנים, מצגת וסיכום"
+          defaultOpen={false}
+        >
           <div className="grid grid-cols-2 gap-2">
             <ActionButton
               icon={BookOpen}
@@ -259,7 +267,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
               highlight={lmsOpen}
             />
           </div>
-        </Card>
+        </CollapsibleSection>
 
         <SendBookletDialog
           lead={lead}
@@ -268,6 +276,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
         />
 
         <ExpensesSection lead={lead} />
+        <TrainingSalesSection lead={lead} />
       </div>
     </div>
   )

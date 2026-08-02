@@ -3,7 +3,7 @@ import type { CourseCatalogItem, EquipmentDeal, Lead } from "@/lib/types"
 
 export type ProfitTransaction = {
   id: string
-  kind: "course" | "equipment"
+  kind: "course" | "equipment" | "training_sale"
   date: string // YYYY-MM-DD
   monthKey: string // YYYY-MM
   itemLabel: string
@@ -91,6 +91,24 @@ export function buildProfitTransactions(
       clientId: lead.clientId,
       clientName: lead.name,
     })
+
+    for (const sale of lead.trainingSales || []) {
+      const saleRevenue = (sale.unitSellingPrice || 0) * (sale.quantity || 0)
+      const saleCost = (sale.unitCostPrice || 0) * (sale.quantity || 0)
+      const saleDate = toDateKey(sale.createdAt, date)
+      rows.push({
+        id: sale.id,
+        kind: "training_sale",
+        date: saleDate,
+        monthKey: saleDate.slice(0, 7),
+        itemLabel: `מכירת ציוד: ${sale.itemName}`,
+        revenue: saleRevenue,
+        expenses: saleCost,
+        netProfit: saleRevenue - saleCost,
+        clientId: lead.clientId,
+        clientName: lead.name,
+      })
+    }
   }
 
   for (const deal of equipment) {

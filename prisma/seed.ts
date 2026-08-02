@@ -16,7 +16,7 @@ async function main() {
     where: { id: "default" },
     create: {
       id: "default",
-      businessName: "עזרא ורפואה",
+      businessName: "עזרה!",
       facebookUrl: "https://facebook.com/",
       instagramUrl: "https://instagram.com/",
       tiktokUrl: "https://tiktok.com/",

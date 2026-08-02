@@ -97,6 +97,61 @@ export interface Participant {
   shippingStreet?: string;
   shippingHouseNo?: string;
   shippingZip?: string;
+  attended?: boolean;
+  traineeId?: string;
+}
+
+export interface TrainingSale {
+  id: string;
+  inventoryItemId: string;
+  itemName: string;
+  quantity: number;
+  unitSellingPrice: number;
+  unitCostPrice: number;
+  createdAt: string;
+}
+
+export interface InventoryComponentRef {
+  childId: string;
+  childName: string;
+  quantity: number;
+  unitCostPrice: number;
+}
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: string;
+  sellingPrice: number;
+  costPrice: number;
+  supplierName: string;
+  isComposite: boolean;
+  components: InventoryComponentRef[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TraineeTrainingRef {
+  participantId: string;
+  leadId: string;
+  leadName: string;
+  organizerName?: string;
+  courseDate?: string;
+  courseType?: string;
+}
+
+export interface Trainee {
+  id: string;
+  fullName: string;
+  idNumber: string;
+  phone?: string;
+  email?: string;
+  certificateEmailSent: boolean;
+  certificateCardPrinted: boolean;
+  notes?: string;
+  trainings: TraineeTrainingRef[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const SATISFACTION_OPTIONS = [
@@ -153,6 +208,7 @@ export interface Lead {
   collectCertificateShipping?: boolean;
   participants: Participant[];
   expenses: Expense[];
+  trainingSales?: TrainingSale[];
   trainingIndex?: number;
   createdAt: string;
   updatedAt: string;

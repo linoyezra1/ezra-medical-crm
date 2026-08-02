@@ -134,7 +134,11 @@ export function ProfitHistoryDialog() {
                                 </p>
                               </div>
                               <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                                {tx.kind === "course" ? "קורס" : "ציוד"}
+                                {tx.kind === "course"
+                                  ? "קורס"
+                                  : tx.kind === "training_sale"
+                                    ? "מכירת שטח"
+                                    : "ציוד"}
                               </span>
                             </div>
                             <div className="mt-2 grid grid-cols-3 gap-1 text-[11px]">

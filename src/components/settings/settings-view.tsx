@@ -113,10 +113,10 @@ export function SettingsView() {
                 dir="ltr"
                 value={settings.websiteUrl || ""}
                 onChange={(e) => updateSettings({ websiteUrl: e.target.value })}
-                placeholder="https://..."
+                placeholder="https://www.ezra-medical.com/כניסה-לתלמידים"
               />
               <p className="text-[11px] text-muted-foreground">
-                משמש ליצירת QR לאתר בטופס הוספת משתתפים
+                ברירת מחדל: דף כניסה לתלמידים — משמש ל־QR לאתר בהוספת משתתפים
               </p>
             </div>
           </div>

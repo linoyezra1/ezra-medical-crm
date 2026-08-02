@@ -2,23 +2,23 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { CalendarClock, ChevronLeft, MapPin, Users } from "lucide-react"
+import { CalendarClock, MapPin, UserPlus, Users } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
+import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
 import { StatusBadge } from "@/components/status-badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { useApp } from "@/lib/store"
-import { formatCurrency, formatDate } from "@/lib/helpers"
+import { formatDate } from "@/lib/helpers"
 import type { Lead } from "@/lib/types"
-import { cn } from "@/lib/utils"
 
 type Filter = "upcoming" | "done" | "certificates" | "all"
 
 export function TrainingsView() {
   const { leads } = useApp()
   const [filter, setFilter] = useState<Filter>("upcoming")
+  const [collectLead, setCollectLead] = useState<Lead | null>(null)
 
-  // הדרכות = לידים שאינם חדשים/אבודים ושיש להם תאריך
   const trainings = useMemo(
     () => leads.filter((l) => l.status !== "new" && l.status !== "lost"),
     [leads],
@@ -27,8 +27,10 @@ export function TrainingsView() {
   const filtered = useMemo(() => {
     let list = trainings
     if (filter === "upcoming") list = trainings.filter((l) => l.status === "closed")
-    else if (filter === "done") list = trainings.filter((l) => l.status === "done" || l.status === "completed")
-    else if (filter === "certificates") list = trainings.filter((l) => l.status === "pending_certificates")
+    else if (filter === "done")
+      list = trainings.filter((l) => l.status === "done" || l.status === "completed")
+    else if (filter === "certificates")
+      list = trainings.filter((l) => l.status === "pending_certificates")
     return [...list].sort((a, b) => {
       const ta = a.date ? new Date(`${a.date}T${a.time || "00:00"}`).getTime() : 0
       const tb = b.date ? new Date(`${b.date}T${b.time || "00:00"}`).getTime() : 0
@@ -64,10 +66,18 @@ export function TrainingsView() {
       <div className="px-4 pt-3">
         <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="upcoming" className="text-xs">קרובות</TabsTrigger>
-            <TabsTrigger value="done" className="text-xs">בוצעו</TabsTrigger>
-            <TabsTrigger value="certificates" className="text-xs">תעודות</TabsTrigger>
-            <TabsTrigger value="all" className="text-xs">הכל</TabsTrigger>
+            <TabsTrigger value="upcoming" className="text-xs">
+              קרובות
+            </TabsTrigger>
+            <TabsTrigger value="done" className="text-xs">
+              בוצעו
+            </TabsTrigger>
+            <TabsTrigger value="certificates" className="text-xs">
+              תעודות
+            </TabsTrigger>
+            <TabsTrigger value="all" className="text-xs">
+              הכל
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -86,44 +96,72 @@ export function TrainingsView() {
               <span className="text-xs text-muted-foreground">({items.length})</span>
             </div>
             <div className="space-y-2">
-              {items.map((l) => (
-                <Link
-                  key={l.id}
-                  href={`/leads/${l.id}`}
-                  className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 active:scale-[0.99] transition-transform"
-                >
-                  <div className="flex size-12 shrink-0 flex-col items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <span className="text-sm font-bold leading-none">{l.time || "--:--"}</span>
+              {items.map((l) => {
+                const canCollect = l.status === "closed" || l.status === "done"
+                return (
+                  <div
+                    key={l.id}
+                    className="rounded-2xl border border-border bg-card p-3"
+                  >
+                    <Link
+                      href={`/leads/${l.id}`}
+                      className="flex items-start gap-3 active:opacity-90"
+                    >
+                      <div className="flex size-12 shrink-0 flex-col items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <span className="text-sm font-bold leading-none">
+                          {l.time || "--:--"}
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {l.name}
+                          </p>
+                          <StatusBadge status={l.status} />
+                        </div>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {formatLeadCourseType(l)}
+                        </p>
+                        <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="size-3" />
+                            {l.address.city || "-"}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Users className="size-3" />
+                            {l.participants.length || l.participantsCount}
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+
+                    {canCollect && (
+                      <button
+                        type="button"
+                        onClick={() => setCollectLead(l)}
+                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-xs font-bold text-primary-foreground active:scale-[0.99] transition-transform"
+                      >
+                        <UserPlus className="size-4" />
+                        הוסף משתתפים
+                      </button>
+                    )}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-foreground">{l.name}</p>
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {formatLeadCourseType(l)}
-                    </p>
-                    <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="size-3" />
-                        {l.address.city || "-"}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="size-3" />
-                        {l.participantsCount}
-                      </span>
-                      <span className="font-medium text-foreground">{formatCurrency(l.totalPrice)}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <StatusBadge status={l.status} />
-                    <ChevronLeft className="size-4 text-muted-foreground" />
-                  </div>
-                </Link>
-              ))}
+                )
+              })}
             </div>
           </section>
         ))}
       </div>
+
+      {collectLead && (
+        <CollectParticipantsDialog
+          lead={collectLead}
+          open={Boolean(collectLead)}
+          onOpenChange={(o) => {
+            if (!o) setCollectLead(null)
+          }}
+        />
+      )}
     </div>
   )
 }

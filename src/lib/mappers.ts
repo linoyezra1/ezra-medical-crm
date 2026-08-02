@@ -1,4 +1,17 @@
-import type { Lead as DbLead, Participant, Expense, Account, Contact, FollowUpTask, CourseAsset, Settings } from "@/generated/prisma/client";
+import type {
+  Lead as DbLead,
+  Participant,
+  Expense,
+  Account,
+  Contact,
+  FollowUpTask,
+  CourseAsset,
+  Settings,
+  Trainee as DbTrainee,
+  InventoryItem as DbInventoryItem,
+  InventoryComponent,
+  TrainingSale as DbTrainingSale,
+} from "@/generated/prisma/client";
 import { DEFAULT_COURSES } from "@/lib/demo-data";
 import {
   dbEquipmentToUi,
@@ -6,13 +19,17 @@ import {
   type BusinessSettings,
   type Client,
   type EquipmentDeal,
+  type InventoryItem,
   type Lead,
   type Task,
+  type Trainee,
+  type TrainingSale,
 } from "@/lib/types";
 
 type DbLeadFull = DbLead & {
   participants?: Participant[];
   expenses?: Expense[];
+  trainingSales?: (DbTrainingSale & { inventoryItem?: { name: string } | null })[];
 };
 
 function splitDateTime(d: Date | null | undefined): { date?: string; time?: string } {
@@ -83,6 +100,8 @@ export function mapLead(db: DbLeadFull): Lead {
       shippingStreet: p.shippingStreet || undefined,
       shippingHouseNo: p.shippingHouseNo || undefined,
       shippingZip: p.shippingZip || undefined,
+      attended: Boolean(p.attended),
+      traineeId: p.traineeId || undefined,
     })),
     expenses: (db.expenses || []).map((e) => ({
       id: e.id,
@@ -91,6 +110,17 @@ export function mapLead(db: DbLeadFull): Lead {
       hasReceipt: Boolean(e.receiptPath || e.notes),
       date: e.createdAt.toISOString(),
     })),
+    trainingSales: (db.trainingSales || []).map(
+      (s): TrainingSale => ({
+        id: s.id,
+        inventoryItemId: s.inventoryItemId,
+        itemName: s.inventoryItem?.name || "פריט",
+        quantity: s.quantity,
+        unitSellingPrice: s.unitSellingPrice,
+        unitCostPrice: s.unitCostPrice,
+        createdAt: s.createdAt.toISOString(),
+      }),
+    ),
     createdAt: db.createdAt.toISOString(),
     updatedAt: db.updatedAt.toISOString(),
     location: db.location || undefined,
@@ -209,11 +239,79 @@ export function mapSettings(
   ];
 
   return {
-    businessName: settings?.businessName || "עזרא ורפואה",
-    websiteUrl: settings?.websiteUrl || "",
+    businessName: (() => {
+      const name = settings?.businessName?.trim();
+      if (
+        !name ||
+        name === "עזרא" ||
+        name === "עזרה ורפואה" ||
+        name === "עזרא ורפואה"
+      ) {
+        return "עזרה!";
+      }
+      return name;
+    })(),
+    websiteUrl:
+      settings?.websiteUrl ||
+      "https://www.ezra-medical.com/%D7%9B%D7%A0%D7%99%D7%A1%D7%94-%D7%9C%D7%AA%D7%9C%D7%9E%D7%99%D7%93%D7%99%D7%9D",
     tiktokUrl: settings?.tiktokUrl || "",
     facebookUrl: settings?.facebookUrl || "",
     instagramUrl: settings?.instagramUrl || "",
     courses,
+  };
+}
+
+type DbTraineeFull = DbTrainee & {
+  participants?: (Participant & {
+    lead?: Pick<DbLead, "id" | "fullName" | "courseType" | "courseTypeOther"> | null;
+  })[];
+};
+
+export function mapTrainee(db: DbTraineeFull): Trainee {
+  return {
+    id: db.id,
+    fullName: db.fullName,
+    idNumber: db.idNumber,
+    phone: db.phone || undefined,
+    email: db.email || undefined,
+    certificateEmailSent: Boolean(db.certificateEmailSent),
+    certificateCardPrinted: Boolean(db.certificateCardPrinted),
+    notes: db.notes || undefined,
+    trainings: (db.participants || []).map((p) => ({
+      participantId: p.id,
+      leadId: p.leadId,
+      leadName: p.lead?.fullName || "הדרכה",
+      organizerName: p.organizerName || undefined,
+      courseDate: p.courseDate || undefined,
+      courseType: p.lead?.courseTypeOther || p.lead?.courseType || undefined,
+    })),
+    createdAt: db.createdAt.toISOString(),
+    updatedAt: db.updatedAt.toISOString(),
+  };
+}
+
+type DbInventoryFull = DbInventoryItem & {
+  components?: (InventoryComponent & {
+    child?: Pick<DbInventoryItem, "id" | "name" | "costPrice"> | null;
+  })[];
+};
+
+export function mapInventoryItem(db: DbInventoryFull): InventoryItem {
+  return {
+    id: db.id,
+    name: db.name,
+    category: db.category || "",
+    sellingPrice: db.sellingPrice,
+    costPrice: db.costPrice,
+    supplierName: db.supplierName || "",
+    isComposite: Boolean(db.isComposite),
+    components: (db.components || []).map((c) => ({
+      childId: c.childId,
+      childName: c.child?.name || "רכיב",
+      quantity: c.quantity,
+      unitCostPrice: c.child?.costPrice ?? 0,
+    })),
+    createdAt: db.createdAt.toISOString(),
+    updatedAt: db.updatedAt.toISOString(),
   };
 }

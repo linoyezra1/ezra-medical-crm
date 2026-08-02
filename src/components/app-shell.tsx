@@ -26,11 +26,11 @@ const NAV = [
   { href: "/", label: "דשבורד", icon: LayoutDashboard },
   { href: "/leads", label: "לידים", icon: Users },
   { href: "/trainings", label: "הדרכות", icon: GraduationCap },
-  { href: "/clients", label: "לקוחות", icon: Contact },
+  { href: "/clients", label: "מודרכים", icon: Contact },
 ]
 
 const MORE = [
-  { href: "/equipment", label: "עסקאות ציוד", icon: Boxes },
+  { href: "/equipment", label: "ניהול ציוד", icon: Boxes },
   { href: "/calendar", label: "יומן ומשימות", icon: CalendarDays },
   { href: "/settings", label: "הגדרות עסק", icon: Settings },
 ]

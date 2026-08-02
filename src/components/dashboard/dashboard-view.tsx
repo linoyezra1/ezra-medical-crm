@@ -28,13 +28,33 @@ export function DashboardView() {
   const { leads, tasks, settings } = useApp()
 
   const activeLeads = leads.filter((l) => l.status !== "lost")
-  const income = activeLeads
+  const courseIncome = activeLeads
     .filter((l) => l.status !== "new")
     .reduce((s, l) => s + l.totalPrice, 0)
-  const expenses = activeLeads.reduce(
+  const salesIncome = activeLeads.reduce(
+    (s, l) =>
+      s +
+      (l.trainingSales || []).reduce(
+        (a, sale) => a + sale.unitSellingPrice * sale.quantity,
+        0,
+      ),
+    0,
+  )
+  const income = courseIncome + salesIncome
+  const courseExpenses = activeLeads.reduce(
     (s, l) => s + l.expenses.reduce((a, e) => a + e.amount, 0),
     0,
   )
+  const salesCost = activeLeads.reduce(
+    (s, l) =>
+      s +
+      (l.trainingSales || []).reduce(
+        (a, sale) => a + sale.unitCostPrice * sale.quantity,
+        0,
+      ),
+    0,
+  )
+  const expenses = courseExpenses + salesCost
   const netProfit = income - expenses
   const closedCourses = activeLeads.filter((l) =>
     ["closed", "done", "pending_certificates", "completed"].includes(l.status),

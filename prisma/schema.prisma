@@ -102,9 +102,10 @@ model Lead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  participants Participant[]
-  expenses     Expense[]
-  tasks        FollowUpTask[]
+  participants  Participant[]
+  expenses      Expense[]
+  tasks         FollowUpTask[]
+  trainingSales TrainingSale[]
 
   @@index([phone])
   @@index([courseStatus])
@@ -113,25 +114,96 @@ model Lead {
 }
 
 model Participant {
-  id             String   @id @default(cuid())
-  leadId         String
-  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  fullName       String
-  idNumber       String
-  organizerName  String?
-  courseDate     String?  // YYYY-MM-DD
-  email          String?
-  phone          String?
-  satisfaction   String?
-  feedback       String?
-  kitInterest    String?
-  shippingCity   String?
-  shippingStreet String?
+  id              String   @id @default(cuid())
+  leadId          String
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  traineeId       String?
+  trainee         Trainee? @relation(fields: [traineeId], references: [id], onDelete: SetNull)
+  fullName        String
+  idNumber        String
+  organizerName   String?
+  courseDate      String?  // YYYY-MM-DD
+  email           String?
+  phone           String?
+  satisfaction    String?
+  feedback        String?
+  kitInterest     String?
+  shippingCity    String?
+  shippingStreet  String?
   shippingHouseNo String?
-  shippingZip    String?
-  createdAt      DateTime @default(now())
+  shippingZip     String?
+  /** אישור הגעה / הקראת שמות */
+  attended        Boolean  @default(false)
+  createdAt       DateTime @default(now())
 
   @@index([leadId])
+  @@index([traineeId])
+}
+
+/** מאגר מודרכים גלובלי — נוצר אוטומטית מהרשמת משתתפים */
+model Trainee {
+  id                     String        @id @default(cuid())
+  fullName               String
+  idNumber               String
+  phone                  String?
+  email                  String?
+  certificateEmailSent   Boolean       @default(false)
+  certificateCardPrinted Boolean       @default(false)
+  notes                  String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  participants           Participant[]
+
+  @@unique([idNumber])
+  @@index([fullName])
+  @@index([phone])
+}
+
+/** פריטי מלאי / ציוד למכירה */
+model InventoryItem {
+  id           String               @id @default(cuid())
+  name         String
+  category     String?
+  sellingPrice Float                @default(0)
+  costPrice    Float                @default(0)
+  supplierName String?
+  isComposite  Boolean              @default(false)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  components   InventoryComponent[] @relation("ParentItem")
+  usedIn       InventoryComponent[] @relation("ChildItem")
+  sales        TrainingSale[]
+
+  @@index([category])
+  @@index([name])
+}
+
+model InventoryComponent {
+  id       String        @id @default(cuid())
+  parentId String
+  parent   InventoryItem @relation("ParentItem", fields: [parentId], references: [id], onDelete: Cascade)
+  childId  String
+  child    InventoryItem @relation("ChildItem", fields: [childId], references: [id], onDelete: Restrict)
+  quantity Float         @default(1)
+
+  @@unique([parentId, childId])
+  @@index([childId])
+}
+
+/** מכירת ציוד בשטח להדרכה */
+model TrainingSale {
+  id               String        @id @default(cuid())
+  leadId           String
+  lead             Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  inventoryItemId  String
+  inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  quantity         Int           @default(1)
+  unitSellingPrice Float
+  unitCostPrice    Float
+  createdAt        DateTime      @default(now())
+
+  @@index([leadId])
+  @@index([inventoryItemId])
 }
 
 model Expense {
@@ -181,7 +253,7 @@ model CourseAsset {
 
 model Settings {
   id            String @id @default("default")
-  businessName  String @default("עזרא ורפואה")
+  businessName  String @default("עזרה!")
   websiteUrl    String?
   tiktokUrl     String?
   facebookUrl   String?

@@ -4,8 +4,8 @@ import { useState } from "react"
 import { Plus, Receipt, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -67,14 +67,11 @@ export function ExpensesSection({ lead }: { lead: Lead }) {
   }
 
   return (
-    <Card className="gap-3 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold">הוצאות ההדרכה</h2>
-        <span className="text-sm font-bold text-destructive">
-          {formatCurrency(total)}
-        </span>
-      </div>
-
+    <CollapsibleSection
+      title="הוצאות הדרכה"
+      subtitle={total ? formatCurrency(total) : "אין הוצאות"}
+      defaultOpen={false}
+    >
       <div className="space-y-2">
         {lead.expenses.map((e) => (
           <div
@@ -160,11 +157,11 @@ export function ExpensesSection({ lead }: { lead: Lead }) {
           </div>
         </div>
       ) : (
-        <Button variant="outline" className="justify-center" onClick={() => setAdding(true)}>
+        <Button variant="outline" className="w-full justify-center" onClick={() => setAdding(true)}>
           <Plus className="size-4" />
           הוסף הוצאה
         </Button>
       )}
-    </Card>
+    </CollapsibleSection>
   )
 }

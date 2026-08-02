@@ -298,12 +298,42 @@ export async function updateLead(
   return { ok: true, data: { id: leadId } };
 }
 
+async function upsertTraineeFromParticipant(data: {
+  fullName: string;
+  idNumber: string;
+  email?: string | null;
+  phone?: string | null;
+}) {
+  const idNumber = data.idNumber.trim();
+  const fullName = data.fullName.trim();
+  return prisma.trainee.upsert({
+    where: { idNumber },
+    create: {
+      fullName,
+      idNumber,
+      email: data.email?.trim() || null,
+      phone: data.phone?.trim() || null,
+    },
+    update: {
+      fullName,
+      email: data.email?.trim() || undefined,
+      phone: data.phone?.trim() || undefined,
+    },
+  });
+}
+
 export async function addParticipant(leadId: string, fullName: string, idNumber: string) {
   if (!fullName.trim() || !idNumber.trim()) {
     return { ok: false as const, error: "שם מלא ות.ז. הם שדות חובה" };
   }
+  const trainee = await upsertTraineeFromParticipant({ fullName, idNumber });
   await prisma.participant.create({
-    data: { leadId, fullName: fullName.trim(), idNumber: idNumber.trim() },
+    data: {
+      leadId,
+      fullName: fullName.trim(),
+      idNumber: idNumber.trim(),
+      traineeId: trainee.id,
+    },
   });
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (lead?.courseStatus === "completed") {
@@ -313,6 +343,7 @@ export async function addParticipant(leadId: string, fullName: string, idNumber:
     });
   }
   revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/clients");
   return { ok: true as const };
 }
 
@@ -384,9 +415,17 @@ export async function submitPublicParticipant(
     }
   }
 
+  const trainee = await upsertTraineeFromParticipant({
+    fullName: data.fullName,
+    idNumber: data.idNumber,
+    email: data.email,
+    phone: data.phone,
+  });
+
   const created = await prisma.participant.create({
     data: {
       leadId,
+      traineeId: trainee.id,
       fullName: data.fullName.trim(),
       idNumber: data.idNumber.trim(),
       organizerName: data.organizerName.trim(),
@@ -405,7 +444,178 @@ export async function submitPublicParticipant(
 
   revalidatePath(`/leads/${leadId}`);
   revalidatePath(`/p/${leadId}`);
+  revalidatePath("/clients");
   return { ok: true, data: { id: created.id } };
+}
+
+export async function setParticipantAttended(
+  participantId: string,
+  leadId: string,
+  attended: boolean,
+): Promise<ActionResult<{ attended: boolean }>> {
+  await prisma.participant.update({
+    where: { id: participantId },
+    data: { attended },
+  });
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true, data: { attended } };
+}
+
+export async function fetchLeadParticipants(leadId: string) {
+  const rows = await prisma.participant.findMany({
+    where: { leadId },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    name: p.fullName,
+    idNumber: p.idNumber,
+    organizerName: p.organizerName || undefined,
+    courseDate: p.courseDate || undefined,
+    email: p.email || undefined,
+    phone: p.phone || undefined,
+    satisfaction: p.satisfaction || undefined,
+    feedback: p.feedback || undefined,
+    kitInterest: p.kitInterest || undefined,
+    shippingCity: p.shippingCity || undefined,
+    shippingStreet: p.shippingStreet || undefined,
+    shippingHouseNo: p.shippingHouseNo || undefined,
+    shippingZip: p.shippingZip || undefined,
+    attended: Boolean(p.attended),
+    traineeId: p.traineeId || undefined,
+  }));
+}
+
+export async function updateTrainee(
+  id: string,
+  data: {
+    certificateEmailSent?: boolean;
+    certificateCardPrinted?: boolean;
+    notes?: string;
+  },
+): Promise<ActionResult<{ id: string }>> {
+  await prisma.trainee.update({
+    where: { id },
+    data: {
+      certificateEmailSent: data.certificateEmailSent,
+      certificateCardPrinted: data.certificateCardPrinted,
+      notes: data.notes === undefined ? undefined : data.notes.trim() || null,
+    },
+  });
+  revalidatePath("/clients");
+  return { ok: true, data: { id } };
+}
+
+async function recomputeCompositeCost(parentId: string) {
+  const comps = await prisma.inventoryComponent.findMany({
+    where: { parentId },
+    include: { child: true },
+  });
+  const cost = comps.reduce(
+    (s, c) => s + (c.child.costPrice || 0) * (c.quantity || 0),
+    0,
+  );
+  await prisma.inventoryItem.update({
+    where: { id: parentId },
+    data: { costPrice: cost, isComposite: true },
+  });
+  return cost;
+}
+
+export async function upsertInventoryItem(data: {
+  id?: string;
+  name: string;
+  category?: string;
+  sellingPrice: number;
+  costPrice: number;
+  supplierName?: string;
+  isComposite?: boolean;
+  components?: { childId: string; quantity: number }[];
+}): Promise<ActionResult<{ id: string }>> {
+  if (!data.name.trim()) return { ok: false, error: "שם פריט הוא שדה חובה" };
+
+  const base = {
+    name: data.name.trim(),
+    category: data.category?.trim() || null,
+    sellingPrice: Number(data.sellingPrice) || 0,
+    costPrice: Number(data.costPrice) || 0,
+    supplierName: data.supplierName?.trim() || null,
+    isComposite: Boolean(data.isComposite),
+  };
+
+  let id = data.id;
+  if (id) {
+    await prisma.inventoryItem.update({ where: { id }, data: base });
+  } else {
+    const created = await prisma.inventoryItem.create({ data: base });
+    id = created.id;
+  }
+
+  if (data.isComposite && data.components) {
+    await prisma.inventoryComponent.deleteMany({ where: { parentId: id } });
+    for (const c of data.components) {
+      if (!c.childId || c.childId === id) continue;
+      await prisma.inventoryComponent.create({
+        data: {
+          parentId: id,
+          childId: c.childId,
+          quantity: Number(c.quantity) || 1,
+        },
+      });
+    }
+    await recomputeCompositeCost(id);
+  }
+
+  revalidatePath("/equipment");
+  revalidatePath("/");
+  return { ok: true, data: { id } };
+}
+
+export async function deleteInventoryItem(
+  id: string,
+): Promise<ActionResult<{ id: string }>> {
+  await prisma.inventoryItem.delete({ where: { id } });
+  revalidatePath("/equipment");
+  return { ok: true, data: { id } };
+}
+
+export async function addTrainingSale(
+  leadId: string,
+  inventoryItemId: string,
+  quantity: number,
+): Promise<ActionResult<{ id: string }>> {
+  const qty = Math.max(1, Math.floor(Number(quantity) || 0));
+  if (!qty) return { ok: false, error: "כמות חייבת להיות לפחות 1" };
+
+  const item = await prisma.inventoryItem.findUnique({
+    where: { id: inventoryItemId },
+  });
+  if (!item) return { ok: false, error: "הפריט לא נמצא במלאי" };
+
+  const created = await prisma.trainingSale.create({
+    data: {
+      leadId,
+      inventoryItemId,
+      quantity: qty,
+      unitSellingPrice: item.sellingPrice,
+      unitCostPrice: item.costPrice,
+    },
+  });
+
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/");
+  return { ok: true, data: { id: created.id } };
+}
+
+export async function deleteTrainingSale(
+  id: string,
+  leadId: string,
+): Promise<ActionResult<{ id: string }>> {
+  await prisma.trainingSale.delete({ where: { id } });
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/dashboard");
+  return { ok: true, data: { id } };
 }
 
 export async function removeParticipant(id: string, leadId: string) {

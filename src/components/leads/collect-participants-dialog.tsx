@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Check, Copy, Link2, QrCode } from "lucide-react"
+import { ArrowRight, Check, Copy, Link2, QrCode } from "lucide-react"
 import QRCode from "qrcode"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,8 @@ import { Switch } from "@/components/ui/switch"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 
+type Option = "qr_form" | "copy_link" | "qr_site"
+
 type Props = {
   lead: Lead
   open: boolean
@@ -23,11 +25,13 @@ type Props = {
 
 export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
   const { updateLead, settings } = useApp()
+  const [step, setStep] = useState<"choose" | "detail">("choose")
+  const [option, setOption] = useState<Option | null>(null)
   const [collectShipping, setCollectShipping] = useState(
     Boolean(lead.collectCertificateShipping),
   )
-  const [formQr, setFormQr] = useState<string>("")
-  const [siteQr, setSiteQr] = useState<string>("")
+  const [formQr, setFormQr] = useState("")
+  const [siteQr, setSiteQr] = useState("")
   const [copied, setCopied] = useState(false)
 
   const formUrl = useMemo(() => {
@@ -35,60 +39,64 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
     return `${window.location.origin}/p/${lead.id}`
   }, [lead.id])
 
-  const websiteUrl = (settings.websiteUrl || "").trim()
+  const websiteUrl = (
+    settings.websiteUrl ||
+    "https://www.ezra-medical.com/%D7%9B%D7%A0%D7%99%D7%A1%D7%94-%D7%9C%D7%AA%D7%9C%D7%9E%D7%99%D7%93%D7%99%D7%9D"
+  ).trim()
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setStep("choose")
+      setOption(null)
+      setCopied(false)
+      return
+    }
     setCollectShipping(Boolean(lead.collectCertificateShipping))
   }, [open, lead.collectCertificateShipping])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || step !== "detail") return
     let cancelled = false
     ;(async () => {
-      try {
-        const dataUrl = await QRCode.toDataURL(formUrl, {
-          width: 220,
-          margin: 1,
-          color: { dark: "#0f172a", light: "#ffffff" },
-        })
-        if (!cancelled) setFormQr(dataUrl)
-      } catch {
-        if (!cancelled) setFormQr("")
+      if (option === "qr_form") {
+        try {
+          const dataUrl = await QRCode.toDataURL(formUrl, {
+            width: 260,
+            margin: 1,
+            color: { dark: "#0f172a", light: "#ffffff" },
+          })
+          if (!cancelled) setFormQr(dataUrl)
+        } catch {
+          if (!cancelled) setFormQr("")
+        }
+      }
+      if (option === "qr_site" && websiteUrl) {
+        try {
+          const dataUrl = await QRCode.toDataURL(websiteUrl, {
+            width: 260,
+            margin: 1,
+            color: { dark: "#0f172a", light: "#ffffff" },
+          })
+          if (!cancelled) setSiteQr(dataUrl)
+        } catch {
+          if (!cancelled) setSiteQr("")
+        }
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [open, formUrl])
-
-  useEffect(() => {
-    if (!open || !websiteUrl) {
-      setSiteQr("")
-      return
-    }
-    let cancelled = false
-    ;(async () => {
-      try {
-        const dataUrl = await QRCode.toDataURL(websiteUrl, {
-          width: 220,
-          margin: 1,
-          color: { dark: "#0f172a", light: "#ffffff" },
-        })
-        if (!cancelled) setSiteQr(dataUrl)
-      } catch {
-        if (!cancelled) setSiteQr("")
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [open, websiteUrl])
+  }, [open, step, option, formUrl, websiteUrl])
 
   const onToggleShipping = (next: boolean) => {
     setCollectShipping(next)
     updateLead(lead.id, { collectCertificateShipping: next })
     toast.success(next ? "יאוספו כתובת ומיקוד בטופס" : "לא יאוספו פרטי משלוח")
+  }
+
+  const choose = (next: Option) => {
+    setOption(next)
+    setStep("detail")
   }
 
   const copyLink = async () => {
@@ -102,95 +110,150 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
     }
   }
 
+  const title =
+    step === "choose"
+      ? "הוסף משתתפים"
+      : option === "qr_form"
+        ? "QR לסריקה"
+        : option === "copy_link"
+          ? "העתק קישור"
+          : "QR לאתר"
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] max-w-[calc(100%-2rem)] overflow-y-auto rounded-2xl">
         <DialogHeader className="text-right">
-          <DialogTitle>הוסף משתתפים</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {step === "detail" && (
+              <button
+                type="button"
+                onClick={() => setStep("choose")}
+                className="flex size-8 items-center justify-center rounded-full bg-secondary"
+                aria-label="חזרה"
+              >
+                <ArrowRight className="size-4" />
+              </button>
+            )}
+            {title}
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-secondary/40 p-3">
-          <div className="min-w-0 text-right">
-            <p className="text-sm font-semibold leading-snug">
-              האם לאסוף כתובת ומיקוד למשלוח כרטיס תעודה?
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              אם כן — בטופס הציבורי יופיעו שדות כתובת ומיקוד חובה
-            </p>
-          </div>
-          <Switch
-            checked={collectShipping}
-            onCheckedChange={onToggleShipping}
-          />
-        </div>
-
-        <div className="space-y-4">
-          <section className="rounded-2xl border border-border p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-bold">
-              <QrCode className="size-4 text-primary" />
-              QR לסריקה
+        {step === "choose" && (
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-secondary/40 p-3">
+              <div className="min-w-0 text-right">
+                <p className="text-sm font-semibold leading-snug">
+                  האם לאסוף כתובת ומיקוד למשלוח כרטיס תעודה?
+                </p>
+              </div>
+              <Switch
+                checked={collectShipping}
+                onCheckedChange={onToggleShipping}
+              />
             </div>
-            <p className="mb-3 text-xs text-muted-foreground">
-              סריקה מובילה ישירות לטופס ההרשמה של הליד
+
+            <p className="text-xs text-muted-foreground">בחרו אפשרות אחת:</p>
+
+            <OptionButton
+              icon={QrCode}
+              title="QR לסריקה"
+              desc="קוד לסריקה לטופס ההרשמה"
+              onClick={() => choose("qr_form")}
+            />
+            <OptionButton
+              icon={Link2}
+              title="העתק קישור"
+              desc="העתקת קישור ישיר לטופס"
+              onClick={() => choose("copy_link")}
+            />
+            <OptionButton
+              icon={QrCode}
+              title="QR לאתר"
+              desc="קוד לסריקה לדף כניסה לתלמידים"
+              onClick={() => choose("qr_site")}
+            />
+          </div>
+        )}
+
+        {step === "detail" && option === "qr_form" && (
+          <div className="space-y-3">
+            <p className="text-center text-xs text-muted-foreground">
+              סרקו כדי לפתוח את טופס המשתתפים
             </p>
-            <div className="flex justify-center rounded-xl bg-white p-3">
+            <div className="flex justify-center rounded-2xl bg-white p-4">
               {formQr ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={formQr} alt="QR לטופס משתתפים" className="size-48" />
+                <img src={formQr} alt="QR לטופס משתתפים" className="size-56" />
               ) : (
-                <div className="flex size-48 items-center justify-center text-xs text-muted-foreground">
+                <div className="flex size-56 items-center justify-center text-xs text-muted-foreground">
                   טוען QR…
                 </div>
               )}
             </div>
-          </section>
+          </div>
+        )}
 
-          <section className="rounded-2xl border border-border p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-bold">
-              <Link2 className="size-4 text-primary" />
-              העתק קישור
-            </div>
+        {step === "detail" && option === "copy_link" && (
+          <div className="space-y-3">
             <p
-              className="mb-3 break-all rounded-xl bg-secondary/50 px-2.5 py-2 text-[11px] text-muted-foreground"
+              className="break-all rounded-xl bg-secondary/50 px-3 py-3 text-xs text-muted-foreground"
               dir="ltr"
             >
               {formUrl}
             </p>
-            <Button className="w-full gap-2 rounded-xl" onClick={copyLink}>
-              {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+            <Button className="h-12 w-full gap-2 rounded-xl text-base" onClick={copyLink}>
+              {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
               {copied ? "הועתק!" : "העתק קישור"}
             </Button>
-          </section>
+          </div>
+        )}
 
-          <section className="rounded-2xl border border-border p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-bold">
-              <QrCode className="size-4 text-primary" />
-              QR לאתר
-            </div>
-            {websiteUrl ? (
-              <>
-                <p className="mb-3 break-all text-xs text-muted-foreground" dir="ltr">
-                  {websiteUrl}
-                </p>
-                <div className="flex justify-center rounded-xl bg-white p-3">
-                  {siteQr ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={siteQr} alt="QR לאתר העסק" className="size-48" />
-                  ) : (
-                    <div className="flex size-48 items-center justify-center text-xs text-muted-foreground">
-                      טוען QR…
-                    </div>
-                  )}
+        {step === "detail" && option === "qr_site" && (
+          <div className="space-y-3">
+            <p className="break-all text-center text-xs text-muted-foreground" dir="ltr">
+              {websiteUrl}
+            </p>
+            <div className="flex justify-center rounded-2xl bg-white p-4">
+              {siteQr ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={siteQr} alt="QR לאתר" className="size-56" />
+              ) : (
+                <div className="flex size-56 items-center justify-center text-xs text-muted-foreground">
+                  טוען QR…
                 </div>
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                לא הוגדר אתר עסק. ניתן להגדיר בהגדרות → אתר העסק.
-              </p>
-            )}
-          </section>
-        </div>
+              )}
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function OptionButton({
+  icon: Icon,
+  title,
+  desc,
+  onClick,
+}: {
+  icon: React.ElementType
+  title: string
+  desc: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-2xl border border-border bg-secondary/30 p-3 text-right transition-colors active:scale-[0.99] hover:bg-secondary/50"
+    >
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icon className="size-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold">{title}</p>
+        <p className="text-[11px] text-muted-foreground">{desc}</p>
+      </div>
+    </button>
   )
 }
