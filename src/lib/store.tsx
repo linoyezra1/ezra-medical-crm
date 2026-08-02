@@ -24,7 +24,11 @@ import {
 } from "@/lib/actions";
 import { cleanPhone } from "@/lib/helpers";
 import {
-  uiStatusToDb,
+  isExpensesOnlyPatch,
+  isParticipantsOnlyPatch,
+  leadToDbPayload,
+} from "@/lib/lead-payload";
+import {
   type BusinessSettings,
   type Client,
   type EquipmentDeal,
@@ -44,7 +48,8 @@ interface AppState {
   tasks: Task[];
   settings: BusinessSettings;
   addLead: (lead: Lead) => void;
-  updateLead: (id: string, patch: Partial<Lead>) => void;
+  /** מחזיר true רק אחרי שה־DB אישר את העדכון */
+  updateLead: (id: string, patch: Partial<Lead>) => Promise<boolean>;
   getLead: (id: string) => Lead | undefined;
   setLeadParticipants: (id: string, participants: Lead["participants"]) => void;
   addEquipment: (deal: EquipmentDeal) => void;
@@ -62,66 +67,6 @@ interface AppState {
 }
 
 const AppContext = createContext<AppState | null>(null);
-
-function toDbPayload(lead: Lead, patch: Partial<Lead>): Record<string, unknown> {
-  const merged = { ...lead, ...patch };
-  const date = merged.date;
-  const time = merged.time;
-  const endTime = merged.endTime;
-  const raw: Record<string, unknown> = {
-    fullName: merged.name,
-    phone: merged.phone,
-    phoneSecondary: merged.phoneSecondary?.trim() || null,
-    email: merged.email || null,
-    urgency: merged.urgent ? "urgent" : "normal",
-    courseStatus: uiStatusToDb(merged.status),
-    courseType: merged.courseType,
-    courseTypeOther: merged.courseTypeOther || null,
-    courseCategory: merged.category,
-    courseCategoryOther: merged.categoryOther || null,
-    pricingModel: merged.pricingType === "per_participant" ? "per_participant" : "flat_rate",
-    perParticipantRate: merged.pricingType === "per_participant" ? merged.pricePerUnit : null,
-    extraParticipantPrice: merged.extraParticipantPrice ?? 50,
-    expectedParticipants: merged.participantsCount,
-    agreedPrice: merged.totalPrice,
-    instructor: merged.instructor?.trim() || null,
-    notes: merged.notes || null,
-    kindergartenApproved: Boolean(merged.kindergartenApproval),
-    collectCertificateShipping: Boolean(merged.collectCertificateShipping),
-    shippingStreet: merged.address.street,
-    shippingHouseNo: merged.address.houseNumber,
-    shippingCity: merged.address.city,
-    shippingZip: merged.address.zip || null,
-    city: merged.address.city,
-    location: `${merged.address.street} ${merged.address.houseNumber}`.trim() || merged.address.city,
-    deliveryMethod: merged.certificateDelivery || "עזרה ורפואה",
-    leadSource: merged.customerType === "existing" ? "returning" : "website",
-  };
-
-  if (patch.quoteSentAt || merged.quoteSentAt) {
-    raw.quoteStatus = "sent";
-  }
-
-  if (date && time) {
-    const start = new Date(`${date}T${time}`);
-    if (!Number.isNaN(start.getTime())) {
-      raw.scheduledStart = start.toISOString();
-      if (endTime) {
-        const end = new Date(`${date}T${endTime}`);
-        if (!Number.isNaN(end.getTime()) && end.getTime() > start.getTime()) {
-          raw.scheduledEnd = end.toISOString();
-        } else {
-          raw.scheduledEnd = new Date(start.getTime() + 60 * 60 * 1000).toISOString();
-        }
-      } else {
-        // ברירת מחדל: שעה אחת אם אין שעת סיום (לא 3 שעות קשיחות)
-        raw.scheduledEnd = new Date(start.getTime() + 60 * 60 * 1000).toISOString();
-      }
-    }
-  }
-
-  return raw;
-}
 
 export function AppProvider({
   initial,
@@ -199,7 +144,7 @@ export function AppProvider({
           refresh();
           return;
         }
-        await updateLeadAction(res.data.id, toDbPayload(lead, {}));
+        await updateLeadAction(res.data.id, leadToDbPayload(lead, {}));
         // replace temp id
         setLeads((prev) =>
           prev.map((l) => (l.id === lead.id ? { ...l, id: res.data.id } : l))
@@ -211,21 +156,46 @@ export function AppProvider({
     [refresh, router]
   );
 
-  const updateLead = useCallback(
-    (id: string, patch: Partial<Lead>) => {
-      const current = leads.find((l) => l.id === id);
-      if (!current) return;
+  const syncExpenseDiffs = useCallback(
+    async (id: string, current: Lead, nextExpenses: Lead["expenses"]) => {
+      const prevIds = new Set(current.expenses.map((e) => e.id));
+      const nextIds = new Set(nextExpenses.map((e) => e.id));
+      const added = nextExpenses.filter((e) => !prevIds.has(e.id));
+      const removed = current.expenses.filter((e) => !nextIds.has(e.id));
+      for (const e of added) {
+        const res = await addExpense(id, {
+          type: e.type,
+          amount: e.amount,
+          notes: e.hasReceipt ? "קבלה מצורפת" : undefined,
+        });
+        if (!res.ok) toast.error(res.error);
+      }
+      for (const e of removed) {
+        await deleteExpense(e.id, id);
+      }
+    },
+    [],
+  );
 
-      // Participants diffs
-      if (patch.participants) {
+  const updateLead = useCallback(
+    async (id: string, patch: Partial<Lead>): Promise<boolean> => {
+      const current = leads.find((l) => l.id === id);
+      if (!current) return false;
+
+      // עדכון משתתפים בלבד (לא טופס עריכה מלא)
+      if (isParticipantsOnlyPatch(patch) && patch.participants) {
         const prevIds = new Set(current.participants.map((p) => p.id));
         const nextIds = new Set(patch.participants.map((p) => p.id));
         const added = patch.participants.filter((p) => !prevIds.has(p.id));
         const removed = current.participants.filter((p) => !nextIds.has(p.id));
         setLeads((prev) =>
-          prev.map((l) => (l.id === id ? { ...l, ...patch, updatedAt: new Date().toISOString() } : l))
+          prev.map((l) =>
+            l.id === id
+              ? { ...l, ...patch, updatedAt: new Date().toISOString() }
+              : l,
+          ),
         );
-        startTransition(async () => {
+        try {
           for (const p of added) {
             const res = await addParticipant(id, p.name, p.idNumber);
             if (!res.ok) toast.error(res.error);
@@ -234,54 +204,84 @@ export function AppProvider({
             await removeParticipant(p.id, id);
           }
           refresh();
-        });
-        return;
-      }
-
-      // Expenses diffs
-      if (patch.expenses) {
-        const prevIds = new Set(current.expenses.map((e) => e.id));
-        const nextIds = new Set(patch.expenses.map((e) => e.id));
-        const added = patch.expenses.filter((e) => !prevIds.has(e.id));
-        const removed = current.expenses.filter((e) => !nextIds.has(e.id));
-        setLeads((prev) =>
-          prev.map((l) => (l.id === id ? { ...l, ...patch, updatedAt: new Date().toISOString() } : l))
-        );
-        startTransition(async () => {
-          for (const e of added) {
-            const res = await addExpense(id, {
-              type: e.type,
-              amount: e.amount,
-              notes: e.hasReceipt ? "קבלה מצורפת" : undefined,
-            });
-            if (!res.ok) toast.error(res.error);
-          }
-          for (const e of removed) {
-            await deleteExpense(e.id, id);
-          }
+          return true;
+        } catch {
+          toast.error("שגיאה בעדכון משתתפים");
           refresh();
-        });
-        return;
+          return false;
+        }
       }
 
+      // עדכון הוצאות בלבד
+      if (isExpensesOnlyPatch(patch) && patch.expenses) {
+        setLeads((prev) =>
+          prev.map((l) =>
+            l.id === id
+              ? { ...l, ...patch, updatedAt: new Date().toISOString() }
+              : l,
+          ),
+        );
+        try {
+          await syncExpenseDiffs(id, current, patch.expenses);
+          refresh();
+          return true;
+        } catch {
+          toast.error("שגיאה בעדכון הוצאות");
+          refresh();
+          return false;
+        }
+      }
+
+      // שמירה מלאה — אופטימיסטי + API ל־DB
+      const previous = current;
       setLeads((prev) =>
         prev.map((l) =>
-          l.id === id ? { ...l, ...patch, updatedAt: new Date().toISOString() } : l
-        )
+          l.id === id
+            ? { ...l, ...patch, updatedAt: new Date().toISOString() }
+            : l,
+        ),
       );
 
-      startTransition(async () => {
-        const bypass = Boolean((patch as { conflictBypass?: boolean }).conflictBypass);
-        const res = await updateLeadAction(id, toDbPayload(current, patch), {
-          bypassConflict: bypass,
+      try {
+        const bypass = Boolean(
+          (patch as { conflictBypass?: boolean }).conflictBypass,
+        );
+        const payload = leadToDbPayload(current, patch);
+        const response = await fetch(`/api/leads/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, bypassConflict: bypass }),
         });
-        if (!res.ok) {
-          toast.error(res.error);
+        const res = (await response.json()) as {
+          ok: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || !res.ok) {
+          setLeads((prev) =>
+            prev.map((l) => (l.id === id ? previous : l)),
+          );
+          toast.error(res.error || "שמירת הליד נכשלה");
+          refresh();
+          return false;
         }
+
+        if (patch.expenses) {
+          await syncExpenseDiffs(id, current, patch.expenses);
+        }
+
         refresh();
-      });
+        return true;
+      } catch (err) {
+        setLeads((prev) => prev.map((l) => (l.id === id ? previous : l)));
+        toast.error(
+          err instanceof Error ? err.message : "שגיאה בשמירת הליד",
+        );
+        refresh();
+        return false;
+      }
     },
-    [leads, refresh]
+    [leads, refresh, syncExpenseDiffs],
   );
 
   const getLead = useCallback((id: string) => leads.find((l) => l.id === id), [leads]);

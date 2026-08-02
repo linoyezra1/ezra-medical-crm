@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useRef, useState } from "react"
+import { useState } from "react"
 import {
   ArrowRight,
   BookOpen,
@@ -13,8 +13,6 @@ import {
   FileText,
   LayoutDashboard,
   MapPin,
-  MessageCircle,
-  Navigation,
   Pencil,
   Phone,
   Presentation,
@@ -72,7 +70,6 @@ export function LeadDetailView({
   const [bookletOpen, setBookletOpen] = useState(false)
   const [collectOpen, setCollectOpen] = useState(false)
   const [detailTab, setDetailTab] = useState<DetailTab>("home")
-  const touchX = useRef<number | null>(null)
 
   if (!lead) {
     return (
@@ -147,20 +144,6 @@ export function LeadDetailView({
     toast.success("קובץ היומן נפתח — שמרו את האירוע ביומן")
   }
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchX.current = e.touches[0]?.clientX ?? null
-  }
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (touchX.current == null) return
-    const dx = (e.changedTouches[0]?.clientX ?? touchX.current) - touchX.current
-    touchX.current = null
-    if (Math.abs(dx) < 56) return
-    const idx = DETAIL_TABS.indexOf(detailTab)
-    if (dx > 0 && idx > 0) setDetailTab(DETAIL_TABS[idx - 1])
-    else if (dx < 0 && idx < DETAIL_TABS.length - 1)
-      setDetailTab(DETAIL_TABS[idx + 1])
-  }
-
   return (
     <div className={cn("flex min-h-0 flex-col bg-background", embedded && "md:h-full")}>
       <Tabs
@@ -169,89 +152,96 @@ export function LeadDetailView({
         dir="rtl"
         className="flex min-h-0 flex-1 flex-col gap-0"
       >
-        {/* —— Sticky compact header + tabs —— */}
-        <header className="sticky top-0 z-30 shrink-0 border-b border-border bg-card/95 backdrop-blur-md">
-          <div className="flex items-center gap-2 px-3 py-2.5 md:px-4">
-            {embedded ? (
-              <Link
-                href="/leads"
-                aria-label="חזרה לרשימה"
-                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground md:hidden"
-              >
-                <ArrowRight className="size-5" />
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={() => router.back()}
-                aria-label="חזרה"
-                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"
-              >
-                <ArrowRight className="size-5" />
-              </button>
-            )}
+        <div className="sticky top-0 z-30 shrink-0">
+          {/* —— Expanded action header (separated from tabs) —— */}
+          <header className="border-b border-slate-200/80 bg-slate-50/90 px-5 py-4 shadow-sm backdrop-blur-md md:px-6 md:py-5">
+            <div className="flex items-start gap-3">
+              {embedded ? (
+                <Link
+                  href="/leads"
+                  aria-label="חזרה לרשימה"
+                  className="mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-white/80 text-secondary-foreground shadow-sm md:hidden"
+                >
+                  <ArrowRight className="size-5" />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => router.back()}
+                  aria-label="חזרה"
+                  className="mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-white/80 text-secondary-foreground shadow-sm"
+                >
+                  <ArrowRight className="size-5" />
+                </button>
+              )}
 
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-base font-bold text-foreground md:text-lg">
-                  {lead.name}
-                </h1>
-                <LeadStatusBadge status={lead.status} />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="truncate text-xl font-bold tracking-tight text-foreground md:text-2xl">
+                    {lead.name}
+                  </h1>
+                  <LeadStatusBadge
+                    status={lead.status}
+                    className="px-3.5 py-1.5 text-sm font-bold shadow-sm"
+                  />
+                </div>
+                <p className="truncate text-sm font-medium text-muted-foreground md:text-base">
+                  {courseLabel}
+                </p>
               </div>
-              <p className="truncate text-xs text-muted-foreground">{courseLabel}</p>
             </div>
 
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-3 md:gap-4">
               <IconAction
                 href={`tel:${lead.phone}`}
                 label="חיוג"
-                className="bg-primary/10 text-primary"
+                className="bg-white/80 text-primary shadow-sm"
               >
-                <Phone className="size-4" />
+                <Phone className="size-6" />
               </IconAction>
               <IconAction
                 href={whatsappLink(lead.phone)}
                 label="וואטסאפ"
                 external
-                className="bg-success/10 text-success"
+                className="bg-white/80 shadow-sm"
               >
-                <MessageCircle className="size-4" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/whatsapp.svg"
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="size-6"
+                />
               </IconAction>
               <button
                 type="button"
                 onClick={syncCalendar}
                 aria-label="הכנס ללו״ז"
-                className="flex size-9 items-center justify-center rounded-full bg-secondary text-foreground active:scale-95 transition-transform"
+                className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform"
               >
-                <CalendarPlus className="size-4" />
+                <CalendarPlus className="size-6" />
               </button>
-              <Button
-                size="icon"
-                variant="ghost"
-                nativeButton={false}
-                className="size-9 rounded-full"
-                render={
-                  <Link href={`/leads/${lead.id}/edit`} aria-label="עריכה">
-                    <Pencil className="size-4" />
-                  </Link>
-                }
-              />
+              <Link
+                href={`/leads/${lead.id}/edit`}
+                aria-label="עריכה"
+                className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform"
+              >
+                <Pencil className="size-6" />
+              </Link>
             </div>
-          </div>
+          </header>
 
-          <TabsList className="h-auto w-full justify-stretch gap-0.5 rounded-none border-0 bg-secondary/40 p-1.5">
+          {/* —— Tab bar (click/tap only — no swipe) —— */}
+          <TabsList className="h-auto w-full justify-stretch gap-0.5 rounded-none border-b border-border bg-card p-1.5">
             <TopTab value="home" icon={LayoutDashboard} label="ראשי" />
             <TopTab value="participants" icon={Users} label="משתתפים" />
             <TopTab value="materials" icon={BookOpen} label="חומרי הדרכה" />
             <TopTab value="finance" icon={Wallet} label="כספים ומכירות" />
           </TabsList>
-        </header>
+        </div>
 
-        <div
-          className="min-h-0 flex-1 overflow-y-auto"
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
-        >
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <TabsContent value="home" className="m-0 space-y-4 p-4 md:p-6">
             <HomeTab
               lead={lead}
@@ -345,7 +335,7 @@ function IconAction({
         ? { target: "_blank", rel: "noreferrer" as const }
         : {})}
       className={cn(
-        "flex size-9 items-center justify-center rounded-full active:scale-95 transition-transform",
+        "flex size-12 items-center justify-center rounded-full p-3 active:scale-95 transition-transform",
         className,
       )}
     >
@@ -405,9 +395,16 @@ function HomeTab({
               target="_blank"
               rel="noreferrer"
               aria-label="נווט ב‑Waze"
-              className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-sm active:scale-95 transition-transform"
+              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white/90 p-2.5 shadow-sm active:scale-95 transition-transform"
             >
-              <Navigation className="size-5" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/WAYS.png"
+                alt="Waze"
+                width={28}
+                height={28}
+                className="size-7 object-contain"
+              />
             </a>
           )}
         </div>

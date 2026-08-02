@@ -156,6 +156,7 @@ export function LeadForm({ existing }: Props) {
   )
   const [wizardStep, setWizardStep] = useState<FormStep>("details")
   const [savedFlash, setSavedFlash] = useState(false)
+  const [saving, setSaving] = useState(false)
   const isNew = !existing
   const sectionRefs = useRef<Partial<Record<FormStep, HTMLElement | null>>>({})
   const scrollingToStep = useRef(false)
@@ -314,11 +315,13 @@ export function LeadForm({ existing }: Props) {
     return instructorSelect
   }
 
-  const save = () => {
+  const save = async () => {
     if (!validate()) {
       toast.error("יש למלא את השדות הנדרשים")
       return
     }
+    if (saving) return
+
     const { category, categoryOther } = resolveCategory()
     const courseResolved = resolveCourseTypeForSave(courseTypeSelect, courseTypeOther)
     const catalog = findCourseCatalog(courseResolved.courseType, settings.courses)
@@ -344,7 +347,11 @@ export function LeadForm({ existing }: Props) {
       phoneSecondary: form.phoneSecondary
         ? cleanPhone(form.phoneSecondary)
         : undefined,
+      // מחיר גלובלי / מחושב — נשמר כ־agreedPrice ב־DB
       totalPrice: total,
+      pricingType: form.pricingType,
+      pricePerUnit: form.pricePerUnit,
+      participantsCount: form.participantsCount,
       courseType: courseResolved.courseType,
       courseTypeOther: courseResolved.courseTypeOther,
       courseHours: catalog?.hours,
@@ -354,14 +361,26 @@ export function LeadForm({ existing }: Props) {
       instructorFee: instructor !== DEFAULT_INSTRUCTOR ? fee : undefined,
       expenses,
     }
+
     if (existing) {
-      updateLead(existing.id, payload)
-      toast.success("הליד עודכן")
-      router.push(`/leads/${existing.id}`)
-    } else {
-      addLead(payload)
-      toast.success("ליד חדש נוצר")
+      setSaving(true)
+      try {
+        const ok = await updateLead(existing.id, payload)
+        if (!ok) return
+        toast.success("השינויים נשמרו בהצלחה")
+        router.push(`/leads/${existing.id}`)
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "שמירת השינויים נכשלה",
+        )
+      } finally {
+        setSaving(false)
+      }
+      return
     }
+
+    addLead(payload)
+    toast.success("ליד חדש נוצר")
   }
 
   const categorySelectValue =
@@ -913,16 +932,21 @@ export function LeadForm({ existing }: Props) {
               </Button>
             ) : (
               <Button
-                onClick={save}
+                onClick={() => void save()}
                 className="flex-1 rounded-2xl py-6 text-base"
+                disabled={saving}
               >
-                צור ליד
+                {saving ? "שומר…" : "צור ליד"}
               </Button>
             )}
           </div>
         ) : (
-          <Button onClick={save} className="mt-6 w-full rounded-2xl py-6 text-base">
-            שמור שינויים
+          <Button
+            onClick={() => void save()}
+            disabled={saving}
+            className="mt-6 w-full rounded-2xl py-6 text-base"
+          >
+            {saving ? "שומר…" : "שמור שינויים"}
           </Button>
         )}
       </div>

@@ -217,12 +217,25 @@ export async function updateLead(
     // soft check only on closed_won is enforced in validateStatusTransition
   }
 
-  const agreedPrice = calcAgreedPrice({
-    pricingModel: merged.pricingModel,
-    perParticipantRate: merged.perParticipantRate,
-    expectedParticipants: merged.expectedParticipants,
-    agreedPrice: merged.agreedPrice,
-  });
+  // מחיר גלובלי: שומרים את agreedPrice שנשלח מהטופס.
+  // למשתתף: מחשבים rate × כמות (או agreedPrice אם נשלח במפורש).
+  const agreedPrice =
+    merged.pricingModel === "per_participant" &&
+    (raw.agreedPrice === undefined || raw.agreedPrice === null || raw.agreedPrice === "")
+      ? calcAgreedPrice({
+          pricingModel: merged.pricingModel,
+          perParticipantRate: merged.perParticipantRate,
+          expectedParticipants: merged.expectedParticipants,
+          agreedPrice: merged.agreedPrice,
+        })
+      : merged.agreedPrice != null
+        ? Number(merged.agreedPrice)
+        : calcAgreedPrice({
+            pricingModel: merged.pricingModel,
+            perParticipantRate: merged.perParticipantRate,
+            expectedParticipants: merged.expectedParticipants,
+            agreedPrice: merged.agreedPrice,
+          });
 
   let quoteSentAt = existing.quoteSentAt;
   if (merged.quoteStatus === "sent" && existing.quoteStatus !== "sent") {

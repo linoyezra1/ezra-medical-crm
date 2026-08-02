@@ -5,6 +5,12 @@ import { Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -33,29 +39,33 @@ export function TrainingSalesSection({
   const { inventory, refresh } = useApp()
   const sales = lead.trainingSales || []
 
-  const lastSalePrice = useMemo(() => {
-    if (!sales.length) return ""
-    const last = sales[sales.length - 1]
-    return String(last.unitSellingPrice ?? "")
-  }, [sales])
-
+  const [modalOpen, setModalOpen] = useState(false)
   const [salePrice, setSalePrice] = useState("")
   const [itemId, setItemId] = useState<string>("")
   const [qty, setQty] = useState("1")
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    if (!salePrice && lastSalePrice) setSalePrice(lastSalePrice)
-  }, [lastSalePrice, salePrice])
+  const selectItems = useMemo(
+    () =>
+      inventory.map((i) => ({
+        value: i.id,
+        label: i.name?.trim() || "פריט ללא שם",
+      })),
+    [inventory],
+  )
+
+  const selected = inventory.find((i) => i.id === itemId)
+  const qtyNum = Math.max(1, Math.floor(Number(qty) || 1))
+  const unitPrice = Number(salePrice) || 0
+  const lineTotal = unitPrice * qtyNum
 
   // בבחירת פריט — טעינת מחיר מכירה אחרון שנשמר עליו
   useEffect(() => {
-    const selected = inventory.find((i) => i.id === itemId)
     if (!selected) return
     if (selected.sellingPrice > 0) {
       setSalePrice(String(selected.sellingPrice))
     }
-  }, [itemId, inventory])
+  }, [selected?.id])
 
   const totalSale = sales.reduce(
     (s, x) => s + x.unitSellingPrice * x.quantity,
@@ -64,7 +74,20 @@ export function TrainingSalesSection({
   const totalCost = sales.reduce((s, x) => s + x.unitCostPrice * x.quantity, 0)
   const profit = totalSale - totalCost
 
-  const selected = inventory.find((i) => i.id === itemId)
+  const resetForm = () => {
+    setItemId("")
+    setQty("1")
+    setSalePrice("")
+  }
+
+  const openModal = () => {
+    resetForm()
+    // ברירת מחדל: מחיר מהמכירה האחרונה בהדרכה (אם אין פריט נבחר)
+    if (sales.length) {
+      setSalePrice(String(sales[sales.length - 1].unitSellingPrice ?? ""))
+    }
+    setModalOpen(true)
+  }
 
   const add = async () => {
     if (!itemId) {
@@ -73,18 +96,19 @@ export function TrainingSalesSection({
     }
     const price = Number(salePrice)
     if (!salePrice.trim() || Number.isNaN(price) || price < 0) {
-      toast.error("יש להגדיר מחיר מכירה תחת הכותרת")
+      toast.error("יש להזין מחיר יחידה")
       return
     }
     setSaving(true)
-    const res = await addTrainingSale(lead.id, itemId, Number(qty) || 1, price)
+    const res = await addTrainingSale(lead.id, itemId, qtyNum, price)
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
     toast.success("המכירה נוספה")
-    setQty("1")
+    setModalOpen(false)
+    resetForm()
     refresh()
   }
 
@@ -107,113 +131,79 @@ export function TrainingSalesSection({
       }
       defaultOpen={alwaysOpen}
       alwaysOpen={alwaysOpen}
+      action={
+        <Button
+          type="button"
+          size="sm"
+          className="h-9 gap-1.5 rounded-xl px-3"
+          onClick={openModal}
+          disabled={!inventory.length}
+        >
+          <Plus className="size-4" />
+          הוסף מכירה
+        </Button>
+      }
     >
       <div className="space-y-3">
-        {/* מחיר מכירה — מוגדר ברמת ההדרכה, ישירות מתחת לכותרת */}
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
-          <Label className="text-sm font-bold text-foreground">
-            מחיר מכירה
-          </Label>
-          <p className="mb-2 text-[11px] text-muted-foreground">
-            מחיר ליחידה לכל המכירות בהדרכה זו
-          </p>
-          <Input
-            type="number"
-            min={0}
-            value={salePrice}
-            onChange={(e) => setSalePrice(e.target.value)}
-            placeholder="סכום בש״ח ליחידה"
-            dir="ltr"
-            className="h-11 text-base font-semibold"
-          />
-        </div>
-
-        <div className="grid grid-cols-[1fr_72px_auto] items-end gap-2">
-          <div className="space-y-1">
-            <Label className="text-xs">פריט מהמלאי</Label>
-            <Select value={itemId} onValueChange={(v) => setItemId(v ?? "")}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="בחרו פריט" />
-              </SelectTrigger>
-              <SelectContent>
-                {inventory.map((i) => (
-                  <SelectItem key={i.id} value={i.id}>
-                    {i.name}
-                    {costOf(i) ? ` · עלות ${formatCurrency(costOf(i))}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">כמות</Label>
-            <Input
-              type="number"
-              min={1}
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              dir="ltr"
-            />
-          </div>
-          <Button
-            size="icon"
-            className="size-10 rounded-xl"
-            onClick={add}
-            disabled={saving || !inventory.length}
-            aria-label="הוסף מכירה"
-          >
-            <Plus className="size-5" />
-          </Button>
-        </div>
-
-        {selected && (
-          <p className="text-[11px] text-muted-foreground">
-            עלות מהמלאי: {formatCurrency(costOf(selected))} ליחידה
-            {salePrice.trim()
-              ? ` · מכירה: ${formatCurrency(Number(salePrice) || 0)}`
-              : ""}
-          </p>
-        )}
-
         {!inventory.length && (
           <p className="text-xs text-muted-foreground">
             אין פריטים במלאי — הוסיפו ב״ניהול מלאי״.
           </p>
         )}
 
-        <ul className="space-y-2">
-          {sales.map((s) => {
-            const sale = s.unitSellingPrice * s.quantity
-            const cost = s.unitCostPrice * s.quantity
-            return (
-              <li
-                key={s.id}
-                className="flex items-start justify-between gap-2 rounded-xl border border-border bg-secondary/30 p-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {s.itemName} × {s.quantity}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    מכירה {formatCurrency(sale)} · עלות {formatCurrency(cost)} ·
-                    רווח {formatCurrency(sale - cost)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => remove(s.id)}
-                  className="flex size-8 items-center justify-center rounded-lg text-destructive"
-                  aria-label="מחק"
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+        {sales.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border bg-secondary/20 px-4 py-8 text-center text-sm text-muted-foreground">
+            אין מכירות עדיין — לחצו ״הוסף מכירה״
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-border">
+            <table className="w-full text-right text-sm">
+              <thead className="bg-secondary/50 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">פריט</th>
+                  <th className="px-3 py-2 font-semibold">כמות</th>
+                  <th className="px-3 py-2 font-semibold">מחיר יח׳</th>
+                  <th className="px-3 py-2 font-semibold">סה״כ</th>
+                  <th className="w-10 px-2 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {sales.map((s) => {
+                  const sale = s.unitSellingPrice * s.quantity
+                  return (
+                    <tr key={s.id} className="border-t border-border">
+                      <td className="px-3 py-2.5 font-medium">
+                        {s.itemName || "פריט"}
+                      </td>
+                      <td className="px-3 py-2.5" dir="ltr">
+                        {s.quantity}
+                      </td>
+                      <td className="px-3 py-2.5" dir="ltr">
+                        {formatCurrency(s.unitSellingPrice)}
+                      </td>
+                      <td className="px-3 py-2.5 font-semibold" dir="ltr">
+                        {formatCurrency(sale)}
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => remove(s.id)}
+                          className="flex size-8 items-center justify-center rounded-lg text-destructive"
+                          aria-label="מחק"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {sales.length > 0 && (
-          <div className="rounded-xl bg-primary/5 px-3 py-2 text-xs">
+          <div className="rounded-2xl bg-primary/5 px-3 py-2.5 text-xs">
             <p>
               סה״כ מכירות: <strong>{formatCurrency(totalSale)}</strong>
             </p>
@@ -226,6 +216,88 @@ export function TrainingSalesSection({
           </div>
         )}
       </div>
+
+      <Dialog
+        open={modalOpen}
+        onOpenChange={(open) => {
+          setModalOpen(open)
+          if (!open) resetForm()
+        }}
+      >
+        <DialogContent className="max-w-[calc(100%-2rem)] gap-5 rounded-2xl p-5 sm:max-w-md md:max-w-lg">
+          <DialogHeader className="text-right">
+            <DialogTitle className="text-lg font-bold">הוספת מכירה</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>פריט</Label>
+              <Select
+                items={selectItems}
+                value={itemId || null}
+                onValueChange={(v) => setItemId(v ?? "")}
+              >
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue placeholder="בחרו פריט מהמלאי" />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectItems.map((i) => (
+                    <SelectItem key={i.value} value={i.value}>
+                      {i.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selected && (
+                <p className="text-[11px] text-muted-foreground">
+                  עלות מלאי: {formatCurrency(costOf(selected))} ליחידה
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>כמות</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={qty}
+                  onChange={(e) => setQty(e.target.value)}
+                  dir="ltr"
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>מחיר יחידה (₪)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={salePrice}
+                  onChange={(e) => setSalePrice(e.target.value)}
+                  placeholder="מחיר אחרון / ידני"
+                  dir="ltr"
+                  className="h-11 font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+              <p className="text-xs text-muted-foreground">סה״כ לתשלום</p>
+              <p className="text-xl font-bold text-primary">
+                {formatCurrency(lineTotal)}
+              </p>
+            </div>
+
+            <Button
+              className="h-12 w-full rounded-2xl text-base font-bold"
+              onClick={() => void add()}
+              disabled={saving || !inventory.length}
+            >
+              {saving ? "שומר…" : "אישור והוספה"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </CollapsibleSection>
   )
 }
