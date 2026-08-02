@@ -45,6 +45,67 @@ export function formatDate(date?: string): string {
   }).format(new Date(date));
 }
 
+const WEEKDAYS_HE = [
+  "יום ראשון",
+  "יום שני",
+  "יום שלישי",
+  "יום רביעי",
+  "יום חמישי",
+  "יום שישי",
+  "יום שבת",
+]
+
+/** לדוגמה: יום שני | 12/08/2026 */
+export function formatDateWithWeekday(date?: string): string {
+  if (!date) return "-"
+  const d = new Date(date.includes("T") ? date : `${date}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return formatDate(date)
+  return `${WEEKDAYS_HE[d.getDay()]} | ${formatDate(date)}`
+}
+
+/** תשלום מדריך מהוצאות / שדה עלות */
+export function instructorPayAmount(lead: {
+  expenses?: { type: string; amount: number }[]
+  instructorFee?: number
+}): number {
+  const exp = (lead.expenses || []).find(
+    (e) => e.type === "מדריך" || e.type === "instructor",
+  )
+  if (exp) return exp.amount
+  return lead.instructorFee || 0
+}
+
+/** משך הדרכה לתצוגה */
+export function formatTrainingDuration(lead: {
+  time?: string
+  endTime?: string
+  courseHours?: number
+}): string {
+  if (lead.time && lead.endTime) return `${lead.time}–${lead.endTime}`
+  if (lead.courseHours && lead.courseHours > 0) return `${lead.courseHours} שעות`
+  return "—"
+}
+
+/** צבעי מסגרת + רקע לכרטיס ליד לפי סטטוס */
+export function leadStatusCardClass(status: Lead["status"]): string {
+  switch (status) {
+    case "new":
+      return "border-amber-400/70 bg-amber-50"
+    case "closed":
+      return "border-orange-400/70 bg-orange-50"
+    case "done":
+      return "border-emerald-400/70 bg-emerald-50"
+    case "pending_certificates":
+      return "border-emerald-700/60 bg-emerald-100"
+    case "completed":
+      return "border-slate-400/70 bg-slate-100"
+    case "lost":
+      return "border-muted bg-muted/40"
+    default:
+      return ""
+  }
+}
+
 export function findConflicts(
   leads: Lead[],
   date: string,
@@ -169,14 +230,22 @@ export function buildLeadIcsContent(lead: Lead): string {
     `הערות: ${lead.notes?.trim() || "-"}`,
   ].join(", ");
 
-  // משך: לפי שעות הקורס אם קיים, אחרת 4 שעות
-  const durationHours =
-    lead.courseHours && lead.courseHours > 0 ? lead.courseHours : 4;
+  // משך: לפי endTime אם קיים, אחרת לפי שעות הקורס / 4 שעות
   const start =
     lead.date && lead.time
       ? new Date(`${lead.date}T${lead.time}`)
       : new Date();
-  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+  let end: Date
+  if (lead.date && lead.endTime) {
+    end = new Date(`${lead.date}T${lead.endTime}`)
+    if (end.getTime() <= start.getTime()) {
+      end = new Date(start.getTime() + 60 * 60 * 1000)
+    }
+  } else {
+    const durationHours =
+      lead.courseHours && lead.courseHours > 0 ? lead.courseHours : 4
+    end = new Date(start.getTime() + durationHours * 60 * 60 * 1000)
+  }
   const now = new Date();
   const uid = `${lead.id || "lead"}-${start.getTime()}@ezra-crm`;
 

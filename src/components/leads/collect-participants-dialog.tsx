@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ArrowRight, Check, Copy, Link2, QrCode } from "lucide-react"
+import { ArrowRight, Check, Copy, Link2, MessageCircle, QrCode, Star } from "lucide-react"
 import QRCode from "qrcode"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -43,6 +43,25 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
     settings.websiteUrl ||
     "https://www.ezra-medical.com/%D7%9B%D7%A0%D7%99%D7%A1%D7%94-%D7%9C%D7%AA%D7%9C%D7%9E%D7%99%D7%93%D7%99%D7%9D"
   ).trim()
+
+  const googleReviewUrl = (settings.googleReviewUrl || "").trim()
+  const facebookUrl = (settings.facebookUrl || "").trim()
+
+  const registrationWhatsAppText = () => {
+    const reviewLine = googleReviewUrl
+      ? `נשמח אם תוכל לדרג אותנו בגוגל בקישור הבא: ${googleReviewUrl}`
+      : "נשמח אם תוכל לדרג אותנו בגוגל."
+    return `שלום וברכה,\n${reviewLine}\n\nקישור לרישום משתתפים להדרכה: ${formUrl}`
+  }
+
+  const sendRegistrationWhatsApp = () => {
+    const text = registrationWhatsAppText()
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(text)}`,
+      "_blank",
+      "noopener,noreferrer",
+    )
+  }
 
   useEffect(() => {
     if (!open) {
@@ -205,6 +224,40 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
               {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
               {copied ? "הועתק!" : "העתק קישור"}
             </Button>
+            <Button
+              variant="outline"
+              className="h-12 w-full gap-2 rounded-xl text-base"
+              onClick={sendRegistrationWhatsApp}
+            >
+              <MessageCircle className="size-5" />
+              שלח בווצאפ קישור לרישום
+            </Button>
+            <div className="flex items-center justify-center gap-3 pt-1">
+              {googleReviewUrl && (
+                <a
+                  href={googleReviewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex size-11 items-center justify-center rounded-full bg-amber-100 text-amber-700"
+                  title="דירוג בגוגל"
+                  aria-label="דירוג בגוגל"
+                >
+                  <Star className="size-5 fill-current" />
+                </a>
+              )}
+              {facebookUrl && (
+                <a
+                  href={facebookUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex size-11 items-center justify-center rounded-full bg-blue-100 text-blue-700"
+                  title="פייסבוק"
+                  aria-label="פייסבוק"
+                >
+                  <span className="text-sm font-bold">f</span>
+                </a>
+              )}
+            </div>
           </div>
         )}
 

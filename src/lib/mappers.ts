@@ -53,11 +53,13 @@ function mapDelivery(method: string | null | undefined): Lead["certificateDelive
 
 export function mapLead(db: DbLeadFull): Lead {
   const { date, time } = splitDateTime(db.scheduledStart);
+  const end = splitDateTime(db.scheduledEnd);
   return {
     id: db.id,
     clientId: db.accountId || "",
     name: db.fullName,
     phone: db.phone,
+    phoneSecondary: (db as { phoneSecondary?: string | null }).phoneSecondary || undefined,
     email: db.email || undefined,
     urgent: db.urgency === "urgent",
     status: dbStatusToUi(db.courseStatus),
@@ -79,6 +81,7 @@ export function mapLead(db: DbLeadFull): Lead {
     },
     date,
     time,
+    endTime: end.time,
     instructor: db.instructor || undefined,
     contactName: db.fullName,
     notes: db.notes || undefined,
@@ -254,6 +257,7 @@ export function mapSettings(
     websiteUrl:
       settings?.websiteUrl ||
       "https://www.ezra-medical.com/%D7%9B%D7%A0%D7%99%D7%A1%D7%94-%D7%9C%D7%AA%D7%9C%D7%9E%D7%99%D7%93%D7%99%D7%9D",
+    googleReviewUrl: settings?.googleReviewUrl || "",
     tiktokUrl: settings?.tiktokUrl || "",
     facebookUrl: settings?.facebookUrl || "",
     instagramUrl: settings?.instagramUrl || "",

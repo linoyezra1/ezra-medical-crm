@@ -10,6 +10,7 @@ import {
   Music2,
   Plus,
   Share2,
+  Star,
   TrendingDown,
   TrendingUp,
   Video,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import { ProfitHistoryDialog } from "@/components/dashboard/profit-history-dialog"
+import { StandaloneSalesButton } from "@/components/dashboard/standalone-sales-button"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,10 +30,10 @@ export function DashboardView() {
   const { leads, tasks, settings } = useApp()
 
   const activeLeads = leads.filter((l) => l.status !== "lost")
-  const courseIncome = activeLeads
-    .filter((l) => l.status !== "new")
-    .reduce((s, l) => s + l.totalPrice, 0)
-  const salesIncome = activeLeads.reduce(
+  // רווח בדשבורד — רק הדרכות בסטטוס "הדרכה בוצעה"
+  const doneLeads = activeLeads.filter((l) => l.status === "done")
+  const courseIncome = doneLeads.reduce((s, l) => s + l.totalPrice, 0)
+  const salesIncome = doneLeads.reduce(
     (s, l) =>
       s +
       (l.trainingSales || []).reduce(
@@ -41,11 +43,11 @@ export function DashboardView() {
     0,
   )
   const income = courseIncome + salesIncome
-  const courseExpenses = activeLeads.reduce(
+  const courseExpenses = doneLeads.reduce(
     (s, l) => s + l.expenses.reduce((a, e) => a + e.amount, 0),
     0,
   )
-  const salesCost = activeLeads.reduce(
+  const salesCost = doneLeads.reduce(
     (s, l) =>
       s +
       (l.trainingSales || []).reduce(
@@ -193,14 +195,31 @@ export function DashboardView() {
           </div>
         </section>
 
-        {/* שיווק ברשתות */}
+        {/* שיווק ברשתות + מכירות עצמאיות */}
         <section>
           <SectionTitle title="שיתוף וקידום" />
           <Card className="p-4">
             <p className="mb-3 text-xs text-muted-foreground">
               שתפו את הקישורים שלכם ישירות לוואטסאפ
             </p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-2">
+              <StandaloneSalesButton />
+              {settings.googleReviewUrl?.trim() ? (
+                <a
+                  href={settings.googleReviewUrl.trim()}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex flex-col items-center gap-1 rounded-2xl border border-border bg-card p-3 text-xs font-medium active:scale-95 transition-transform"
+                >
+                  <Star className="size-6 fill-amber-500 text-amber-500" />
+                  גוגל
+                </a>
+              ) : (
+                <div className="flex flex-col items-center gap-1 rounded-2xl border border-border bg-secondary/30 p-3 text-xs font-medium opacity-50">
+                  <Star className="size-6 text-muted-foreground" />
+                  גוגל
+                </div>
+              )}
               {socials.map((s) => {
                 const Icon = s.icon
                 const profileUrl = s.url
@@ -218,7 +237,7 @@ export function DashboardView() {
                       if (!profileUrl) e.preventDefault()
                     }}
                     className={
-                      "flex flex-col items-center gap-2 rounded-2xl border border-border bg-secondary/40 p-3 text-xs font-medium active:scale-95 transition-transform " +
+                      "flex flex-col items-center gap-1 rounded-2xl border border-border bg-secondary/40 p-3 text-xs font-medium active:scale-95 transition-transform " +
                       (!profileUrl ? "pointer-events-none opacity-50" : "")
                     }
                   >

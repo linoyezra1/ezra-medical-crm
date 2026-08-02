@@ -67,9 +67,11 @@ function toDbPayload(lead: Lead, patch: Partial<Lead>): Record<string, unknown> 
   const merged = { ...lead, ...patch };
   const date = merged.date;
   const time = merged.time;
+  const endTime = merged.endTime;
   const raw: Record<string, unknown> = {
     fullName: merged.name,
     phone: merged.phone,
+    phoneSecondary: merged.phoneSecondary?.trim() || null,
     email: merged.email || null,
     urgency: merged.urgent ? "urgent" : "normal",
     courseStatus: uiStatusToDb(merged.status),
@@ -82,7 +84,7 @@ function toDbPayload(lead: Lead, patch: Partial<Lead>): Record<string, unknown> 
     extraParticipantPrice: merged.extraParticipantPrice ?? 50,
     expectedParticipants: merged.participantsCount,
     agreedPrice: merged.totalPrice,
-    instructor: merged.instructor || null,
+    instructor: merged.instructor?.trim() || null,
     notes: merged.notes || null,
     kindergartenApproved: Boolean(merged.kindergartenApproval),
     collectCertificateShipping: Boolean(merged.collectCertificateShipping),
@@ -104,7 +106,17 @@ function toDbPayload(lead: Lead, patch: Partial<Lead>): Record<string, unknown> 
     const start = new Date(`${date}T${time}`);
     if (!Number.isNaN(start.getTime())) {
       raw.scheduledStart = start.toISOString();
-      raw.scheduledEnd = new Date(start.getTime() + 3 * 60 * 60 * 1000).toISOString();
+      if (endTime) {
+        const end = new Date(`${date}T${endTime}`);
+        if (!Number.isNaN(end.getTime()) && end.getTime() > start.getTime()) {
+          raw.scheduledEnd = end.toISOString();
+        } else {
+          raw.scheduledEnd = new Date(start.getTime() + 60 * 60 * 1000).toISOString();
+        }
+      } else {
+        // ברירת מחדל: שעה אחת אם אין שעת סיום (לא 3 שעות קשיחות)
+        raw.scheduledEnd = new Date(start.getTime() + 60 * 60 * 1000).toISOString();
+      }
     }
   }
 
@@ -348,6 +360,7 @@ export function AppProvider({
       const hasBusinessFields =
         patch.businessName != null ||
         patch.websiteUrl != null ||
+        patch.googleReviewUrl != null ||
         patch.tiktokUrl != null ||
         patch.facebookUrl != null ||
         patch.instagramUrl != null;
@@ -356,6 +369,7 @@ export function AppProvider({
         await updateSettingsAction({
           businessName: patch.businessName,
           websiteUrl: patch.websiteUrl,
+          googleReviewUrl: patch.googleReviewUrl,
           tiktokUrl: patch.tiktokUrl,
           facebookUrl: patch.facebookUrl,
           instagramUrl: patch.instagramUrl,

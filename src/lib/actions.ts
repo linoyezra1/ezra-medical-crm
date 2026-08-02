@@ -236,6 +236,12 @@ export async function updateLead(
     data: {
       fullName,
       phone,
+      phoneSecondary:
+        raw.phoneSecondary !== undefined
+          ? raw.phoneSecondary
+            ? sanitizePhone(String(raw.phoneSecondary)) || null
+            : null
+          : existing.phoneSecondary,
       email: merged.email,
       city: merged.city,
       leadSource: merged.leadSource,
@@ -326,13 +332,12 @@ export async function addParticipant(leadId: string, fullName: string, idNumber:
   if (!fullName.trim() || !idNumber.trim()) {
     return { ok: false as const, error: "שם מלא ות.ז. הם שדות חובה" };
   }
-  const trainee = await upsertTraineeFromParticipant({ fullName, idNumber });
+  // מודרך גלובלי נוצר רק לאחר אישור נוכחות
   await prisma.participant.create({
     data: {
       leadId,
       fullName: fullName.trim(),
       idNumber: idNumber.trim(),
-      traineeId: trainee.id,
     },
   });
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
@@ -343,7 +348,6 @@ export async function addParticipant(leadId: string, fullName: string, idNumber:
     });
   }
   revalidatePath(`/leads/${leadId}`);
-  revalidatePath("/clients");
   return { ok: true as const };
 }
 
@@ -415,17 +419,9 @@ export async function submitPublicParticipant(
     }
   }
 
-  const trainee = await upsertTraineeFromParticipant({
-    fullName: data.fullName,
-    idNumber: data.idNumber,
-    email: data.email,
-    phone: data.phone,
-  });
-
   const created = await prisma.participant.create({
     data: {
       leadId,
-      traineeId: trainee.id,
       fullName: data.fullName.trim(),
       idNumber: data.idNumber.trim(),
       organizerName: data.organizerName.trim(),
@@ -444,7 +440,6 @@ export async function submitPublicParticipant(
 
   revalidatePath(`/leads/${leadId}`);
   revalidatePath(`/p/${leadId}`);
-  revalidatePath("/clients");
   return { ok: true, data: { id: created.id } };
 }
 
@@ -453,12 +448,54 @@ export async function setParticipantAttended(
   leadId: string,
   attended: boolean,
 ): Promise<ActionResult<{ attended: boolean }>> {
+  const participant = await prisma.participant.findUnique({
+    where: { id: participantId },
+  });
+  if (!participant) return { ok: false, error: "משתתף לא נמצא" };
+
+  let traineeId = participant.traineeId;
+  if (attended && !traineeId) {
+    const trainee = await upsertTraineeFromParticipant({
+      fullName: participant.fullName,
+      idNumber: participant.idNumber,
+      email: participant.email,
+      phone: participant.phone,
+    });
+    traineeId = trainee.id;
+  }
+
   await prisma.participant.update({
     where: { id: participantId },
-    data: { attended },
+    data: { attended, traineeId: traineeId || null },
   });
   revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/clients");
   return { ok: true, data: { attended } };
+}
+
+export async function updateParticipantDetails(
+  participantId: string,
+  leadId: string,
+  data: {
+    fullName?: string;
+    idNumber?: string;
+    phone?: string;
+    email?: string;
+    feedback?: string;
+  },
+): Promise<ActionResult<{ id: string }>> {
+  await prisma.participant.update({
+    where: { id: participantId },
+    data: {
+      fullName: data.fullName?.trim(),
+      idNumber: data.idNumber?.trim(),
+      phone: data.phone?.trim() || null,
+      email: data.email?.trim() || null,
+      feedback: data.feedback?.trim() || null,
+    },
+  });
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true, data: { id: participantId } };
 }
 
 export async function fetchLeadParticipants(leadId: string) {
@@ -580,7 +617,7 @@ export async function deleteInventoryItem(
 }
 
 export async function addTrainingSale(
-  leadId: string,
+  leadId: string | null,
   inventoryItemId: string,
   quantity: number,
   unitSellingPrice?: number,
@@ -600,9 +637,15 @@ export async function addTrainingSale(
       ? Number(unitSellingPrice)
       : unitCost;
 
+  // זכירת מחיר מכירה אחרון על הפריט
+  await prisma.inventoryItem.update({
+    where: { id: inventoryItemId },
+    data: { sellingPrice: unitSell },
+  });
+
   const created = await prisma.trainingSale.create({
     data: {
-      leadId,
+      leadId: leadId || null,
       inventoryItemId,
       quantity: qty,
       unitSellingPrice: unitSell,
@@ -610,9 +653,10 @@ export async function addTrainingSale(
     },
   });
 
-  revalidatePath(`/leads/${leadId}`);
+  if (leadId) revalidatePath(`/leads/${leadId}`);
   revalidatePath("/dashboard");
   revalidatePath("/");
+  revalidatePath("/equipment");
   return { ok: true, data: { id: created.id } };
 }
 
@@ -662,6 +706,7 @@ export async function deleteExpense(id: string, leadId: string) {
 export async function updateSettings(data: {
   businessName?: string;
   websiteUrl?: string;
+  googleReviewUrl?: string;
   tiktokUrl?: string;
   facebookUrl?: string;
   instagramUrl?: string;

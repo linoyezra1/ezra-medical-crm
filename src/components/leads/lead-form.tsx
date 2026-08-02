@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
   COURSE_TYPE_OTHER,
@@ -35,6 +35,9 @@ import {
 } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
+
+const FORM_STEPS = ["details", "course", "logistics"] as const
+type FormStep = (typeof FORM_STEPS)[number]
 
 interface Props {
   existing?: Lead
@@ -119,10 +122,10 @@ export function LeadForm({ existing }: Props) {
       courseType: "44_hours",
       courseHours: settings.courses.find((c) => c.type === "44_hours")?.hours ?? 44,
       category: OTHER,
-      pricingType: "per_participant",
+      pricingType: "global",
       pricePerUnit: 0,
       extraParticipantPrice: 50,
-      participantsCount: 1,
+      participantsCount: 25,
       totalPrice: 0,
       certificateDelivery: "עזרה ורפואה",
       instructor: DEFAULT_INSTRUCTOR,
@@ -148,7 +151,47 @@ export function LeadForm({ existing }: Props) {
     null,
   )
   const [errors, setErrors] = useState<Record<string, boolean>>({})
+  const [instructorFee, setInstructorFee] = useState(
+    existing?.instructorFee ? String(existing.instructorFee) : "",
+  )
+  const [wizardStep, setWizardStep] = useState<FormStep>("details")
   const [savedFlash, setSavedFlash] = useState(false)
+  const isNew = !existing
+  const sectionRefs = useRef<Partial<Record<FormStep, HTMLElement | null>>>({})
+  const scrollingToStep = useRef(false)
+
+  const goToStep = (step: FormStep) => {
+    setWizardStep(step)
+    scrollingToStep.current = true
+    sectionRefs.current[step]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    })
+    window.setTimeout(() => {
+      scrollingToStep.current = false
+    }, 500)
+  }
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (scrollingToStep.current) return
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)
+        const step = visible[0]?.target.getAttribute("data-step") as
+          | FormStep
+          | null
+        if (step && FORM_STEPS.includes(step)) setWizardStep(step)
+      },
+      { rootMargin: "-15% 0px -55% 0px", threshold: [0.15, 0.35, 0.55] },
+    )
+    for (const step of FORM_STEPS) {
+      const el = sectionRefs.current[step]
+      if (el) observer.observe(el)
+    }
+    return () => observer.disconnect()
+  }, [])
 
   const set = <K extends keyof Lead>(key: K, value: Lead[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -191,7 +234,7 @@ export function LeadForm({ existing }: Props) {
     }
   }
 
-  const importFromContacts = async () => {
+  const importFromContacts = async (target: "primary" | "secondary" = "primary") => {
     type ContactInfo = { name?: string[]; tel?: string[] }
     type ContactsManager = {
       select: (
@@ -214,20 +257,24 @@ export function LeadForm({ existing }: Props) {
       if (!contact) return
       const importedName = contact.name?.[0]?.trim() || ""
       const importedTel = contact.tel?.[0]?.trim() || ""
-      if (importedName) set("name", importedName)
-      if (importedTel) {
-        const cleaned = cleanPhone(importedTel)
-        set("phone", cleaned)
-        const existingClient = findClientByPhone(cleaned)
-        if (
-          existingClient &&
-          (!existing || existing.clientId !== existingClient.id)
-        ) {
-          setDupWarn({ name: existingClient.name, id: existingClient.id })
-          set("customerType", "existing")
-        } else {
-          setDupWarn(null)
+      if (target === "primary") {
+        if (importedName) set("name", importedName)
+        if (importedTel) {
+          const cleaned = cleanPhone(importedTel)
+          set("phone", cleaned)
+          const existingClient = findClientByPhone(cleaned)
+          if (
+            existingClient &&
+            (!existing || existing.clientId !== existingClient.id)
+          ) {
+            setDupWarn({ name: existingClient.name, id: existingClient.id })
+            set("customerType", "existing")
+          } else {
+            setDupWarn(null)
+          }
         }
+      } else if (importedTel) {
+        set("phoneSecondary", cleanPhone(importedTel))
       }
       if (importedName || importedTel) {
         toast.success("איש הקשר יובא לטופס")
@@ -235,7 +282,7 @@ export function LeadForm({ existing }: Props) {
         toast.message("לא נמצאו שם או טלפון באיש הקשר שנבחר")
       }
     } catch {
-      // משתמש ביטל את הבחירה / הרשאה נדחתה
+      // ביטול
     }
   }
 
@@ -275,16 +322,37 @@ export function LeadForm({ existing }: Props) {
     const { category, categoryOther } = resolveCategory()
     const courseResolved = resolveCourseTypeForSave(courseTypeSelect, courseTypeOther)
     const catalog = findCourseCatalog(courseResolved.courseType, settings.courses)
+    const instructor = resolveInstructor()
+    const fee = Number(instructorFee) || 0
+    const expenses =
+      instructor !== DEFAULT_INSTRUCTOR && fee > 0
+        ? [
+            ...form.expenses.filter((e) => e.type !== "מדריך"),
+            {
+              id: uid("e"),
+              type: "מדריך",
+              amount: fee,
+              hasReceipt: false,
+              date: new Date().toISOString().slice(0, 10),
+            },
+          ]
+        : form.expenses
+
     const payload: Lead = {
       ...form,
       phone: cleanPhone(form.phone),
+      phoneSecondary: form.phoneSecondary
+        ? cleanPhone(form.phoneSecondary)
+        : undefined,
       totalPrice: total,
       courseType: courseResolved.courseType,
       courseTypeOther: courseResolved.courseTypeOther,
       courseHours: catalog?.hours,
       category,
       categoryOther,
-      instructor: resolveInstructor(),
+      instructor,
+      instructorFee: instructor !== DEFAULT_INSTRUCTOR ? fee : undefined,
+      expenses,
     }
     if (existing) {
       updateLead(existing.id, payload)
@@ -342,15 +410,26 @@ export function LeadForm({ existing }: Props) {
           </Card>
         )}
 
-        <Tabs defaultValue="details" dir="rtl" className="overflow-visible">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs
+          value={wizardStep}
+          onValueChange={(v) => goToStep(v as FormStep)}
+          dir="rtl"
+          className="overflow-visible"
+        >
+          <TabsList className="sticky top-[57px] z-20 grid w-full grid-cols-3">
             <TabsTrigger value="details">פרטים</TabsTrigger>
             <TabsTrigger value="course">קורס ותמחור</TabsTrigger>
             <TabsTrigger value="logistics">מיקום הדרכה</TabsTrigger>
           </TabsList>
+        </Tabs>
 
-          <TabsContent value="details" className="mt-4 space-y-4 overflow-visible">
-            <Field label="שם הלקוח / הארגון" error={errors.name} required>
+          <section
+            data-step="details"
+            ref={(el) => {
+              sectionRefs.current.details = el
+            }}
+            className="mt-4 scroll-mt-28 space-y-4 overflow-visible"
+          >            <Field label="שם הלקוח / הארגון" error={errors.name} required>
               <div className="flex items-center gap-2">
                 <Input
                   value={form.name}
@@ -365,7 +444,7 @@ export function LeadForm({ existing }: Props) {
                   className="size-10 shrink-0 rounded-xl"
                   title="ייבא מאישי קשר"
                   aria-label="ייבא מאישי קשר"
-                  onClick={importFromContacts}
+                  onClick={() => importFromContacts("primary")}
                 >
                   <ContactRound className="size-5" />
                 </Button>
@@ -381,6 +460,29 @@ export function LeadForm({ existing }: Props) {
                 dir="ltr"
                 className="text-right"
               />
+            </Field>
+            <Field label="טלפון משני (אופציונלי)">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={form.phoneSecondary ?? ""}
+                  onChange={(e) => set("phoneSecondary", e.target.value)}
+                  placeholder="050-0000000"
+                  inputMode="tel"
+                  dir="ltr"
+                  className="flex-1 text-right"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-10 shrink-0 rounded-xl"
+                  title="ייבא מאישי קשר"
+                  aria-label="ייבא מאישי קשר לטלפון משני"
+                  onClick={() => importFromContacts("secondary")}
+                >
+                  <ContactRound className="size-5" />
+                </Button>
+              </div>
             </Field>
             <Field label="דוא״ל">
               <Input
@@ -421,10 +523,15 @@ export function LeadForm({ existing }: Props) {
                 onCheckedChange={(v) => set("urgent", v)}
               />
             </Card>
-          </TabsContent>
+          </section>
 
-          <TabsContent value="course" className="mt-4 space-y-4 overflow-visible">
-            <Field label="סוג קורס" error={errors.courseTypeOther}>
+          <section
+            data-step="course"
+            ref={(el) => {
+              sectionRefs.current.course = el
+            }}
+            className="mt-8 scroll-mt-28 space-y-4 overflow-visible border-t border-border pt-6"
+          >            <Field label="סוג קורס" error={errors.courseTypeOther}>
               <Select
                 value={courseTypeSelect}
                 onValueChange={(v) => {
@@ -581,20 +688,35 @@ export function LeadForm({ existing }: Props) {
                 </Field>
               </div>
             ) : (
-              <Field label="מחיר גלובלי">
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  min={0}
-                  value={globalPrice || ""}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setGlobalPrice(v === "" ? 0 : Number(v))
-                  }}
-                  placeholder="0"
-                />
-              </Field>
+              <div className="space-y-3">
+                <Field label="מחיר גלובלי">
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min={0}
+                    value={globalPrice || ""}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setGlobalPrice(v === "" ? 0 : Number(v))
+                    }}
+                    placeholder="0"
+                  />
+                </Field>
+                <Field label="כמות משתתפים משוערת">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={form.participantsCount || ""}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      set("participantsCount", v === "" ? 0 : Number(v))
+                    }}
+                    placeholder="כמה משתתפים בערך"
+                  />
+                </Field>
+              </div>
             )}
 
             <Card className="flex-row items-center justify-between bg-primary/5 p-4">
@@ -603,10 +725,15 @@ export function LeadForm({ existing }: Props) {
                 {formatCurrency(total)}
               </span>
             </Card>
-          </TabsContent>
+          </section>
 
-          <TabsContent value="logistics" className="mt-4 space-y-4 overflow-visible">
-            <div className="grid grid-cols-2 gap-3">
+          <section
+            data-step="logistics"
+            ref={(el) => {
+              sectionRefs.current.logistics = el
+            }}
+            className="mt-8 scroll-mt-28 space-y-4 overflow-visible border-t border-border pt-6"
+          >            <div className="grid grid-cols-3 gap-3">
               <Field label="תאריך">
                 <Input
                   type="date"
@@ -615,11 +742,19 @@ export function LeadForm({ existing }: Props) {
                   dir="ltr"
                 />
               </Field>
-              <Field label="שעה">
+              <Field label="משעה">
                 <Input
                   type="time"
                   value={form.time ?? ""}
                   onChange={(e) => set("time", e.target.value)}
+                  dir="ltr"
+                />
+              </Field>
+              <Field label="עד שעה">
+                <Input
+                  type="time"
+                  value={form.endTime ?? ""}
+                  onChange={(e) => set("endTime", e.target.value)}
                   dir="ltr"
                 />
               </Field>
@@ -656,6 +791,18 @@ export function LeadForm({ existing }: Props) {
                   value={instructorOther}
                   onChange={(e) => setInstructorOther(e.target.value)}
                   placeholder="הזן שם מדריך"
+                />
+              </Field>
+            )}
+            {instructorSelect !== DEFAULT_INSTRUCTOR && (
+              <Field label="עלות מדריך (₪)">
+                <Input
+                  type="number"
+                  min={0}
+                  value={instructorFee}
+                  onChange={(e) => setInstructorFee(e.target.value)}
+                  placeholder="סכום לתשלום למדריך"
+                  dir="ltr"
                 />
               </Field>
             )}
@@ -738,12 +885,46 @@ export function LeadForm({ existing }: Props) {
                 </Label>
               </Card>
             )}
-          </TabsContent>
-        </Tabs>
+          </section>
 
-        <Button onClick={save} className="mt-6 w-full rounded-2xl py-6 text-base">
-          {existing ? "שמור שינויים" : "צור ליד"}
-        </Button>
+        {isNew ? (
+          <div className="mt-6 flex gap-2">
+            {wizardStep !== "details" && (
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 rounded-2xl py-6"
+                onClick={() =>
+                  goToStep(wizardStep === "logistics" ? "course" : "details")
+                }
+              >
+                חזרה
+              </Button>
+            )}
+            {wizardStep !== "logistics" ? (
+              <Button
+                type="button"
+                className="flex-1 rounded-2xl py-6 text-base"
+                onClick={() =>
+                  goToStep(wizardStep === "details" ? "course" : "logistics")
+                }
+              >
+                המשך
+              </Button>
+            ) : (
+              <Button
+                onClick={save}
+                className="flex-1 rounded-2xl py-6 text-base"
+              >
+                צור ליד
+              </Button>
+            )}
+          </div>
+        ) : (
+          <Button onClick={save} className="mt-6 w-full rounded-2xl py-6 text-base">
+            שמור שינויים
+          </Button>
+        )}
       </div>
     </div>
   )

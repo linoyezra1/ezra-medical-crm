@@ -119,6 +119,17 @@ export function SettingsView() {
                 ברירת מחדל: דף כניסה לתלמידים — משמש ל־QR לאתר בהוספת משתתפים
               </p>
             </div>
+            <div className="space-y-1.5">
+              <Label>קישור דירוג בגוגל</Label>
+              <Input
+                dir="ltr"
+                value={settings.googleReviewUrl || ""}
+                onChange={(e) =>
+                  updateSettings({ googleReviewUrl: e.target.value })
+                }
+                placeholder="https://g.page/r/..."
+              />
+            </div>
           </div>
         </section>
 

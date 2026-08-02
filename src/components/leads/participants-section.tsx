@@ -1,22 +1,41 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ChevronDown, RefreshCw } from "lucide-react"
+import { CheckCheck, Pencil, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   fetchLeadParticipants,
+  removeParticipant,
   setParticipantAttended,
+  updateParticipantDetails,
 } from "@/lib/actions"
 import { useApp } from "@/lib/store"
 import type { Lead, Participant } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export function ParticipantsSection({ lead }: { lead: Lead }) {
-  const { setLeadParticipants } = useApp()
+  const { setLeadParticipants, refresh } = useApp()
   const [polling, setPolling] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editP, setEditP] = useState<Participant | null>(null)
+  const [editForm, setEditForm] = useState({
+    fullName: "",
+    idNumber: "",
+    phone: "",
+    email: "",
+    feedback: "",
+  })
 
   const participants = lead.participants || []
   const attendedCount = participants.filter((p) => p.attended).length
@@ -29,7 +48,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
         const rows = await fetchLeadParticipants(lead.id)
         if (!cancelled) setLeadParticipants(lead.id, rows)
       } catch {
-        /* ignore transient poll errors */
+        /* ignore */
       } finally {
         if (!cancelled) setPolling(false)
       }
@@ -54,17 +73,53 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
         lead.id,
         participants.map((x) => (x.id === p.id ? { ...x, attended: !next } : x)),
       )
+      return
+    }
+    if (next) toast.success("אושרה נוכחות — נוסף למאגר מודרכים")
+    refresh()
+  }
+
+  const selectAll = async () => {
+    for (const p of participants) {
+      if (!p.attended) await toggleAttended(p, true)
     }
   }
 
-  const shipping = (p: Participant) => {
-    const parts = [
-      p.shippingStreet,
-      p.shippingHouseNo,
-      p.shippingCity,
-      p.shippingZip,
-    ].filter(Boolean)
-    return parts.length ? parts.join(", ") : "—"
+  const remove = async (p: Participant) => {
+    const res = await removeParticipant(p.id, lead.id)
+    if (!res.ok) {
+      toast.error("שגיאה במחיקה")
+      return
+    }
+    setLeadParticipants(
+      lead.id,
+      participants.filter((x) => x.id !== p.id),
+    )
+    toast.success("המשתתף נמחק")
+    refresh()
+  }
+
+  const openEdit = (p: Participant) => {
+    setEditP(p)
+    setEditForm({
+      fullName: p.name,
+      idNumber: p.idNumber,
+      phone: p.phone || "",
+      email: p.email || "",
+      feedback: p.feedback || "",
+    })
+  }
+
+  const saveEdit = async () => {
+    if (!editP) return
+    const res = await updateParticipantDetails(editP.id, lead.id, editForm)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success("פרטי המשתתף עודכנו")
+    setEditP(null)
+    refresh()
   }
 
   return (
@@ -81,114 +136,135 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
         />
       }
     >
+      {participants.length > 0 && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mb-3 w-full gap-2 rounded-xl"
+          onClick={selectAll}
+        >
+          <CheckCheck className="size-4" />
+          בחר הכל (אישור נוכחות)
+        </Button>
+      )}
+
       {participants.length === 0 ? (
         <p className="py-4 text-center text-xs text-muted-foreground">
           עדיין אין משתתפים — השתמשו ב״הוסף משתתפים״
         </p>
       ) : (
-        <>
-          {/* Mobile: names + attendance */}
-          <ul className="space-y-2 md:hidden">
-            {participants.map((p) => {
-              const open = expandedId === p.id
-              return (
-                <li
-                  key={p.id}
-                  className="rounded-xl border border-border bg-secondary/30"
-                >
-                  <div className="flex items-center gap-2 p-2.5">
-                    <Checkbox
-                      checked={Boolean(p.attended)}
-                      onCheckedChange={(v) => toggleAttended(p, Boolean(v))}
-                      aria-label={`נוכחות ${p.name}`}
-                    />
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center gap-1 text-right"
-                      onClick={() => setExpandedId(open ? null : p.id)}
-                    >
-                      <span className="truncate text-sm font-medium">{p.name}</span>
-                      <ChevronDown
-                        className={cn(
-                          "mr-auto size-3.5 shrink-0 text-muted-foreground transition-transform",
-                          open && "rotate-180",
-                        )}
-                      />
-                    </button>
+        <ul className="space-y-2">
+          {participants.map((p) => {
+            const open = expandedId === p.id
+            return (
+              <li
+                key={p.id}
+                className="rounded-xl border border-border bg-secondary/30"
+              >
+                <div className="flex items-center gap-2 p-2.5">
+                  <Checkbox
+                    checked={Boolean(p.attended)}
+                    onCheckedChange={(v) => toggleAttended(p, Boolean(v))}
+                    aria-label={`נוכחות ${p.name}`}
+                  />
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-right"
+                    onClick={() => setExpandedId(open ? null : p.id)}
+                  >
+                    <p className="truncate text-sm font-medium">
+                      {p.name} – {p.idNumber}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEdit(p)}
+                    className="flex size-8 items-center justify-center rounded-lg text-muted-foreground"
+                    aria-label="עריכה"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(p)}
+                    className="flex size-8 items-center justify-center rounded-lg text-destructive"
+                    aria-label="מחק"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+                {open && (
+                  <div className="space-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+                    <p>טלפון: {p.phone || "—"}</p>
+                    <p>דוא״ל: {p.email || "—"}</p>
+                    <p>דירוג: {p.satisfaction || "—"}</p>
+                    <p>משוב: {p.feedback || "—"}</p>
+                    {p.attended && (
+                      <p className="font-medium text-emerald-700">
+                        ✓ נוכח — במאגר מודרכים
+                      </p>
+                    )}
                   </div>
-                  {open && (
-                    <div className="space-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
-                      <Row label="ת״ז" value={p.idNumber} />
-                      <Row label="טלפון" value={p.phone || "—"} />
-                      <Row label="דוא״ל" value={p.email || "—"} />
-                      <Row label="תאריך" value={p.courseDate || "—"} />
-                      <Row label="דירוג" value={p.satisfaction || "—"} />
-                      <Row label="משוב" value={p.feedback || "—"} />
-                      <Row label="כתובת / מיקוד" value={shipping(p)} />
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-
-          {/* Desktop: full table */}
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[900px] text-right text-xs">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="p-2 font-medium">נוכחות</th>
-                  <th className="p-2 font-medium">שם מלא</th>
-                  <th className="p-2 font-medium">ת״ז</th>
-                  <th className="p-2 font-medium">טלפון</th>
-                  <th className="p-2 font-medium">דוא״ל</th>
-                  <th className="p-2 font-medium">תאריך</th>
-                  <th className="p-2 font-medium">דירוג</th>
-                  <th className="p-2 font-medium">משוב</th>
-                  <th className="p-2 font-medium">כתובת / מיקוד</th>
-                </tr>
-              </thead>
-              <tbody>
-                {participants.map((p) => (
-                  <tr key={p.id} className="border-b border-border/60">
-                    <td className="p-2">
-                      <Checkbox
-                        checked={Boolean(p.attended)}
-                        onCheckedChange={(v) => toggleAttended(p, Boolean(v))}
-                      />
-                    </td>
-                    <td className="p-2 font-medium text-foreground">{p.name}</td>
-                    <td className="p-2" dir="ltr">
-                      {p.idNumber}
-                    </td>
-                    <td className="p-2" dir="ltr">
-                      {p.phone || "—"}
-                    </td>
-                    <td className="max-w-[140px] truncate p-2" dir="ltr">
-                      {p.email || "—"}
-                    </td>
-                    <td className="p-2">{p.courseDate || "—"}</td>
-                    <td className="p-2">{p.satisfaction || "—"}</td>
-                    <td className="max-w-[160px] truncate p-2">
-                      {p.feedback || "—"}
-                    </td>
-                    <td className="max-w-[180px] truncate p-2">{shipping(p)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       )}
-    </CollapsibleSection>
-  )
-}
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <p>
-      <span className="font-medium text-foreground">{label}: </span>
-      {value}
-    </p>
+      <Dialog open={Boolean(editP)} onOpenChange={(o) => !o && setEditP(null)}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader className="text-right">
+            <DialogTitle>עריכת משתתף</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              value={editForm.fullName}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, fullName: e.target.value }))
+              }
+              placeholder="שם מלא"
+            />
+            <Input
+              value={editForm.idNumber}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, idNumber: e.target.value }))
+              }
+              placeholder="ת״ז"
+              dir="ltr"
+            />
+            <Input
+              value={editForm.phone}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, phone: e.target.value }))
+              }
+              placeholder="טלפון"
+              dir="ltr"
+            />
+            <Input
+              value={editForm.email}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, email: e.target.value }))
+              }
+              placeholder="דוא״ל"
+              dir="ltr"
+            />
+            <Input
+              value={editForm.feedback}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, feedback: e.target.value }))
+              }
+              placeholder="משוב"
+            />
+          </div>
+          <DialogFooter>
+            <Button onClick={saveEdit} className="w-full">
+              שמירה
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </CollapsibleSection>
   )
 }

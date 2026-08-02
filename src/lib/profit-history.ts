@@ -24,10 +24,7 @@ export type ProfitMonthGroup = {
 }
 
 const REVENUE_LEAD_STATUSES = new Set([
-  "closed",
   "done",
-  "pending_certificates",
-  "completed",
 ])
 
 const REVENUE_EQUIPMENT_STATUSES = new Set(["order", "invoice", "paid"])

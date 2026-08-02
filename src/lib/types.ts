@@ -179,6 +179,8 @@ export interface Lead {
   clientId: string;
   name: string;
   phone: string;
+  /** טלפון משני אופציונלי */
+  phoneSecondary?: string;
   email?: string;
   urgent: boolean;
   status: LeadStatus;
@@ -198,8 +200,13 @@ export interface Lead {
   certificateDelivery: CertificateDelivery;
   address: Address;
   date?: string;
+  /** שעת התחלה HH:mm */
   time?: string;
+  /** שעת סיום HH:mm */
+  endTime?: string;
   instructor?: string;
+  /** עלות מדריך חיצוני (כשלא יצחק) */
+  instructorFee?: number;
   contactName?: string;
   notes?: string;
   quoteSentAt?: string;
@@ -344,6 +351,7 @@ export interface CourseCatalogItem {
 export interface BusinessSettings {
   businessName: string;
   websiteUrl?: string;
+  googleReviewUrl?: string;
   tiktokUrl: string;
   facebookUrl: string;
   instagramUrl: string;

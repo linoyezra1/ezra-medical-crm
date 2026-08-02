@@ -8,7 +8,7 @@ import {
   findCourseCatalog,
   formatLeadCourseType,
 } from "@/lib/course-type"
-import { formatCurrency, formatDate, whatsappLink, whatsappSummary } from "@/lib/helpers"
+import { formatCurrency, formatDateWithWeekday, whatsappLink, whatsappSummary, leadStatusCardClass } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -39,7 +39,8 @@ export function LeadCard({ lead }: { lead: Lead }) {
     >
       <Card
         className={cn(
-          "gap-3 p-4 active:scale-[0.99] transition-transform",
+          "gap-3 border-2 p-4 active:scale-[0.99] transition-transform",
+          leadStatusCardClass(lead.status),
           lead.urgent && "border-r-4 border-r-destructive",
         )}
       >
@@ -68,8 +69,9 @@ export function LeadCard({ lead }: { lead: Lead }) {
           </span>
           {lead.date && (
             <span>
-              {formatDate(lead.date)}
+              {formatDateWithWeekday(lead.date)}
               {lead.time ? ` · ${lead.time}` : ""}
+              {lead.endTime ? `–${lead.endTime}` : ""}
             </span>
           )}
           <span className="font-semibold text-foreground">

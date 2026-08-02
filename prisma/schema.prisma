@@ -44,6 +44,8 @@ model Lead {
   // Tab 1 – Contact info (denormalized for fast mobile edit)
   fullName   String
   phone      String
+  /** טלפון משני אופציונלי */
+  phoneSecondary String?
   email      String?
   city       String?
   leadSource String?  // website, friends, facebook, returning, other
@@ -190,11 +192,11 @@ model InventoryComponent {
   @@index([childId])
 }
 
-/** מכירת ציוד בשטח להדרכה */
+/** מכירת ציוד בשטח להדרכה או מכירה עצמאית */
 model TrainingSale {
   id               String        @id @default(cuid())
-  leadId           String
-  lead             Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId           String?
+  lead             Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
   inventoryItemId  String
   inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
   quantity         Int           @default(1)
@@ -255,6 +257,7 @@ model Settings {
   id            String @id @default("default")
   businessName  String @default("עזרה!")
   websiteUrl    String?
+  googleReviewUrl String?
   tiktokUrl     String?
   facebookUrl   String?
   instagramUrl  String?

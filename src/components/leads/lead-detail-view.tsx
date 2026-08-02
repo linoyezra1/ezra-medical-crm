@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   ArrowRight,
   BookOpen,
@@ -19,6 +19,7 @@ import {
   Printer,
   Send,
   UserPlus,
+  CalendarPlus,
 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
@@ -32,7 +33,6 @@ import { TrainingSalesSection } from "@/components/leads/training-sales-section"
 import { SendBookletDialog } from "@/components/leads/send-booklet-dialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import {
   courseMaterialUrl,
   type CourseMaterialKey,
@@ -43,11 +43,16 @@ import {
 } from "@/lib/course-type"
 import {
   formatCurrency,
-  formatDate,
+  formatDateWithWeekday,
+  downloadLeadIcs,
   whatsappLink,
   whatsappSummary,
 } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
+const DETAIL_TABS = ["materials", "participants", "sales", "expenses"] as const
+type DetailTab = (typeof DETAIL_TABS)[number]
 
 export function LeadDetailView({ leadId }: { leadId: string }) {
   const router = useRouter()
@@ -56,6 +61,8 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
   const [lmsOpen, setLmsOpen] = useState(false)
   const [bookletOpen, setBookletOpen] = useState(false)
   const [collectOpen, setCollectOpen] = useState(false)
+  const [detailTab, setDetailTab] = useState<DetailTab>("materials")
+  const touchX = useRef<number | null>(null)
 
   if (!lead) {
     return (
@@ -109,6 +116,21 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
     setLmsOpen(true)
   }
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchX.current = e.touches[0]?.clientX ?? null
+  }
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchX.current == null) return
+    const dx = (e.changedTouches[0]?.clientX ?? touchX.current) - touchX.current
+    touchX.current = null
+    if (Math.abs(dx) < 56) return
+    const idx = DETAIL_TABS.indexOf(detailTab)
+    // RTL: החלקה ימינה → טאב קודם, שמאלה → הבא
+    if (dx > 0 && idx > 0) setDetailTab(DETAIL_TABS[idx - 1])
+    else if (dx < 0 && idx < DETAIL_TABS.length - 1)
+      setDetailTab(DETAIL_TABS[idx + 1])
+  }
+
   return (
     <div>
       <PageHeader
@@ -151,7 +173,14 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
             )}
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <Info label="תאריך" value={`${formatDate(lead.date)}${lead.time ? ` · ${lead.time}` : ""}`} />
+            <Info
+              label="תאריך"
+              value={`${formatDateWithWeekday(lead.date)}${
+                lead.time
+                  ? ` · ${lead.time}${lead.endTime ? `–${lead.endTime}` : ""}`
+                  : ""
+              }`}
+            />
             <Info label="מחיר כולל" value={formatCurrency(lead.totalPrice)} strong />
             <Info label="מדריך" value={lead.instructor || "-"} />
             <Info label="משתתפים" value={String(lead.participantsCount)} />
@@ -189,6 +218,22 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
             onAdd={addTask}
             triggerClassName="col-span-2 rounded-2xl py-6"
           />
+          <Button
+            type="button"
+            variant="outline"
+            className="col-span-2 h-12 gap-2 rounded-2xl"
+            onClick={() => {
+              if (!lead.date || !lead.time) {
+                toast.error("יש להגדיר תאריך ושעה לפני הוספה ליומן")
+                return
+              }
+              downloadLeadIcs(lead)
+              toast.success("קובץ היומן נפתח — שמרו את האירוע ביומן")
+            }}
+          >
+            <CalendarPlus className="size-4" />
+            הכנס ללו״ז
+          </Button>
         </div>
 
         <LifecycleControls lead={lead} />
@@ -210,73 +255,100 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
           </>
         )}
 
-        <ParticipantsSection lead={lead} />
-
-        <CollapsibleSection
-          title="שליחת חומרי הדרכה"
-          subtitle="חוברות, מבחנים, מצגת וסיכום"
-          defaultOpen={false}
+        <Tabs
+          value={detailTab}
+          onValueChange={(v) => setDetailTab(v as DetailTab)}
+          dir="rtl"
+          className="w-full"
         >
-          <div className="grid grid-cols-2 gap-2">
-            <ActionButton
-              icon={BookOpen}
-              label="שלח חוברת"
-              onClick={() => setBookletOpen(true)}
-            />
-            <ActionButton
-              icon={Printer}
-              label="חוברת להדפסה"
-              onClick={() =>
-                sendStaticMaterial("booklet44WordPrint", "חוברת להדפסה (Word)")
-              }
-            />
-            <ActionButton
-              icon={FileText}
-              label="מבחן גרסה 1"
-              onClick={() => sendStaticMaterial("exam44v1", "מבחן 44 גרסה 1")}
-            />
-            <ActionButton
-              icon={ClipboardList}
-              label="מבחן גרסה 2"
-              onClick={() => sendStaticMaterial("exam44v2", "מבחן 44 גרסה 2")}
-            />
-            <ActionButton
-              icon={FileSpreadsheet}
-              label="טבלת משתתפים"
-              onClick={() =>
-                sendStaticMaterial("participantsTable", "פורמט טבלת משתתפים")
-              }
-            />
-            <ActionButton
-              icon={Presentation}
-              label="קישור מצגת"
-              onClick={() => sendFile("מצגת", course?.presentationUrl)}
-            />
-            <ActionButton icon={Copy} label="העתק סיכום" onClick={copySummary} />
-            <ActionButton
-              icon={Send}
-              label="סיכום שיחה"
-              onClick={() =>
-                window.open(whatsappLink(lead.phone, summaryText()), "_blank")
-              }
-            />
-            <ActionButton
-              icon={UserPlus}
-              label="פתח משתמש LMS"
-              onClick={openLms}
-              highlight={lmsOpen}
-            />
+          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 p-1">
+            <TabsTrigger value="materials" className="px-1 text-[10px] leading-tight">
+              חומרי הדרכה
+            </TabsTrigger>
+            <TabsTrigger value="participants" className="px-1 text-[10px] leading-tight">
+              משתתפים
+            </TabsTrigger>
+            <TabsTrigger value="sales" className="px-1 text-[10px] leading-tight">
+              מכירות
+            </TabsTrigger>
+            <TabsTrigger value="expenses" className="px-1 text-[10px] leading-tight">
+              הוצאות
+            </TabsTrigger>
+          </TabsList>
+
+          <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <TabsContent value="materials" className="mt-3">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-border bg-card p-3">
+              <ActionButton
+                icon={BookOpen}
+                label="שלח חוברת"
+                onClick={() => setBookletOpen(true)}
+              />
+              <ActionButton
+                icon={Printer}
+                label="חוברת להדפסה"
+                onClick={() =>
+                  sendStaticMaterial("booklet44WordPrint", "חוברת להדפסה (Word)")
+                }
+              />
+              <ActionButton
+                icon={FileText}
+                label="מבחן גרסה 1"
+                onClick={() => sendStaticMaterial("exam44v1", "מבחן 44 גרסה 1")}
+              />
+              <ActionButton
+                icon={ClipboardList}
+                label="מבחן גרסה 2"
+                onClick={() => sendStaticMaterial("exam44v2", "מבחן 44 גרסה 2")}
+              />
+              <ActionButton
+                icon={FileSpreadsheet}
+                label="טבלת משתתפים"
+                onClick={() =>
+                  sendStaticMaterial("participantsTable", "פורמט טבלת משתתפים")
+                }
+              />
+              <ActionButton
+                icon={Presentation}
+                label="קישור מצגת"
+                onClick={() => sendFile("מצגת", course?.presentationUrl)}
+              />
+              <ActionButton icon={Copy} label="העתק סיכום" onClick={copySummary} />
+              <ActionButton
+                icon={Send}
+                label="סיכום שיחה"
+                onClick={() =>
+                  window.open(whatsappLink(lead.phone, summaryText()), "_blank")
+                }
+              />
+              <ActionButton
+                icon={UserPlus}
+                label="פתח משתמש LMS"
+                onClick={openLms}
+                highlight={lmsOpen}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="participants" className="mt-3">
+            <ParticipantsSection lead={lead} />
+          </TabsContent>
+
+          <TabsContent value="sales" className="mt-3">
+            <TrainingSalesSection lead={lead} />
+          </TabsContent>
+
+          <TabsContent value="expenses" className="mt-3">
+            <ExpensesSection lead={lead} />
+          </TabsContent>
           </div>
-        </CollapsibleSection>
+        </Tabs>
 
         <SendBookletDialog
           lead={lead}
           open={bookletOpen}
           onOpenChange={setBookletOpen}
         />
-
-        <ExpensesSection lead={lead} />
-        <TrainingSalesSection lead={lead} />
       </div>
     </div>
   )

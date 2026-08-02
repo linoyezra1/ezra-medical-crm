@@ -42,6 +42,15 @@ export function TrainingSalesSection({ lead }: { lead: Lead }) {
     if (!salePrice && lastSalePrice) setSalePrice(lastSalePrice)
   }, [lastSalePrice, salePrice])
 
+  // בבחירת פריט — טעינת מחיר מכירה אחרון שנשמר עליו
+  useEffect(() => {
+    const selected = inventory.find((i) => i.id === itemId)
+    if (!selected) return
+    if (selected.sellingPrice > 0) {
+      setSalePrice(String(selected.sellingPrice))
+    }
+  }, [itemId, inventory])
+
   const totalSale = sales.reduce(
     (s, x) => s + x.unitSellingPrice * x.quantity,
     0,
@@ -91,11 +100,6 @@ export function TrainingSalesSection({ lead }: { lead: Lead }) {
           : "אין מכירות עדיין"
       }
       defaultOpen={false}
-      action={
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-          +
-        </span>
-      }
     >
       <div className="space-y-3">
         {/* מחיר מכירה — מוגדר ברמת ההדרכה, ישירות מתחת לכותרת */}
