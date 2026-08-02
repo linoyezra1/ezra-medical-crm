@@ -511,10 +511,10 @@ async function recomputeCompositeCost(parentId: string) {
     where: { parentId },
     include: { child: true },
   });
-  const cost = comps.reduce(
-    (s, c) => s + (c.child.costPrice || 0) * (c.quantity || 0),
-    0,
-  );
+  const cost = comps.reduce((s, c) => {
+    const unit = Number(c.child.costPrice) || Number(c.child.sellingPrice) || 0;
+    return s + unit * (c.quantity || 0);
+  }, 0);
   await prisma.inventoryItem.update({
     where: { id: parentId },
     data: { costPrice: cost, isComposite: true },
@@ -583,6 +583,7 @@ export async function addTrainingSale(
   leadId: string,
   inventoryItemId: string,
   quantity: number,
+  unitSellingPrice?: number,
 ): Promise<ActionResult<{ id: string }>> {
   const qty = Math.max(1, Math.floor(Number(quantity) || 0));
   if (!qty) return { ok: false, error: "כמות חייבת להיות לפחות 1" };
@@ -592,13 +593,20 @@ export async function addTrainingSale(
   });
   if (!item) return { ok: false, error: "הפריט לא נמצא במלאי" };
 
+  const unitCost =
+    Number(item.costPrice) || Number(item.sellingPrice) || 0;
+  const unitSell =
+    unitSellingPrice != null && !Number.isNaN(Number(unitSellingPrice))
+      ? Number(unitSellingPrice)
+      : unitCost;
+
   const created = await prisma.trainingSale.create({
     data: {
       leadId,
       inventoryItemId,
       quantity: qty,
-      unitSellingPrice: item.sellingPrice,
-      unitCostPrice: item.costPrice,
+      unitSellingPrice: unitSell,
+      unitCostPrice: unitCost,
     },
   });
 

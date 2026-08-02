@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
@@ -19,12 +19,28 @@ import { formatCurrency } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 
+function costOf(item: { costPrice: number; sellingPrice: number }) {
+  return Number(item.costPrice) || Number(item.sellingPrice) || 0
+}
+
 export function TrainingSalesSection({ lead }: { lead: Lead }) {
   const { inventory, refresh } = useApp()
   const sales = lead.trainingSales || []
+
+  const lastSalePrice = useMemo(() => {
+    if (!sales.length) return ""
+    const last = sales[sales.length - 1]
+    return String(last.unitSellingPrice ?? "")
+  }, [sales])
+
+  const [salePrice, setSalePrice] = useState("")
   const [itemId, setItemId] = useState<string>("")
   const [qty, setQty] = useState("1")
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!salePrice && lastSalePrice) setSalePrice(lastSalePrice)
+  }, [lastSalePrice, salePrice])
 
   const totalSale = sales.reduce(
     (s, x) => s + x.unitSellingPrice * x.quantity,
@@ -40,8 +56,13 @@ export function TrainingSalesSection({ lead }: { lead: Lead }) {
       toast.error("יש לבחור פריט")
       return
     }
+    const price = Number(salePrice)
+    if (!salePrice.trim() || Number.isNaN(price) || price < 0) {
+      toast.error("יש להגדיר מחיר מכירה תחת הכותרת")
+      return
+    }
     setSaving(true)
-    const res = await addTrainingSale(lead.id, itemId, Number(qty) || 1)
+    const res = await addTrainingSale(lead.id, itemId, Number(qty) || 1, price)
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
@@ -77,9 +98,28 @@ export function TrainingSalesSection({ lead }: { lead: Lead }) {
       }
     >
       <div className="space-y-3">
+        {/* מחיר מכירה — מוגדר ברמת ההדרכה, ישירות מתחת לכותרת */}
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+          <Label className="text-sm font-bold text-foreground">
+            מחיר מכירה
+          </Label>
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            מחיר ליחידה לכל המכירות בהדרכה זו
+          </p>
+          <Input
+            type="number"
+            min={0}
+            value={salePrice}
+            onChange={(e) => setSalePrice(e.target.value)}
+            placeholder="סכום בש״ח ליחידה"
+            dir="ltr"
+            className="h-11 text-base font-semibold"
+          />
+        </div>
+
         <div className="grid grid-cols-[1fr_72px_auto] items-end gap-2">
           <div className="space-y-1">
-            <Label className="text-xs">פריט שנמכר</Label>
+            <Label className="text-xs">פריט מהמלאי</Label>
             <Select value={itemId} onValueChange={(v) => setItemId(v ?? "")}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="בחרו פריט" />
@@ -87,7 +127,8 @@ export function TrainingSalesSection({ lead }: { lead: Lead }) {
               <SelectContent>
                 {inventory.map((i) => (
                   <SelectItem key={i.id} value={i.id}>
-                    {i.name} · {formatCurrency(i.sellingPrice)}
+                    {i.name}
+                    {costOf(i) ? ` · עלות ${formatCurrency(costOf(i))}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -116,15 +157,16 @@ export function TrainingSalesSection({ lead }: { lead: Lead }) {
 
         {selected && (
           <p className="text-[11px] text-muted-foreground">
-            מחיר: {formatCurrency(selected.sellingPrice)} · עלות:{" "}
-            {formatCurrency(selected.costPrice)} · רווח ליחידה:{" "}
-            {formatCurrency(selected.sellingPrice - selected.costPrice)}
+            עלות מהמלאי: {formatCurrency(costOf(selected))} ליחידה
+            {salePrice.trim()
+              ? ` · מכירה: ${formatCurrency(Number(salePrice) || 0)}`
+              : ""}
           </p>
         )}
 
         {!inventory.length && (
           <p className="text-xs text-muted-foreground">
-            אין פריטים במלאי — הוסיפו ב״ניהול ציוד״.
+            אין פריטים במלאי — הוסיפו ב״ניהול מלאי״.
           </p>
         )}
 

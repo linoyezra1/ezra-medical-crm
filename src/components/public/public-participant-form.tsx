@@ -91,9 +91,6 @@ export function PublicParticipantForm({
         <h1 className="text-xl font-bold text-foreground">
           הטופס נשלח בהצלחה, תודה!
         </h1>
-        <p className="text-sm text-muted-foreground">
-          הפרטים נשמרו עבור {businessName}
-        </p>
       </div>
     )
   }

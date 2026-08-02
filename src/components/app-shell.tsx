@@ -30,7 +30,7 @@ const NAV = [
 ]
 
 const MORE = [
-  { href: "/equipment", label: "ניהול ציוד", icon: Boxes },
+  { href: "/equipment", label: "ניהול מלאי", icon: Boxes },
   { href: "/calendar", label: "יומן ומשימות", icon: CalendarDays },
   { href: "/settings", label: "הגדרות עסק", icon: Settings },
 ]

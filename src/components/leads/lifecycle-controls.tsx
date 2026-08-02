@@ -27,6 +27,25 @@ import {
   type Lead,
   type LeadStatus,
 } from "@/lib/types"
+import { cn } from "@/lib/utils"
+
+/** רקע כפתור «קדם ל» לפי הסטטוס היעד */
+function advanceButtonClass(target: LeadStatus): string {
+  switch (target) {
+    case "new":
+      return "bg-amber-400 text-amber-950 hover:bg-amber-500"
+    case "closed":
+      return "bg-orange-500 text-white hover:bg-orange-600"
+    case "done":
+      return "bg-emerald-500 text-white hover:bg-emerald-600"
+    case "pending_certificates":
+      return "bg-emerald-700 text-white hover:bg-emerald-800"
+    case "completed":
+      return "bg-slate-500 text-white hover:bg-slate-600"
+    default:
+      return ""
+  }
+}
 
 export function LifecycleControls({ lead }: { lead: Lead }) {
   const { updateLead, leads } = useApp()
@@ -189,7 +208,10 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
 
           {nextStatus && lead.status !== "completed" && (
             <Button
-              className="justify-between rounded-xl py-6"
+              className={cn(
+                "justify-between rounded-xl py-6 border-0",
+                advanceButtonClass(nextStatus),
+              )}
               onClick={() => advance(nextStatus)}
             >
               קדם ל: {LEAD_STATUS_LABELS[nextStatus]}

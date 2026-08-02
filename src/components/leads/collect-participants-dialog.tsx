@@ -123,18 +123,18 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] max-w-[calc(100%-2rem)] overflow-y-auto rounded-2xl">
         <DialogHeader className="text-right">
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex min-h-8 items-center gap-2 pe-1">
             {step === "detail" && (
               <button
                 type="button"
                 onClick={() => setStep("choose")}
-                className="flex size-8 items-center justify-center rounded-full bg-secondary"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary"
                 aria-label="חזרה"
               >
                 <ArrowRight className="size-4" />
               </button>
             )}
-            {title}
+            <span className="min-w-0 flex-1 truncate text-right">{title}</span>
           </DialogTitle>
         </DialogHeader>
 
