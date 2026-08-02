@@ -38,9 +38,18 @@ const MORE = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [moreOpen, setMoreOpen] = useState(false)
+  const isPublicForm = pathname.startsWith("/p/")
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href)
+
+  if (isPublicForm) {
+    return (
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-background">
+        <main className="flex-1">{children}</main>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-background">

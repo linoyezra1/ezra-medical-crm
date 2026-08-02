@@ -86,7 +86,30 @@ export interface Participant {
   id: string;
   name: string;
   idNumber: string;
+  organizerName?: string;
+  courseDate?: string;
+  email?: string;
+  phone?: string;
+  satisfaction?: string;
+  feedback?: string;
+  kitInterest?: string;
+  shippingCity?: string;
+  shippingStreet?: string;
+  shippingHouseNo?: string;
+  shippingZip?: string;
 }
+
+export const SATISFACTION_OPTIONS = [
+  "סביר",
+  "מרוצה",
+  "מרוצה מאוד",
+  "המדריך היה מעולה",
+] as const;
+
+export const KIT_INTEREST_OPTIONS = [
+  "לא, תודה",
+  "כן, אשמח שתחזרו אליי",
+] as const;
 
 export interface Expense {
   id: string;
@@ -126,6 +149,8 @@ export interface Lead {
   notes?: string;
   quoteSentAt?: string;
   kindergartenApproval?: boolean;
+  /** האם טופס המשתתפים הציבורי דורש כתובת למשלוח תעודה */
+  collectCertificateShipping?: boolean;
   participants: Participant[];
   expenses: Expense[];
   trainingIndex?: number;
@@ -262,6 +287,7 @@ export interface CourseCatalogItem {
 
 export interface BusinessSettings {
   businessName: string;
+  websiteUrl?: string;
   tiktokUrl: string;
   facebookUrl: string;
   instagramUrl: string;

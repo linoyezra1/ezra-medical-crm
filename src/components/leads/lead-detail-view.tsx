@@ -24,6 +24,7 @@ import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { AddTaskDialog } from "@/components/leads/add-task-dialog"
+import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
 import { SendBookletDialog } from "@/components/leads/send-booklet-dialog"
@@ -51,6 +52,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
   const lead = getLead(leadId)
   const [lmsOpen, setLmsOpen] = useState(false)
   const [bookletOpen, setBookletOpen] = useState(false)
+  const [collectOpen, setCollectOpen] = useState(false)
 
   if (!lead) {
     return (
@@ -62,6 +64,9 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
       </div>
     )
   }
+
+  const canCollectParticipants =
+    lead.status === "closed" || lead.status === "done"
 
   const course = findCourseCatalog(lead.courseType, settings.courses)
   const courseLabel = formatLeadCourseType(lead, settings.courses)
@@ -184,6 +189,23 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
         </div>
 
         <LifecycleControls lead={lead} />
+
+        {canCollectParticipants && (
+          <>
+            <Button
+              className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
+              onClick={() => setCollectOpen(true)}
+            >
+              <UserPlus className="size-5" />
+              הוסף משתתפים
+            </Button>
+            <CollectParticipantsDialog
+              lead={lead}
+              open={collectOpen}
+              onOpenChange={setCollectOpen}
+            />
+          </>
+        )}
 
         <Card className="gap-3 p-4">
           <h2 className="text-sm font-bold">שליחת חומרים ללקוח</h2>

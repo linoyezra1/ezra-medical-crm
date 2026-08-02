@@ -67,10 +67,22 @@ export function mapLead(db: DbLeadFull): Lead {
     notes: db.notes || undefined,
     quoteSentAt: db.quoteSentAt?.toISOString(),
     kindergartenApproval: db.kindergartenApproved,
+    collectCertificateShipping: Boolean(db.collectCertificateShipping),
     participants: (db.participants || []).map((p) => ({
       id: p.id,
       name: p.fullName,
       idNumber: p.idNumber,
+      organizerName: p.organizerName || undefined,
+      courseDate: p.courseDate || undefined,
+      email: p.email || undefined,
+      phone: p.phone || undefined,
+      satisfaction: p.satisfaction || undefined,
+      feedback: p.feedback || undefined,
+      kitInterest: p.kitInterest || undefined,
+      shippingCity: p.shippingCity || undefined,
+      shippingStreet: p.shippingStreet || undefined,
+      shippingHouseNo: p.shippingHouseNo || undefined,
+      shippingZip: p.shippingZip || undefined,
     })),
     expenses: (db.expenses || []).map((e) => ({
       id: e.id,
@@ -198,6 +210,7 @@ export function mapSettings(
 
   return {
     businessName: settings?.businessName || "עזרא ורפואה",
+    websiteUrl: settings?.websiteUrl || "",
     tiktokUrl: settings?.tiktokUrl || "",
     facebookUrl: settings?.facebookUrl || "",
     instagramUrl: settings?.instagramUrl || "",

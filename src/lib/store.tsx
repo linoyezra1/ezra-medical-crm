@@ -76,6 +76,7 @@ function toDbPayload(lead: Lead, patch: Partial<Lead>): Record<string, unknown> 
     instructor: merged.instructor || null,
     notes: merged.notes || null,
     kindergartenApproved: Boolean(merged.kindergartenApproval),
+    collectCertificateShipping: Boolean(merged.collectCertificateShipping),
     shippingStreet: merged.address.street,
     shippingHouseNo: merged.address.houseNumber,
     shippingCity: merged.address.city,
@@ -311,6 +312,7 @@ export function AppProvider({
       setSettings((prev) => ({ ...prev, ...patch }));
       const hasBusinessFields =
         patch.businessName != null ||
+        patch.websiteUrl != null ||
         patch.tiktokUrl != null ||
         patch.facebookUrl != null ||
         patch.instagramUrl != null;
@@ -318,6 +320,7 @@ export function AppProvider({
       startTransition(async () => {
         await updateSettingsAction({
           businessName: patch.businessName,
+          websiteUrl: patch.websiteUrl,
           tiktokUrl: patch.tiktokUrl,
           facebookUrl: patch.facebookUrl,
           instagramUrl: patch.instagramUrl,

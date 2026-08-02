@@ -188,6 +188,9 @@ export async function updateLead(
   if (raw.bookletRequired != null) {
     merged.bookletRequired = Boolean(raw.bookletRequired);
   }
+  if (raw.collectCertificateShipping != null) {
+    merged.collectCertificateShipping = Boolean(raw.collectCertificateShipping);
+  }
 
   if (nextStatus !== existing.courseStatus) {
     const validation = await validateStatusTransition(merged, nextStatus, {
@@ -272,6 +275,7 @@ export async function updateLead(
       shippingZip: merged.shippingZip,
       deliveryMethod: merged.deliveryMethod,
       notes: merged.notes,
+      collectCertificateShipping: Boolean(merged.collectCertificateShipping),
       conflictBypassed: Boolean(opts.bypassConflict) || existing.conflictBypassed,
     },
   });
@@ -289,6 +293,7 @@ export async function updateLead(
   revalidatePath("/");
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);
+  revalidatePath(`/p/${leadId}`);
   revalidatePath("/dashboard");
   return { ok: true, data: { id: leadId } };
 }
@@ -309,6 +314,98 @@ export async function addParticipant(leadId: string, fullName: string, idNumber:
   }
   revalidatePath(`/leads/${leadId}`);
   return { ok: true as const };
+}
+
+export async function setCollectCertificateShipping(
+  leadId: string,
+  collect: boolean,
+): Promise<ActionResult<{ collectCertificateShipping: boolean }>> {
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { collectCertificateShipping: collect },
+  });
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath(`/p/${leadId}`);
+  return { ok: true, data: { collectCertificateShipping: collect } };
+}
+
+export type PublicParticipantInput = {
+  organizerName: string;
+  fullName: string;
+  idNumber: string;
+  courseDate: string;
+  email: string;
+  phone: string;
+  satisfaction: string;
+  feedback: string;
+  kitInterest: string;
+  shippingCity?: string;
+  shippingStreet?: string;
+  shippingHouseNo?: string;
+  shippingZip?: string;
+};
+
+export async function submitPublicParticipant(
+  leadId: string,
+  data: PublicParticipantInput,
+): Promise<ActionResult<{ id: string }>> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return { ok: false, error: "ההדרכה לא נמצאה" };
+
+  const allowed = ["closed", "completed", "certificates_pending", "closed_won"];
+  if (!allowed.includes(lead.courseStatus)) {
+    return { ok: false, error: "לא ניתן להירשם להדרכה זו כרגע" };
+  }
+
+  if (!data.fullName?.trim() || !data.idNumber?.trim()) {
+    return { ok: false, error: "שם מלא ותעודת זהות הם שדות חובה" };
+  }
+  if (!data.organizerName?.trim()) {
+    return { ok: false, error: "שם מארגן / מזמין הקורס הוא שדה חובה" };
+  }
+  if (!data.email?.trim() || !data.phone?.trim()) {
+    return { ok: false, error: "דוא״ל וטלפון הם שדות חובה" };
+  }
+  if (!data.satisfaction?.trim() || !data.kitInterest?.trim()) {
+    return { ok: false, error: "יש לבחור שביעות רצון והתעניינות בתיק" };
+  }
+  if (!data.courseDate?.trim()) {
+    return { ok: false, error: "תאריך ביצוע הקורס הוא שדה חובה" };
+  }
+
+  if (lead.collectCertificateShipping) {
+    if (
+      !data.shippingCity?.trim() ||
+      !data.shippingStreet?.trim() ||
+      !data.shippingHouseNo?.trim() ||
+      !data.shippingZip?.trim()
+    ) {
+      return { ok: false, error: "יש למלא כתובת מלאה ומיקוד למשלוח התעודה" };
+    }
+  }
+
+  const created = await prisma.participant.create({
+    data: {
+      leadId,
+      fullName: data.fullName.trim(),
+      idNumber: data.idNumber.trim(),
+      organizerName: data.organizerName.trim(),
+      courseDate: data.courseDate.trim(),
+      email: data.email.trim(),
+      phone: data.phone.trim(),
+      satisfaction: data.satisfaction.trim(),
+      feedback: data.feedback?.trim() || null,
+      kitInterest: data.kitInterest.trim(),
+      shippingCity: data.shippingCity?.trim() || null,
+      shippingStreet: data.shippingStreet?.trim() || null,
+      shippingHouseNo: data.shippingHouseNo?.trim() || null,
+      shippingZip: data.shippingZip?.trim() || null,
+    },
+  });
+
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath(`/p/${leadId}`);
+  return { ok: true, data: { id: created.id } };
 }
 
 export async function removeParticipant(id: string, leadId: string) {
@@ -346,6 +443,7 @@ export async function deleteExpense(id: string, leadId: string) {
 
 export async function updateSettings(data: {
   businessName?: string;
+  websiteUrl?: string;
   tiktokUrl?: string;
   facebookUrl?: string;
   instagramUrl?: string;

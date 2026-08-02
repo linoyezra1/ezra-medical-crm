@@ -1,7 +1,9 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { MapPin, MessageCircle, Phone } from "lucide-react"
+import { useState } from "react"
+import { MapPin, MessageCircle, Phone, UserPlus } from "lucide-react"
+import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
 import {
@@ -16,8 +18,11 @@ import { cn } from "@/lib/utils"
 export function LeadCard({ lead }: { lead: Lead }) {
   const router = useRouter()
   const { settings } = useApp()
+  const [collectOpen, setCollectOpen] = useState(false)
   const course = findCourseCatalog(lead.courseType, settings.courses)
   const courseLabel = formatLeadCourseType(lead, settings.courses)
+  const canCollect =
+    lead.status === "closed" || lead.status === "done"
   const stop = (e: React.MouseEvent) => {
     e.stopPropagation()
   }
@@ -87,7 +92,29 @@ export function LeadCard({ lead }: { lead: Lead }) {
             <MessageCircle className="size-4" /> סיכום שיחה
           </a>
         </div>
+
+        {canCollect && (
+          <button
+            type="button"
+            onClick={(e) => {
+              stop(e)
+              setCollectOpen(true)
+            }}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-xs font-bold text-primary-foreground active:scale-95 transition-transform"
+          >
+            <UserPlus className="size-4" />
+            הוסף משתתפים
+          </button>
+        )}
       </Card>
+
+      {canCollect && (
+        <CollectParticipantsDialog
+          lead={lead}
+          open={collectOpen}
+          onOpenChange={setCollectOpen}
+        />
+      )}
     </div>
   )
 }

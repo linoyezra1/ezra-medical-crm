@@ -99,12 +99,26 @@ export function SettingsView() {
       <div className="space-y-4 p-4 pb-8">
         <section className="rounded-2xl border border-border bg-card p-4">
           <h2 className="mb-3 text-sm font-bold text-foreground">פרטי העסק</h2>
-          <div className="space-y-1.5">
-            <Label>שם העסק</Label>
-            <Input
-              value={settings.businessName}
-              onChange={(e) => updateSettings({ businessName: e.target.value })}
-            />
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>שם העסק</Label>
+              <Input
+                value={settings.businessName}
+                onChange={(e) => updateSettings({ businessName: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>אתר העסק</Label>
+              <Input
+                dir="ltr"
+                value={settings.websiteUrl || ""}
+                onChange={(e) => updateSettings({ websiteUrl: e.target.value })}
+                placeholder="https://..."
+              />
+              <p className="text-[11px] text-muted-foreground">
+                משמש ליצירת QR לאתר בטופס הוספת משתתפים
+              </p>
+            </div>
           </div>
         </section>
 

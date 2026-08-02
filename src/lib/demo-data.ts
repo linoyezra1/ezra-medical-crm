@@ -145,6 +145,7 @@ export const DEFAULT_COURSES: CourseCatalogItem[] = [
 
 export const DEFAULT_SETTINGS = {
   businessName: "עזרא ורפואה",
+  websiteUrl: "",
   tiktokUrl: "",
   facebookUrl: "",
   instagramUrl: "",
