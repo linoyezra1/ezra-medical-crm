@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import {
   ClipboardCheck,
@@ -28,7 +27,12 @@ import type { Lead } from "@/lib/types"
 
 const STORAGE_KEY = "ezra-instructor-name"
 
-export function InstructorTrainingsView() {
+export function InstructorTrainingsView({
+  portalToken,
+}: {
+  portalToken: string
+}) {
+  void portalToken
   const { leads, settings } = useApp()
   const [name, setName] = useState("")
   const [ready, setReady] = useState(false)
@@ -86,10 +90,7 @@ export function InstructorTrainingsView() {
         ) : (
           mine.map((lead) => {
             const pay = instructorPayAmount(lead)
-            const address = [
-              lead.address?.street,
-              lead.address?.houseNumber,
-            ]
+            const address = [lead.address?.street, lead.address?.houseNumber]
               .filter(Boolean)
               .join(" ")
             const canCollect =
@@ -113,7 +114,11 @@ export function InstructorTrainingsView() {
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <SummaryRow icon={User} label="מדריך" value={lead.instructor || "—"} />
+                  <SummaryRow
+                    icon={User}
+                    label="מדריך"
+                    value={lead.instructor || "—"}
+                  />
                   <SummaryRow
                     icon={Wallet}
                     label="משך"
@@ -152,12 +157,6 @@ export function InstructorTrainingsView() {
                     <ClipboardCheck className="size-3.5" />
                     נוכחות
                   </Button>
-                  <Link
-                    href={`/leads/${lead.id}`}
-                    className="inline-flex h-8 items-center rounded-xl px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-                  >
-                    פרטים
-                  </Link>
                 </div>
                 {rollLeadId === lead.id && (
                   <div className="border-t border-border pt-3">
@@ -183,7 +182,12 @@ export function InstructorTrainingsView() {
   )
 }
 
-export function InstructorPayDashboard() {
+export function InstructorPayDashboard({
+  portalToken,
+}: {
+  portalToken: string
+}) {
+  void portalToken
   const { leads } = useApp()
   const [name, setName] = useState("")
 
@@ -215,7 +219,10 @@ export function InstructorPayDashboard() {
           </p>
         </Card>
         {done.map((lead) => (
-          <Card key={lead.id} className="flex items-center justify-between gap-3 p-3">
+          <Card
+            key={lead.id}
+            className="flex items-center justify-between gap-3 p-3"
+          >
             <div className="min-w-0 text-right">
               <p className="truncate text-sm font-semibold">{lead.name}</p>
               <p className="text-[11px] text-muted-foreground">

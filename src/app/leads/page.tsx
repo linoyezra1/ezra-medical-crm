@@ -1,7 +1,7 @@
-import { LeadsListView } from "@/components/leads/leads-list-view";
+import { LeadsWorkspace } from "@/components/leads/leads-workspace"
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"
 
 export default function LeadsPage() {
-  return <LeadsListView />;
+  return <LeadsWorkspace />
 }

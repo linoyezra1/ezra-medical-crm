@@ -54,7 +54,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 const DETAIL_TABS = ["materials", "participants", "sales", "expenses"] as const
 type DetailTab = (typeof DETAIL_TABS)[number]
 
-export function LeadDetailView({ leadId }: { leadId: string }) {
+export function LeadDetailView({
+  leadId,
+  embedded = false,
+}: {
+  leadId: string
+  /** בתצוגת פיצול דסקטופ — בלי כפתור חזרה למובייל */
+  embedded?: boolean
+}) {
   const router = useRouter()
   const { getLead, settings, addTask } = useApp()
   const lead = getLead(leadId)
@@ -132,26 +139,36 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
   }
 
   return (
-    <div>
+    <div className={embedded ? "md:min-h-full" : undefined}>
       <PageHeader
         title={lead.name}
         subtitle={courseLabel}
         back={
-          <button
-            type="button"
-            onClick={() => router.back()}
-            aria-label="חזרה"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"
-          >
-            <ArrowRight className="size-5" />
-          </button>
+          embedded ? (
+            <Link
+              href="/leads"
+              aria-label="חזרה לרשימה"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground md:hidden"
+            >
+              <ArrowRight className="size-5" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => router.back()}
+              aria-label="חזרה"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"
+            >
+              <ArrowRight className="size-5" />
+            </button>
+          )
         }
         action={
           <Button
             size="icon"
             variant="secondary"
             nativeButton={false}
-            className="size-9 rounded-full shrink-0"
+            className="size-9 shrink-0 rounded-full"
             render={
               <Link href={`/leads/${lead.id}/edit`} aria-label="עריכה">
                 <Pencil className="size-4" />
@@ -161,7 +178,9 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
         }
       />
 
-      <div className="space-y-4 p-4">
+      <div className="space-y-4 p-4 md:p-6">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start">
+        <div className="space-y-4">
         <Card className="gap-3 p-4">
           <div className="flex items-center justify-between">
             <LeadStatusBadge status={lead.status} />
@@ -254,12 +273,13 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
             />
           </>
         )}
+        </div>
 
         <Tabs
           value={detailTab}
           onValueChange={(v) => setDetailTab(v as DetailTab)}
           dir="rtl"
-          className="w-full"
+          className="w-full lg:sticky lg:top-[73px]"
         >
           <TabsList className="grid h-auto w-full grid-cols-4 gap-1 p-1">
             <TabsTrigger value="materials" className="px-1 text-[10px] leading-tight">
@@ -343,6 +363,7 @@ export function LeadDetailView({ leadId }: { leadId: string }) {
           </TabsContent>
           </div>
         </Tabs>
+        </div>
 
         <SendBookletDialog
           lead={lead}

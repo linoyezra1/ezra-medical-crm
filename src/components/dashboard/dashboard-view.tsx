@@ -94,10 +94,10 @@ export function DashboardView() {
         }
       />
 
-      <div className="space-y-5 p-4">
+      <div className="space-y-5 p-4 md:mx-auto md:max-w-6xl md:p-6 lg:grid lg:max-w-none lg:grid-cols-12 lg:gap-6 lg:space-y-0">
         {/* מטריקות פיננסיות */}
-        <section className="grid grid-cols-2 gap-3">
-          <Card className="col-span-2 gap-0 border-none bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/20">
+        <section className="grid grid-cols-2 gap-3 lg:col-span-12 lg:grid-cols-4">
+          <Card className="col-span-2 gap-0 border-none bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/20 lg:col-span-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 text-sm opacity-90">
                 <Wallet className="size-4" />
@@ -135,13 +135,13 @@ export function DashboardView() {
 
         {/* לידים דחופים */}
         {urgentLeads.length > 0 && (
-          <section>
+          <section className="lg:col-span-7">
             <SectionTitle
               icon={AlertTriangle}
               title="דורש טיפול מיידי"
               tone="destructive"
             />
-            <div className="space-y-2">
+            <div className="space-y-2 md:grid md:grid-cols-2 md:gap-2 md:space-y-0">
               {urgentLeads.map((l) => (
                 <Link key={l.id} href={`/leads/${l.id}`}>
                   <Card className="flex-row items-center justify-between gap-2 border-r-4 border-r-destructive p-3">
@@ -163,7 +163,7 @@ export function DashboardView() {
         )}
 
         {/* משימות היום */}
-        <section>
+        <section className={urgentLeads.length > 0 ? "lg:col-span-5" : "lg:col-span-7"}>
           <div className="mb-2 flex items-center justify-between">
             <SectionTitle icon={CalendarClock} title="המשימות שלי" />
             <Link
@@ -196,13 +196,13 @@ export function DashboardView() {
         </section>
 
         {/* שיווק ברשתות + מכירות עצמאיות */}
-        <section>
+        <section className={urgentLeads.length > 0 ? "lg:col-span-12" : "lg:col-span-5"}>
           <SectionTitle title="שיתוף וקידום" />
-          <Card className="p-4">
+          <Card className="mx-auto max-w-none p-4 md:max-w-xl lg:max-w-none">
             <p className="mb-3 text-xs text-muted-foreground">
               שתפו את הקישורים שלכם ישירות לוואטסאפ
             </p>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-2 md:grid-cols-5">
               <StandaloneSalesButton />
               {settings.googleReviewUrl?.trim() ? (
                 <a
@@ -253,7 +253,7 @@ export function DashboardView() {
         <Button
           variant="outline"
           nativeButton={false}
-          className="w-full justify-between rounded-2xl py-6"
+          className="w-full justify-between rounded-2xl py-6 lg:col-span-12 md:max-w-md"
           render={
             <Link href="/settings">
               הגדרות עסק וקישורים

@@ -8,7 +8,7 @@ import { TraineesPanel } from "@/components/clients/trainees-panel"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useApp } from "@/lib/store"
-import { formatPhone } from "@/lib/helpers"
+import { formatCurrency, formatPhone } from "@/lib/helpers"
 
 export function ClientsView() {
   const { clients, leads, equipment, trainees } = useApp()
@@ -44,9 +44,9 @@ export function ClientsView() {
         subtitle={`${clients.length} לקוחות · ${trainees.length} מודרכים`}
       />
 
-      <div className="px-4 pt-3">
+      <div className="px-4 pt-3 md:mx-auto md:max-w-6xl md:px-6">
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-2 md:max-w-sm">
             <TabsTrigger value="trainees" className="text-xs">
               מודרכים
             </TabsTrigger>
@@ -58,13 +58,13 @@ export function ClientsView() {
       </div>
 
       {tab === "trainees" ? (
-        <div className="p-4">
+        <div className="p-4 md:mx-auto md:max-w-6xl md:p-6">
           <TraineesPanel />
         </div>
       ) : (
         <>
-          <div className="sticky top-[57px] z-20 bg-background/95 px-4 py-3 backdrop-blur-md">
-            <div className="relative">
+          <div className="sticky top-[57px] z-20 bg-background/95 px-4 py-3 backdrop-blur-md md:static md:mx-auto md:max-w-6xl md:px-6 md:pt-4">
+            <div className="relative md:max-w-md">
               <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={q}
@@ -76,7 +76,8 @@ export function ClientsView() {
             </div>
           </div>
 
-          <div className="space-y-2 p-4">
+          {/* מובייל: כרטיסים */}
+          <div className="space-y-2 p-4 md:hidden">
             {enriched.map((c) => (
               <Link
                 key={c.id}
@@ -113,6 +114,56 @@ export function ClientsView() {
             {enriched.length === 0 && (
               <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
                 לא נמצאו לקוחות
+              </div>
+            )}
+          </div>
+
+          {/* דסקטופ: טבלה */}
+          <div className="hidden p-4 md:mx-auto md:block md:max-w-6xl md:p-6 md:pt-2">
+            {enriched.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
+                לא נמצאו לקוחות
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-border bg-card">
+                <table className="w-full min-w-[700px] text-right text-sm">
+                  <thead className="bg-secondary/50 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2.5 font-semibold">שם</th>
+                      <th className="px-3 py-2.5 font-semibold">טלפון</th>
+                      <th className="px-3 py-2.5 font-semibold">עיר</th>
+                      <th className="px-3 py-2.5 font-semibold">הדרכות</th>
+                      <th className="px-3 py-2.5 font-semibold">ציוד</th>
+                      <th className="px-3 py-2.5 font-semibold">הכנסות</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {enriched.map((c) => (
+                      <tr
+                        key={c.id}
+                        className="border-t border-border transition-colors hover:bg-secondary/30"
+                      >
+                        <td className="px-3 py-2.5">
+                          <Link
+                            href={`/clients/${c.id}`}
+                            className="font-semibold text-primary hover:underline"
+                          >
+                            {c.name}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2.5" dir="ltr">
+                          {formatPhone(c.phone)}
+                        </td>
+                        <td className="px-3 py-2.5">{c.city || "—"}</td>
+                        <td className="px-3 py-2.5">{c.leadCount}</td>
+                        <td className="px-3 py-2.5">{c.equipCount}</td>
+                        <td className="px-3 py-2.5 font-medium">
+                          {formatCurrency(c.revenue)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

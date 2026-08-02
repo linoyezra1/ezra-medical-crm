@@ -91,24 +91,14 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
       return
     }
 
-    // מעבר ל"בוצעה": דורש לפחות משתתף אחד
+    // מעבר ל"בוצעה" ומעלה — ללא פתיחה אוטומטית של מודל משתתפים
     if (target === "done") {
-      if (lead.participants.length === 0) {
-        setParticipantsOpen(true)
-        toast.message("יש להזין לפחות משתתף אחד")
-        return
-      }
       updateLead(lead.id, { status: "done" })
       toast.success("ההדרכה סומנה כבוצעה")
       return
     }
 
     if (target === "pending_certificates") {
-      if (lead.participants.length === 0) {
-        toast.error("יש להזין לפחות משתתף אחד")
-        setParticipantsOpen(true)
-        return
-      }
       updateLead(lead.id, { status: "pending_certificates" })
       toast.success("עבר לסטטוס ממתין לתעודות")
       return

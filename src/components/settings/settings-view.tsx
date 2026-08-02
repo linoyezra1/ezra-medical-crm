@@ -96,7 +96,7 @@ export function SettingsView() {
     <div>
       <PageHeader title="הגדרות עסק" subtitle={settings.businessName} />
 
-      <div className="space-y-4 p-4 pb-8">
+      <div className="mx-auto max-w-xl space-y-4 p-4 pb-8 md:max-w-3xl md:p-6">
         <section className="rounded-2xl border border-border bg-card p-4">
           <h2 className="mb-3 text-sm font-bold text-foreground">פרטי העסק</h2>
           <div className="space-y-3">

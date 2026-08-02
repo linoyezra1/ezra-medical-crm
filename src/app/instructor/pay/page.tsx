@@ -1,7 +1,8 @@
-import { InstructorPayDashboard } from "@/components/instructor/instructor-portal"
+import { redirect } from "next/navigation"
 
 export const dynamic = "force-dynamic"
 
-export default function InstructorPayPage() {
-  return <InstructorPayDashboard />
+/** נתיב ישן — מפנה לדף שדורש טוקן */
+export default function LegacyInstructorPayPage() {
+  redirect("/instructor")
 }

@@ -395,7 +395,7 @@ export function LeadForm({ existing }: Props) {
         }
       />
 
-      <div className="overflow-visible p-4">
+      <div className="mx-auto w-full max-w-xl overflow-visible p-4 md:max-w-3xl md:px-6 md:py-6">
         {dupWarn && (
           <Card className="mb-3 gap-1 border-warning/40 bg-warning/10 p-3">
             <p className="text-sm font-semibold text-warning-foreground">

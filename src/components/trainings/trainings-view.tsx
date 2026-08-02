@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 type Filter = "upcoming" | "done" | "certificates" | "all"
 
 export function TrainingsView() {
-  const { leads } = useApp()
+  const { leads, settings } = useApp()
   const [filter, setFilter] = useState<Filter>("upcoming")
 
   const trainings = useMemo(
@@ -62,9 +62,9 @@ export function TrainingsView() {
         }
       />
 
-      <div className="px-4 pt-3">
+      <div className="px-4 pt-3 md:mx-auto md:max-w-6xl md:px-6">
         <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-4 md:max-w-md">
             <TabsTrigger value="upcoming" className="text-xs">
               קרובות
             </TabsTrigger>
@@ -81,7 +81,8 @@ export function TrainingsView() {
         </Tabs>
       </div>
 
-      <div className="space-y-5 p-4">
+      {/* מובייל: כרטיסים מקובצים */}
+      <div className="space-y-5 p-4 md:hidden">
         {grouped.length === 0 && (
           <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
             אין הדרכות בקטגוריה זו
@@ -96,57 +97,126 @@ export function TrainingsView() {
             </div>
             <div className="space-y-2">
               {items.map((l) => (
-                <Link
-                  key={l.id}
-                  href={`/leads/${l.id}`}
-                  className={cn(
-                    "flex items-start gap-3 rounded-2xl border-2 p-3 active:scale-[0.99] transition-transform",
-                    leadStatusCardClass(l.status),
-                  )}
-                >
-                  <div className="flex size-12 shrink-0 flex-col items-center justify-center rounded-xl bg-white/80 text-primary">
-                    <span className="text-sm font-bold leading-none">
-                      {l.time || "--:--"}
-                    </span>
-                    {l.endTime && (
-                      <span className="mt-0.5 text-[9px] text-muted-foreground">
-                        עד {l.endTime}
-                      </span>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-foreground">
-                        {l.name}
-                      </p>
-                      <StatusBadge status={l.status} />
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {formatLeadCourseType(l)}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="size-3" />
-                        {l.address.city || "-"}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="size-3" />
-                        {l.participants.length || l.participantsCount}
-                      </span>
-                      {l.instructor && (
-                        <span className="flex items-center gap-1 font-medium text-foreground">
-                          <User className="size-3" />
-                          {l.instructor}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </Link>
+                <TrainingCard key={l.id} lead={l} />
               ))}
             </div>
           </section>
         ))}
       </div>
+
+      {/* דסקטופ: טבלה מורחבת */}
+      <div className="hidden p-4 md:mx-auto md:block md:max-w-6xl md:p-6">
+        {filtered.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
+            אין הדרכות בקטגוריה זו
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            <table className="w-full min-w-[800px] text-right text-sm">
+              <thead className="bg-secondary/50 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2.5 font-semibold">תאריך / שעה</th>
+                  <th className="px-3 py-2.5 font-semibold">שם</th>
+                  <th className="px-3 py-2.5 font-semibold">סטטוס</th>
+                  <th className="px-3 py-2.5 font-semibold">קורס</th>
+                  <th className="px-3 py-2.5 font-semibold">עיר</th>
+                  <th className="px-3 py-2.5 font-semibold">כתובת</th>
+                  <th className="px-3 py-2.5 font-semibold">מדריך</th>
+                  <th className="px-3 py-2.5 font-semibold">משתתפים</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((l) => (
+                  <tr
+                    key={l.id}
+                    className="border-t border-border transition-colors hover:bg-secondary/30"
+                  >
+                    <td className="whitespace-nowrap px-3 py-2.5">
+                      <div className="font-medium">
+                        {l.date ? formatDateWithWeekday(l.date) : "—"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {l.time || "—"}
+                        {l.endTime ? `–${l.endTime}` : ""}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <Link
+                        href={`/leads/${l.id}`}
+                        className="font-semibold text-primary hover:underline"
+                      >
+                        {l.name}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <StatusBadge status={l.status} />
+                    </td>
+                    <td className="max-w-[160px] truncate px-3 py-2.5 text-muted-foreground">
+                      {formatLeadCourseType(l, settings.courses)}
+                    </td>
+                    <td className="px-3 py-2.5">{l.address.city || "—"}</td>
+                    <td className="max-w-[180px] truncate px-3 py-2.5 text-muted-foreground">
+                      {[l.address.street, l.address.houseNumber]
+                        .filter(Boolean)
+                        .join(" ") || "—"}
+                    </td>
+                    <td className="px-3 py-2.5">{l.instructor || "—"}</td>
+                    <td className="px-3 py-2.5">
+                      {l.participants.length || l.participantsCount}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
+  )
+}
+
+function TrainingCard({ lead: l }: { lead: Lead }) {
+  return (
+    <Link
+      href={`/leads/${l.id}`}
+      className={cn(
+        "flex items-start gap-3 rounded-2xl border-2 p-3 active:scale-[0.99] transition-transform",
+        leadStatusCardClass(l.status),
+      )}
+    >
+      <div className="flex size-12 shrink-0 flex-col items-center justify-center rounded-xl bg-white/80 text-primary">
+        <span className="text-sm font-bold leading-none">{l.time || "--:--"}</span>
+        {l.endTime && (
+          <span className="mt-0.5 text-[9px] text-muted-foreground">
+            עד {l.endTime}
+          </span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-sm font-semibold text-foreground">{l.name}</p>
+          <StatusBadge status={l.status} />
+        </div>
+        <p className="truncate text-xs text-muted-foreground">
+          {formatLeadCourseType(l)}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <MapPin className="size-3" />
+            {l.address.city || "-"}
+          </span>
+          <span className="flex items-center gap-1">
+            <Users className="size-3" />
+            {l.participants.length || l.participantsCount}
+          </span>
+          {l.instructor && (
+            <span className="flex items-center gap-1 font-medium text-foreground">
+              <User className="size-3" />
+              {l.instructor}
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
   )
 }

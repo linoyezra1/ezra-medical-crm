@@ -1,7 +1,8 @@
-import { InstructorTrainingsView } from "@/components/instructor/instructor-portal"
+import { InstructorUnauthorized } from "@/components/instructor/instructor-unauthorized"
 
 export const dynamic = "force-dynamic"
 
-export default function InstructorPage() {
-  return <InstructorTrainingsView />
+/** אין כניסה לממשק מדריך ללא טוקן ב־URL */
+export default function InstructorIndexPage() {
+  return <InstructorUnauthorized />
 }

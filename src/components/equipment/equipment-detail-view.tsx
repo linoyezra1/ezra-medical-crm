@@ -128,7 +128,7 @@ export function EquipmentDetailView({ id }: { id: string }) {
       </div>
 
       {nextStatus && (
-        <div className="fixed inset-x-0 bottom-[76px] z-30 mx-auto max-w-md px-4">
+        <div className="fixed inset-x-0 bottom-[76px] z-30 mx-auto max-w-md px-4 md:inset-x-auto md:bottom-6 md:start-[calc(14rem+1.5rem)] md:max-w-sm">
           <Button className="h-12 w-full gap-2 text-base shadow-lg" onClick={advance} disabled={busy}>
             <Check className="size-5" />
             קדם ל"{EQUIPMENT_STATUS_LABELS[nextStatus]}"

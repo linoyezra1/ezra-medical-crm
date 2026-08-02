@@ -22,6 +22,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { instructorPortalPath } from "@/lib/instructor-portal"
 import { cn } from "@/lib/utils"
 
 const NAV = [
@@ -35,20 +36,24 @@ const MORE = [
   { href: "/equipment", label: "ניהול מלאי", icon: Boxes },
   { href: "/calendar", label: "יומן ומשימות", icon: CalendarDays },
   { href: "/instructors", label: "הדרכות מדריכים", icon: UserRound },
-  { href: "/instructor", label: "ממשק מדריך", icon: GraduationCap },
   { href: "/settings", label: "הגדרות עסק", icon: Settings },
 ]
 
-const INSTRUCTOR_NAV = [
-  { href: "/instructor", label: "הדרכות שלי", icon: GraduationCap, exact: true },
-  { href: "/instructor/pay", label: "דשבורד שכר", icon: Wallet, exact: false },
-]
+const DESKTOP_NAV = [...NAV, ...MORE]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [moreOpen, setMoreOpen] = useState(false)
   const isPublicForm = pathname.startsWith("/p/")
-  const isInstructorPortal =
+  const instructorTokenMatch = pathname.match(
+    /^\/instructor\/([^/]+)(?:\/pay)?\/?$/,
+  )
+  const instructorToken =
+    instructorTokenMatch?.[1] && instructorTokenMatch[1] !== "pay"
+      ? decodeURIComponent(instructorTokenMatch[1])
+      : null
+  const isInstructorPortal = Boolean(instructorToken)
+  const isInstructorGate =
     pathname === "/instructor" || pathname.startsWith("/instructor/")
 
   const isActive = (href: string) =>
@@ -56,43 +61,79 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isPublicForm) {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-background">
-        <main className="flex-1">{children}</main>
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background md:max-w-lg md:py-6">
+        <main className="flex-1 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-sm">
+          {children}
+        </main>
       </div>
     )
   }
 
-  if (isInstructorPortal) {
+  if (isInstructorGate && !isInstructorPortal) {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-background">
-        <main className="flex-1 pb-24">{children}</main>
-        <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur-md">
-          <div className="flex items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)]">
-            {INSTRUCTOR_NAV.map((item) => {
-              const active = item.exact
-                ? pathname === item.href
-                : pathname.startsWith(item.href)
-              const Icon = item.icon
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium transition-colors",
-                    active ? "text-primary" : "text-muted-foreground",
-                  )}
-                >
-                  <Icon className="size-6" strokeWidth={1.8} />
-                  {item.label}
-                </Link>
-              )
-            })}
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background md:max-w-lg md:justify-center md:py-10">
+        <main className="flex-1 md:flex-none">{children}</main>
+      </div>
+    )
+  }
+
+  if (isInstructorPortal && instructorToken) {
+    const trainingsHref = instructorPortalPath(instructorToken)
+    const payHref = instructorPortalPath(instructorToken, "pay")
+    return (
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background md:max-w-2xl">
+        <nav className="sticky top-0 z-40 hidden border-b border-border bg-card/95 backdrop-blur-md md:block">
+          <div className="flex gap-2 px-4 py-2">
             <Link
-              href="/"
-              className="flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium text-muted-foreground"
+              href={trainingsHref}
+              className={cn(
+                "rounded-lg px-3 py-2 text-sm font-medium",
+                pathname === trainingsHref
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-secondary",
+              )}
             >
-              <LayoutDashboard className="size-6" strokeWidth={1.8} />
-              חזרה למערכת
+              הדרכות שלי
+            </Link>
+            <Link
+              href={payHref}
+              className={cn(
+                "rounded-lg px-3 py-2 text-sm font-medium",
+                pathname.startsWith(payHref)
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-secondary",
+              )}
+            >
+              דשבורד שכר
+            </Link>
+          </div>
+        </nav>
+        <main className="flex-1 pb-24 md:pb-6">{children}</main>
+        <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur-md md:hidden">
+          <div className="flex items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)]">
+            <Link
+              href={trainingsHref}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium transition-colors",
+                pathname === trainingsHref
+                  ? "text-primary"
+                  : "text-muted-foreground",
+              )}
+            >
+              <GraduationCap className="size-6" strokeWidth={1.8} />
+              הדרכות שלי
+            </Link>
+            <Link
+              href={payHref}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium transition-colors",
+                pathname.startsWith(payHref)
+                  ? "text-primary"
+                  : "text-muted-foreground",
+              )}
+            >
+              <Wallet className="size-6" strokeWidth={1.8} />
+              דשבורד שכר
             </Link>
           </div>
         </nav>
@@ -101,10 +142,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-background">
-      <main className="flex-1 pb-24">{children}</main>
+    <div className="min-h-dvh bg-background">
+      {/* —— Desktop sidebar (RTL: start = ימין) —— */}
+      <aside className="fixed inset-y-0 start-0 z-40 hidden w-56 flex-col border-e border-border bg-card md:flex">
+        <div className="border-b border-border px-4 py-4">
+          <p className="text-xs font-medium text-muted-foreground">מערכת ניהול</p>
+          <p className="text-base font-bold text-foreground">עזרה!</p>
+        </div>
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+          {DESKTOP_NAV.map((item) => {
+            const active = isActive(item.href)
+            const Icon = item.icon
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                  active
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                )}
+              >
+                <Icon className="size-5 shrink-0" strokeWidth={active ? 2.2 : 1.8} />
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+      </aside>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur-md">
+      {/* —— Main column —— */}
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col md:ms-56 md:max-w-none">
+        <main className="flex-1 pb-24 md:pb-0">{children}</main>
+      </div>
+
+      {/* —— Mobile bottom nav —— */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur-md md:hidden">
         <div className="flex items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)]">
           {NAV.map((item) => {
             const active = isActive(item.href)
@@ -139,7 +213,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <LayoutGrid className="size-6" strokeWidth={1.8} />
               עוד
             </SheetTrigger>
-            <SheetContent side="bottom" className="rounded-t-3xl">
+            <SheetContent side="bottom" className="rounded-t-3xl md:hidden">
               <SheetHeader className="text-right">
                 <SheetTitle>תפריט נוסף</SheetTitle>
               </SheetHeader>
@@ -172,22 +246,31 @@ export function PageHeader({
   subtitle,
   action,
   back,
+  className,
 }: {
   title: string
   subtitle?: string
   action?: React.ReactNode
   back?: React.ReactNode
+  className?: string
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-card/95 px-4 py-3 backdrop-blur-md">
+    <header
+      className={cn(
+        "sticky top-0 z-30 border-b border-border bg-card/95 px-4 py-3 backdrop-blur-md md:px-6 md:py-4",
+        className,
+      )}
+    >
       <div className="flex items-center gap-3">
         {back}
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-bold text-foreground text-balance">
+          <h1 className="truncate text-lg font-bold text-foreground text-balance md:text-xl">
             {title}
           </h1>
           {subtitle && (
-            <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+            <p className="truncate text-xs text-muted-foreground md:text-sm">
+              {subtitle}
+            </p>
           )}
         </div>
         {action}

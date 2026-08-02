@@ -89,18 +89,20 @@ export function formatTrainingDuration(lead: {
 /** צבעי מסגרת + רקע לכרטיס ליד לפי סטטוס */
 export function leadStatusCardClass(status: Lead["status"]): string {
   switch (status) {
+    // ליד בטיפול / שלא נסגר עדיין
     case "new":
-      return "border-amber-400/70 bg-amber-50"
+      return "border-orange-400 bg-orange-50/50"
+    // נסגר ונכנס ליומן
     case "closed":
-      return "border-orange-400/70 bg-orange-50"
+      return "border-green-500 bg-green-50/50"
+    // הדרכה בוצעה
     case "done":
-      return "border-emerald-400/70 bg-emerald-50"
+      return "border-blue-500 bg-blue-50/50"
+    // תהליך הסתיים / ארכיון
     case "pending_certificates":
-      return "border-emerald-700/60 bg-emerald-100"
     case "completed":
-      return "border-slate-400/70 bg-slate-100"
     case "lost":
-      return "border-muted bg-muted/40"
+      return "border-slate-300 bg-slate-100/60 text-slate-600"
     default:
       return ""
   }
