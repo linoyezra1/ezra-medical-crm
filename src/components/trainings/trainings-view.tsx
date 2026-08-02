@@ -7,8 +7,9 @@ import { PageHeader } from "@/components/app-shell"
 import { StatusBadge } from "@/components/status-badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
-import { useApp } from "@/lib/store"
 import { formatDateWithWeekday, leadStatusCardClass } from "@/lib/helpers"
+import { useApp } from "@/lib/store"
+import { jerusalemLocalToUtcDate } from "@/lib/timezone"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -31,8 +32,12 @@ export function TrainingsView() {
     else if (filter === "certificates")
       list = trainings.filter((l) => l.status === "pending_certificates")
     return [...list].sort((a, b) => {
-      const ta = a.date ? new Date(`${a.date}T${a.time || "00:00"}`).getTime() : 0
-      const tb = b.date ? new Date(`${b.date}T${b.time || "00:00"}`).getTime() : 0
+      const ta = a.date
+        ? jerusalemLocalToUtcDate(a.date, a.time || "00:00").getTime()
+        : 0
+      const tb = b.date
+        ? jerusalemLocalToUtcDate(b.date, b.time || "00:00").getTime()
+        : 0
       return filter === "done" ? tb - ta : ta - tb
     })
   }, [trainings, filter])

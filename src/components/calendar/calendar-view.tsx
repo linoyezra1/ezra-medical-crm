@@ -34,8 +34,9 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
-import { useApp } from "@/lib/store"
 import { formatDate, uid } from "@/lib/helpers"
+import { useApp } from "@/lib/store"
+import { jerusalemLocalToUtcDate } from "@/lib/timezone"
 import type { Lead, Task } from "@/lib/types"
 
 type PendingDelete = {
@@ -108,8 +109,8 @@ export function CalendarView() {
       })
     }
     items.sort((a, b) => {
-      const ta = new Date(`${a.date}T${a.time || "00:00"}`).getTime()
-      const tb = new Date(`${b.date}T${b.time || "00:00"}`).getTime()
+      const ta = jerusalemLocalToUtcDate(a.date, a.time || "00:00").getTime()
+      const tb = jerusalemLocalToUtcDate(b.date, b.time || "00:00").getTime()
       return ta - tb
     })
     const map = new Map<string, Item[]>()

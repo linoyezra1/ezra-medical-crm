@@ -5,6 +5,11 @@ import {
   buildSummaryVars,
   fillSummaryTemplate,
 } from "./summary-template";
+import {
+  formatInJerusalem,
+  jerusalemLocalToUtcDate,
+  toIcsJerusalemWall,
+} from "./timezone";
 import { sanitizePhone } from "./utils";
 
 export function cleanPhone(raw: string): string {
@@ -63,16 +68,24 @@ export function formatDateWithWeekday(date?: string): string {
   return `${WEEKDAYS_HE[d.getDay()]} | ${formatDate(date)}`
 }
 
-/** תשלום מדריך מהוצאות / שדה עלות */
+/** @deprecated השתמשו ב־resolveInstructorFee מ־training-profit */
 export function instructorPayAmount(lead: {
   expenses?: { type: string; amount: number }[]
-  instructorFee?: number
+  instructorFeeOverride?: number
+  instructorId?: string
+  instructor?: string
 }): number {
+  if (
+    lead.instructorFeeOverride != null &&
+    Number.isFinite(lead.instructorFeeOverride)
+  ) {
+    return Math.max(0, Number(lead.instructorFeeOverride))
+  }
   const exp = (lead.expenses || []).find(
-    (e) => e.type === "מדריך" || e.type === "instructor",
+    (e) => e.type === "מדריך" || e.type === "instructor" || e.type === "instructor_fee",
   )
   if (exp) return exp.amount
-  return lead.instructorFee || 0
+  return 0
 }
 
 /** משך הדרכה לתצוגה */
@@ -115,13 +128,15 @@ export function findConflicts(
   excludeId?: string
 ): Lead[] {
   if (!date || !time) return [];
-  const target = new Date(`${date}T${time}`).getTime();
+  const target = jerusalemLocalToUtcDate(date, time).getTime();
+  if (Number.isNaN(target)) return [];
   const windowMs = 60 * 60 * 1000;
   return leads.filter((l) => {
     if (l.id === excludeId) return false;
     if (l.status === "lost" || l.status === "new") return false;
     if (!l.date || !l.time) return false;
-    const t = new Date(`${l.date}T${l.time}`).getTime();
+    const t = jerusalemLocalToUtcDate(l.date, l.time).getTime();
+    if (Number.isNaN(t)) return false;
     return Math.abs(t - target) <= windowMs;
   });
 }
@@ -199,11 +214,6 @@ function icsEscape(text: string): string {
     .replace(/;/g, "\\;");
 }
 
-function toIcsLocalDateTime(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
-
 function toIcsUtcStamp(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
@@ -232,24 +242,30 @@ export function buildLeadIcsContent(lead: Lead): string {
     `הערות: ${lead.notes?.trim() || "-"}`,
   ].join(", ");
 
-  // משך: לפי endTime אם קיים, אחרת לפי שעות הקורס / 4 שעות
-  const start =
-    lead.date && lead.time
-      ? new Date(`${lead.date}T${lead.time}`)
-      : new Date();
-  let end: Date
-  if (lead.date && lead.endTime) {
-    end = new Date(`${lead.date}T${lead.endTime}`)
-    if (end.getTime() <= start.getTime()) {
-      end = new Date(start.getTime() + 60 * 60 * 1000)
-    }
-  } else {
+  // שעון קיר מדויק כפי שהמשתמש הזין — ללא המרת אזור זמן של המכונה
+  const date = lead.date || formatInJerusalem(new Date()).date || ""
+  const startTime = lead.time || "09:00"
+  let endTime = lead.endTime
+  if (!endTime && date) {
+    const startMs = jerusalemLocalToUtcDate(date, startTime).getTime()
     const durationHours =
       lead.courseHours && lead.courseHours > 0 ? lead.courseHours : 4
-    end = new Date(start.getTime() + durationHours * 60 * 60 * 1000)
+    const endParts = formatInJerusalem(new Date(startMs + durationHours * 60 * 60 * 1000))
+    endTime = endParts.time || "10:00"
+  } else if (!endTime) {
+    endTime = "10:00"
   }
+  if (date && endTime && startTime) {
+    const startMs = jerusalemLocalToUtcDate(date, startTime).getTime()
+    const endMs = jerusalemLocalToUtcDate(date, endTime).getTime()
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs <= startMs) {
+      const fixed = formatInJerusalem(new Date(startMs + 60 * 60 * 1000))
+      endTime = fixed.time || endTime
+    }
+  }
+
   const now = new Date();
-  const uid = `${lead.id || "lead"}-${start.getTime()}@ezra-crm`;
+  const uid = `${lead.id || "lead"}-${date}${startTime}@ezra-crm`;
 
   const lines = [
     "BEGIN:VCALENDAR",
@@ -260,8 +276,8 @@ export function buildLeadIcsContent(lead: Lead): string {
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${toIcsUtcStamp(now)}`,
-    `DTSTART:${toIcsLocalDateTime(start)}`,
-    `DTEND:${toIcsLocalDateTime(end)}`,
+    `DTSTART;TZID=Asia/Jerusalem:${toIcsJerusalemWall(date, startTime)}`,
+    `DTEND;TZID=Asia/Jerusalem:${toIcsJerusalemWall(date, endTime)}`,
     `SUMMARY:${icsEscape(summary)}`,
     `LOCATION:${icsEscape(location)}`,
     `DESCRIPTION:${icsEscape(description)}`,

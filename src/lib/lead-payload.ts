@@ -1,3 +1,4 @@
+import { jerusalemLocalToISO } from "@/lib/timezone"
 import { uiStatusToDb, type Lead } from "@/lib/types"
 
 /** המרת Lead מ־UI ל־payload של Prisma / API */
@@ -15,7 +16,6 @@ export function leadToDbPayload(
     phone: merged.phone,
     phoneSecondary: merged.phoneSecondary?.trim() || null,
     email: merged.email || null,
-    urgency: merged.urgent ? "urgent" : "normal",
     courseStatus: uiStatusToDb(merged.status),
     courseType: merged.courseType,
     courseTypeOther: merged.courseTypeOther || null,
@@ -30,6 +30,12 @@ export function leadToDbPayload(
     /** מחיר כולל / מחיר גלובלי — נשמר כ־agreedPrice */
     agreedPrice: merged.totalPrice,
     instructor: merged.instructor?.trim() || null,
+    instructorId: merged.instructorId || null,
+    instructorFeeOverride:
+      merged.instructorFeeOverride != null &&
+      Number.isFinite(merged.instructorFeeOverride)
+        ? Number(merged.instructorFeeOverride)
+        : null,
     notes: merged.notes || null,
     kindergartenApproved: Boolean(merged.kindergartenApproval),
     collectCertificateShipping: Boolean(merged.collectCertificateShipping),
@@ -51,22 +57,21 @@ export function leadToDbPayload(
   }
 
   if (date && time) {
-    const start = new Date(`${date}T${time}`)
-    if (!Number.isNaN(start.getTime())) {
-      raw.scheduledStart = start.toISOString()
+    // שעון קיר ישראל → ISO UTC (בלי תלות באזור המכונה)
+    const startIso = jerusalemLocalToISO(date, time)
+    const startMs = Date.parse(startIso)
+    if (!Number.isNaN(startMs)) {
+      raw.scheduledStart = startIso
       if (endTime) {
-        const end = new Date(`${date}T${endTime}`)
-        if (!Number.isNaN(end.getTime()) && end.getTime() > start.getTime()) {
-          raw.scheduledEnd = end.toISOString()
+        const endIso = jerusalemLocalToISO(date, endTime)
+        const endMs = Date.parse(endIso)
+        if (!Number.isNaN(endMs) && endMs > startMs) {
+          raw.scheduledEnd = endIso
         } else {
-          raw.scheduledEnd = new Date(
-            start.getTime() + 60 * 60 * 1000,
-          ).toISOString()
+          raw.scheduledEnd = new Date(startMs + 60 * 60 * 1000).toISOString()
         }
       } else {
-        raw.scheduledEnd = new Date(
-          start.getTime() + 60 * 60 * 1000,
-        ).toISOString()
+        raw.scheduledEnd = new Date(startMs + 60 * 60 * 1000).toISOString()
       }
     }
   }

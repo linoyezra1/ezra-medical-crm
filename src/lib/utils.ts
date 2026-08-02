@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { jerusalemDatetimeLocalValue } from "@/lib/timezone";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -47,11 +48,7 @@ export function formatCurrency(amount: number | null | undefined): string {
 }
 
 export function datetimeLocalValue(date: Date | string | null | undefined): string {
-  if (!date) return "";
-  const d = typeof date === "string" ? new Date(date) : date;
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return jerusalemDatetimeLocalValue(date);
 }
 
 export function labelOf(

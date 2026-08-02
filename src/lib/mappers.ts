@@ -11,14 +11,17 @@ import type {
   InventoryItem as DbInventoryItem,
   InventoryComponent,
   TrainingSale as DbTrainingSale,
+  Instructor as DbInstructor,
 } from "@/generated/prisma/client";
 import { DEFAULT_COURSES } from "@/lib/demo-data";
+import { formatInJerusalem } from "@/lib/timezone";
 import {
   dbEquipmentToUi,
   dbStatusToUi,
   type BusinessSettings,
   type Client,
   type EquipmentDeal,
+  type InstructorProfile,
   type InventoryItem,
   type Lead,
   type Task,
@@ -30,15 +33,20 @@ type DbLeadFull = DbLead & {
   participants?: Participant[];
   expenses?: Expense[];
   trainingSales?: (DbTrainingSale & { inventoryItem?: { name: string } | null })[];
+  instructorRef?: DbInstructor | null;
 };
 
+export function mapInstructor(db: DbInstructor): InstructorProfile {
+  return {
+    id: db.id,
+    name: db.name,
+    fee: db.fee || 0,
+    active: db.active,
+  };
+}
+
 function splitDateTime(d: Date | null | undefined): { date?: string; time?: string } {
-  if (!d) return {};
-  const iso = new Date(d);
-  if (Number.isNaN(iso.getTime())) return {};
-  const date = iso.toISOString().slice(0, 10);
-  const time = iso.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
-  return { date, time };
+  return formatInJerusalem(d);
 }
 
 const CERTIFICATE_VIA = new Set(["עזרה ורפואה", "ניתאי", "יוסי"]);
@@ -61,7 +69,6 @@ export function mapLead(db: DbLeadFull): Lead {
     phone: db.phone,
     phoneSecondary: (db as { phoneSecondary?: string | null }).phoneSecondary || undefined,
     email: db.email || undefined,
-    urgent: db.urgency === "urgent",
     status: dbStatusToUi(db.courseStatus),
     customerType: db.leadSource === "returning" ? "existing" : "new",
     courseType: db.courseType || db.courseTypeOther || "לא צוין",
@@ -82,7 +89,10 @@ export function mapLead(db: DbLeadFull): Lead {
     date,
     time,
     endTime: end.time,
-    instructor: db.instructor || undefined,
+    instructor: db.instructorRef?.name || db.instructor || undefined,
+    instructorId: db.instructorId || db.instructorRef?.id || undefined,
+    instructorFeeOverride:
+      db.instructorFeeOverride != null ? db.instructorFeeOverride : undefined,
     contactName: db.fullName,
     notes: db.notes || undefined,
     quoteSentAt: db.quoteSentAt?.toISOString(),
@@ -188,12 +198,12 @@ export function mapTask(t: FollowUpTask): Task {
       type: t.title.includes("Net") ? "collection" : "general",
     };
   }
-  const d = new Date(t.dueDate);
+  const { date, time } = formatInJerusalem(t.dueDate);
   return {
     id: t.id,
     title: t.title,
-    date: d.toISOString().slice(0, 10),
-    time: d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
+    date: date || "",
+    time,
     assignee: t.assignee || "מכירות",
     note: t.notes || undefined,
     done: t.completed,

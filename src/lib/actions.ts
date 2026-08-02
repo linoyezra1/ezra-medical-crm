@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/db";
+import { jerusalemLocalToUtcDate } from "@/lib/timezone";
 import { sanitizePhone } from "@/lib/utils";
 import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
@@ -10,6 +11,28 @@ import type { ConflictHit } from "@/lib/conflicts";
 export type ActionResult<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; error: string; code?: string; conflicts?: ConflictHit[] };
+
+/** פרשנות תאריך/שעה מה־API: ISO עם Z/offset כרגיל; אחרת שעון קיר Asia/Jerusalem */
+function parseIncomingDateTime(value: unknown): Date | null {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const s = String(value).trim();
+  if (!s) return null;
+  // כבר UTC / offset מפורש
+  if (/[zZ]$/.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)/.exec(s);
+  if (m) {
+    const d = jerusalemLocalToUtcDate(m[1], m[2]);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 function calcAgreedPrice(input: {
   pricingModel?: string | null;
@@ -23,6 +46,76 @@ function calcAgreedPrice(input: {
     return rate * count;
   }
   return input.agreedPrice ?? null;
+}
+
+/** יוצר / מעדכן פרופיל מדריך ומחזיר id — תעריף חי כמקור אמת */
+export async function ensureInstructor(
+  name: string,
+  fee?: number | null,
+): Promise<ActionResult<{ id: string; name: string; fee: number }>> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { ok: false, error: "שם מדריך חסר" };
+  }
+  try {
+    const existing = await prisma.instructor.findUnique({
+      where: { name: trimmed },
+    });
+    if (existing) {
+      const nextFee =
+        fee != null && Number.isFinite(Number(fee))
+          ? Math.max(0, Number(fee))
+          : existing.fee;
+      const updated =
+        nextFee !== existing.fee
+          ? await prisma.instructor.update({
+              where: { id: existing.id },
+              data: { fee: nextFee, active: true },
+            })
+          : existing;
+      return {
+        ok: true,
+        data: { id: updated.id, name: updated.name, fee: updated.fee },
+      };
+    }
+    const created = await prisma.instructor.create({
+      data: {
+        name: trimmed,
+        fee: fee != null && Number.isFinite(Number(fee)) ? Math.max(0, Number(fee)) : 0,
+        active: true,
+      },
+    });
+    revalidatePath("/");
+    revalidatePath("/leads");
+    revalidatePath("/instructors");
+    return {
+      ok: true,
+      data: { id: created.id, name: created.name, fee: created.fee },
+    };
+  } catch (err) {
+    console.error("[ensureInstructor]", err);
+    return { ok: false, error: "לא ניתן לשמור פרופיל מדריך" };
+  }
+}
+
+export async function updateInstructorFee(
+  id: string,
+  fee: number,
+): Promise<ActionResult<{ id: string; fee: number }>> {
+  try {
+    const updated = await prisma.instructor.update({
+      where: { id },
+      data: { fee: Math.max(0, Number(fee) || 0) },
+    });
+    revalidatePath("/");
+    revalidatePath("/leads");
+    revalidatePath("/instructors");
+    revalidatePath("/dashboard");
+    return { ok: true, data: { id: updated.id, fee: updated.fee } };
+  } catch (err) {
+    console.error("[updateInstructorFee]", err);
+    return { ok: false, error: "לא ניתן לעדכן תעריף מדריך" };
+  }
 }
 
 async function ensureNetFollowUp(leadId: string, paymentTerms: string | null | undefined) {
@@ -102,7 +195,7 @@ export async function createLead(formData: FormData): Promise<
       email: String(formData.get("email") ?? "") || null,
       city: String(formData.get("city") ?? "") || null,
       leadSource: String(formData.get("leadSource") ?? "") || null,
-      urgency: String(formData.get("urgency") ?? "normal"),
+      urgency: "normal",
       activityType: String(formData.get("activityType") ?? "course"),
       notes: String(formData.get("notes") ?? "") || null,
     },
@@ -160,12 +253,12 @@ export async function updateLead(
     courseStatus: nextStatus,
   } as typeof existing;
 
-  // Coerce numeric / date fields
+  // Coerce numeric / date fields — מחרוזות ללא offset נחשבות שעון ישראל
   if (raw.scheduledStart != null && raw.scheduledStart !== "") {
-    merged.scheduledStart = new Date(String(raw.scheduledStart));
+    merged.scheduledStart = parseIncomingDateTime(raw.scheduledStart) ?? existing.scheduledStart;
   }
   if (raw.scheduledEnd != null && raw.scheduledEnd !== "") {
-    merged.scheduledEnd = new Date(String(raw.scheduledEnd));
+    merged.scheduledEnd = parseIncomingDateTime(raw.scheduledEnd) ?? existing.scheduledEnd;
   }
   if (raw.expectedParticipants != null && raw.expectedParticipants !== "") {
     merged.expectedParticipants = Number(raw.expectedParticipants);
@@ -258,7 +351,7 @@ export async function updateLead(
       email: merged.email,
       city: merged.city,
       leadSource: merged.leadSource,
-      urgency: merged.urgency ?? "normal",
+      urgency: "normal",
       activityType: merged.activityType ?? "course",
       courseStatus: nextStatus,
       equipmentStatus: merged.equipmentStatus,
@@ -277,6 +370,18 @@ export async function updateLead(
       scheduledEnd: merged.scheduledEnd,
       location: merged.location,
       instructor: merged.instructor,
+      instructorId:
+        raw.instructorId !== undefined
+          ? raw.instructorId
+            ? String(raw.instructorId)
+            : null
+          : existing.instructorId,
+      instructorFeeOverride:
+        raw.instructorFeeOverride !== undefined
+          ? raw.instructorFeeOverride == null || raw.instructorFeeOverride === ""
+            ? null
+            : Number(raw.instructorFeeOverride)
+          : existing.instructorFeeOverride,
       pricingModel: merged.pricingModel ?? "flat_rate",
       perParticipantRate: merged.perParticipantRate,
       extraParticipantPrice:
@@ -621,12 +726,37 @@ export async function upsertInventoryItem(data: {
   return { ok: true, data: { id } };
 }
 
+/** כמה מכירות מקושרות לפריט מלאי — לפני מחיקה */
+export async function getInventoryItemSaleCount(
+  id: string,
+): Promise<ActionResult<{ count: number }>> {
+  try {
+    const count = await prisma.trainingSale.count({
+      where: { inventoryItemId: id },
+    });
+    return { ok: true, data: { count } };
+  } catch (err) {
+    console.error("[getInventoryItemSaleCount]", err);
+    return { ok: false, error: "לא ניתן לבדוק היסטוריית מכירות" };
+  }
+}
+
 export async function deleteInventoryItem(
   id: string,
 ): Promise<ActionResult<{ id: string }>> {
-  await prisma.inventoryItem.delete({ where: { id } });
-  revalidatePath("/equipment");
-  return { ok: true, data: { id } };
+  try {
+    await prisma.inventoryItem.delete({ where: { id } });
+    revalidatePath("/equipment");
+    revalidatePath("/leads");
+    revalidatePath("/");
+    return { ok: true, data: { id } };
+  } catch (err) {
+    console.error("[deleteInventoryItem]", err);
+    return {
+      ok: false,
+      error: "לא ניתן למחוק את הפריט — ייתכן שהוא מקושר לרשומות אחרות",
+    };
+  }
 }
 
 export async function addTrainingSale(
@@ -847,7 +977,7 @@ export async function createTask(data: {
   let dueDate: Date | null = null;
   if (data.date?.trim()) {
     const time = data.time?.trim() || "09:00";
-    dueDate = new Date(`${data.date}T${time}`);
+    dueDate = jerusalemLocalToUtcDate(data.date.trim(), time);
     if (Number.isNaN(dueDate.getTime())) {
       return { ok: false, error: "תאריך/שעה לא תקינים" };
     }

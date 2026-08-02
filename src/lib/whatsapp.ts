@@ -1,4 +1,5 @@
 import { formatCourseTypeLabel } from "@/lib/course-type";
+import { formatInJerusalem } from "@/lib/timezone";
 import { toWhatsAppNumber } from "@/lib/utils";
 
 export type WhatsAppLeadContext = {
@@ -18,12 +19,12 @@ function courseTypeLabel(lead: WhatsAppLeadContext): string {
 }
 
 function formatDateTime(value: Date | string | null | undefined): { date: string; time: string } {
-  if (!value) return { date: "____", time: "____" };
-  const d = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(d.getTime())) return { date: "____", time: "____" };
+  const { date, time } = formatInJerusalem(value);
+  if (!date || !time) return { date: "____", time: "____" };
+  const [y, m, d] = date.split("-");
   return {
-    date: d.toLocaleDateString("he-IL"),
-    time: d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }),
+    date: `${d}/${m}/${y}`,
+    time,
   };
 }
 
