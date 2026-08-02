@@ -23,7 +23,13 @@ function costOf(item: { costPrice: number; sellingPrice: number }) {
   return Number(item.costPrice) || Number(item.sellingPrice) || 0
 }
 
-export function TrainingSalesSection({ lead }: { lead: Lead }) {
+export function TrainingSalesSection({
+  lead,
+  alwaysOpen = false,
+}: {
+  lead: Lead
+  alwaysOpen?: boolean
+}) {
   const { inventory, refresh } = useApp()
   const sales = lead.trainingSales || []
 
@@ -99,7 +105,8 @@ export function TrainingSalesSection({ lead }: { lead: Lead }) {
           ? `${sales.length} מכירות · רווח ${formatCurrency(profit)}`
           : "אין מכירות עדיין"
       }
-      defaultOpen={false}
+      defaultOpen={alwaysOpen}
+      alwaysOpen={alwaysOpen}
     >
       <div className="space-y-3">
         {/* מחיר מכירה — מוגדר ברמת ההדרכה, ישירות מתחת לכותרת */}

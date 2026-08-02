@@ -47,7 +47,14 @@ function advanceButtonClass(target: LeadStatus): string {
   }
 }
 
-export function LifecycleControls({ lead }: { lead: Lead }) {
+export function LifecycleControls({
+  lead,
+  hideParticipantsManage = false,
+}: {
+  lead: Lead
+  /** בטאב ראשי — ניהול משתתפים עובר לטאב ייעודי */
+  hideParticipantsManage?: boolean
+}) {
   const { updateLead, leads } = useApp()
   const [conflictOpen, setConflictOpen] = useState(false)
   const [participantsOpen, setParticipantsOpen] = useState(false)
@@ -185,7 +192,8 @@ export function LifecycleControls({ lead }: { lead: Lead }) {
         </Button>
       ) : (
         <>
-          {lead.status === "done" || lead.status === "pending_certificates" ? (
+          {!hideParticipantsManage &&
+          (lead.status === "done" || lead.status === "pending_certificates") ? (
             <Button
               variant="outline"
               className="justify-between"

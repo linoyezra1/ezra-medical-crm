@@ -21,7 +21,13 @@ import type { Lead } from "@/lib/types"
 
 const EXPENSE_PRESETS = ["דלק", "מדריך", "אח", "אחר"] as const
 
-export function ExpensesSection({ lead }: { lead: Lead }) {
+export function ExpensesSection({
+  lead,
+  alwaysOpen = false,
+}: {
+  lead: Lead
+  alwaysOpen?: boolean
+}) {
   const { updateLead } = useApp()
   const [adding, setAdding] = useState(false)
   const [preset, setPreset] = useState<string>(EXPENSE_PRESETS[0])
@@ -70,7 +76,8 @@ export function ExpensesSection({ lead }: { lead: Lead }) {
     <CollapsibleSection
       title="הוצאות הדרכה"
       subtitle={total ? formatCurrency(total) : "אין הוצאות"}
-      defaultOpen={false}
+      defaultOpen={alwaysOpen}
+      alwaysOpen={alwaysOpen}
     >
       <div className="space-y-2">
         {lead.expenses.map((e) => (
