@@ -76,6 +76,11 @@ model Lead {
   scheduledEnd   DateTime?
   location       String?
   instructor     String?
+  /** מדריך משובץ — מקור האמת לתעריף החי */
+  instructorId   String?
+  instructorRef  Instructor? @relation(fields: [instructorId], references: [id], onDelete: SetNull)
+  /** דריסת תעריף להדרכה ספציפית; אם null — משתמשים בתעריף החי של המדריך */
+  instructorFeeOverride Float?
 
   // Tab 3 – Pricing & delivery
   pricingModel       String  @default("flat_rate") // flat_rate | per_participant
@@ -113,6 +118,18 @@ model Lead {
   @@index([courseStatus])
   @@index([urgency])
   @@index([scheduledStart])
+  @@index([instructorId])
+}
+
+/** פרופיל מדריך — תעריף חי כמקור אמת לחישוב רווח */
+model Instructor {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  fee       Float    @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leads     Lead[]
 }
 
 model Participant {
@@ -136,6 +153,8 @@ model Participant {
   shippingZip     String?
   /** אישור הגעה / הקראת שמות */
   attended        Boolean  @default(false)
+  /** נוצר משתמש LMS למודרך */
+  hasLmsAccess    Boolean  @default(false)
   createdAt       DateTime @default(now())
 
   @@index([leadId])

@@ -41,15 +41,11 @@ export function LeadCard({ lead }: { lead: Lead }) {
         className={cn(
           "gap-3 border-2 p-4 active:scale-[0.99] transition-transform",
           leadStatusCardClass(lead.status),
-          lead.urgent && "border-r-4 border-r-destructive",
         )}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              {lead.urgent && (
-                <span className="size-2 shrink-0 animate-pulse rounded-full bg-destructive" />
-              )}
               <h3 className="truncate font-bold text-foreground">{lead.name}</h3>
             </div>
             <p className="truncate text-sm text-muted-foreground">

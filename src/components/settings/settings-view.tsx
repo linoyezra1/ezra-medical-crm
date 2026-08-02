@@ -43,7 +43,6 @@ export function SettingsView() {
       clientId: "",
       name: "אתי",
       phone: "0501234567",
-      urgent: false,
       status: "new" as const,
       customerType: "new" as const,
       courseType: "",

@@ -44,11 +44,11 @@ import {
   formatCurrency,
   formatDateWithWeekday,
   downloadLeadIcs,
-  instructorPayAmount,
   whatsappLink,
   whatsappSummary,
 } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
+import { computeTrainingProfit } from "@/lib/training-profit"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type { Lead } from "@/lib/types"
@@ -66,7 +66,6 @@ export function LeadDetailView({
   const router = useRouter()
   const { getLead, settings } = useApp()
   const lead = getLead(leadId)
-  const [lmsOpen, setLmsOpen] = useState(false)
   const [bookletOpen, setBookletOpen] = useState(false)
   const [collectOpen, setCollectOpen] = useState(false)
   const [detailTab, setDetailTab] = useState<DetailTab>("home")
@@ -125,14 +124,6 @@ export function LeadDetailView({
     const name = lead.contactName?.trim() || lead.name
     const text = `היי ${name}, מצורף קישור להורדת ${label}:\n${url}`
     window.open(whatsappLink(lead.phone, text), "_blank", "noopener,noreferrer")
-  }
-
-  const openLms = () => {
-    const username = lead.email?.split("@")[0] || lead.phone
-    toast.success(
-      `נוצר משתמש LMS: ${username} · סיסמה זמנית: Temp${Math.floor(1000 + Math.random() * 9000)}`,
-    )
-    setLmsOpen(true)
   }
 
   const syncCalendar = () => {
@@ -262,7 +253,6 @@ export function LeadDetailView({
 
           <TabsContent value="materials" className="m-0 space-y-4 p-4 md:p-6">
             <MaterialsTab
-              lmsOpen={lmsOpen}
               onBooklet={() => setBookletOpen(true)}
               onStatic={sendStaticMaterial}
               onPresentation={() => sendFile("מצגת", course?.presentationUrl)}
@@ -270,7 +260,6 @@ export function LeadDetailView({
               onSendSummary={() =>
                 window.open(whatsappLink(lead.phone, summaryText()), "_blank")
               }
-              onLms={openLms}
             />
           </TabsContent>
 
@@ -469,21 +458,17 @@ function ParticipantsTab({
 }
 
 function MaterialsTab({
-  lmsOpen,
   onBooklet,
   onStatic,
   onPresentation,
   onCopySummary,
   onSendSummary,
-  onLms,
 }: {
-  lmsOpen: boolean
   onBooklet: () => void
   onStatic: (key: CourseMaterialKey, label: string) => void
   onPresentation: () => void
   onCopySummary: () => void
   onSendSummary: () => void
-  onLms: () => void
 }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -515,50 +500,48 @@ function MaterialsTab({
       />
       <ActionButton icon={Copy} label="העתק סיכום" onClick={onCopySummary} />
       <ActionButton icon={Send} label="סיכום שיחה" onClick={onSendSummary} />
-      <ActionButton
-        icon={UserPlus}
-        label="פתח משתמש LMS"
-        onClick={onLms}
-        highlight={lmsOpen}
-      />
     </div>
   )
 }
 
 function FinanceTab({ lead }: { lead: Lead }) {
-  const sales = lead.trainingSales || []
-  const salesIncome = sales.reduce(
-    (s, x) => s + x.unitSellingPrice * x.quantity,
-    0,
-  )
-  const salesCost = sales.reduce((s, x) => s + x.unitCostPrice * x.quantity, 0)
-  const expensesTotal = lead.expenses.reduce((s, e) => s + e.amount, 0)
-  const instructorFee = instructorPayAmount(lead)
-  const coursePrice = lead.totalPrice || 0
-  const net =
-    coursePrice + salesIncome - expensesTotal - (salesCost > 0 ? salesCost : 0)
+  const { instructors } = useApp()
+  const profit = computeTrainingProfit(lead, instructors)
 
   return (
     <>
       <Card className="gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 shadow-sm">
         <h2 className="text-sm font-bold text-foreground">סיכום רווח הדרכה</h2>
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <Info label="מחיר הדרכה" value={formatCurrency(coursePrice)} />
-          <Info label="מכירות ציוד" value={formatCurrency(salesIncome)} />
-          <Info label="הוצאות" value={formatCurrency(expensesTotal)} />
+          <Info
+            label="מחיר הדרכה"
+            value={formatCurrency(profit.coursePrice)}
+          />
+          <Info
+            label="מכירות ציוד"
+            value={formatCurrency(profit.salesIncome)}
+          />
           <Info
             label="עלות מדריך"
-            value={formatCurrency(instructorFee)}
+            value={formatCurrency(profit.instructorFee)}
+          />
+          <Info
+            label="הוצאות אחרות"
+            value={formatCurrency(profit.otherExpenses)}
           />
         </div>
         <div className="rounded-2xl bg-card px-3 py-2.5 text-sm">
-          <span className="text-muted-foreground">רווח משוער: </span>
-          <strong className="text-primary">{formatCurrency(net)}</strong>
-          {salesCost > 0 && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              כולל ניכוי עלות מלאי {formatCurrency(salesCost)}
-            </p>
-          )}
+          <span className="text-muted-foreground">רווח נקי: </span>
+          <strong className="text-primary">
+            {formatCurrency(profit.netProfit)}
+          </strong>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            ({formatCurrency(profit.revenue)} הכנסות −{" "}
+            {formatCurrency(profit.totalExpenses)} הוצאות)
+            {profit.salesCost > 0
+              ? ` · כולל עלות מלאי ${formatCurrency(profit.salesCost)}`
+              : ""}
+          </p>
         </div>
       </Card>
 

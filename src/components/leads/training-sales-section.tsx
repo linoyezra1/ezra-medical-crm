@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -44,6 +45,8 @@ export function TrainingSalesSection({
   const [itemId, setItemId] = useState<string>("")
   const [qty, setQty] = useState("1")
   const [saving, setSaving] = useState(false)
+  const [deleteSaleId, setDeleteSaleId] = useState<string | null>(null)
+  const [deletingSale, setDeletingSale] = useState(false)
 
   const selectItems = useMemo(
     () =>
@@ -112,12 +115,17 @@ export function TrainingSalesSection({
     refresh()
   }
 
-  const remove = async (id: string) => {
-    const res = await deleteTrainingSale(id, lead.id)
+  const confirmRemoveSale = async () => {
+    if (!deleteSaleId) return
+    setDeletingSale(true)
+    const res = await deleteTrainingSale(deleteSaleId, lead.id)
+    setDeletingSale(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
+    toast.success("רשומת המכירה נמחקה")
+    setDeleteSaleId(null)
     refresh()
   }
 
@@ -187,7 +195,7 @@ export function TrainingSalesSection({
                       <td className="px-2 py-2.5">
                         <button
                           type="button"
-                          onClick={() => remove(s.id)}
+                          onClick={() => setDeleteSaleId(s.id)}
                           className="flex size-8 items-center justify-center rounded-lg text-destructive"
                           aria-label="מחק"
                         >
@@ -298,6 +306,17 @@ export function TrainingSalesSection({
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteSaleId)}
+        onOpenChange={(open) => {
+          if (!open && !deletingSale) setDeleteSaleId(null)
+        }}
+        description="האם אתה בטוח שברצונך למחוק פריט זה? פעולה זו תסיר את הפריט מהמערכת."
+        confirmLabel="כן, מחק פריט"
+        confirming={deletingSale}
+        onConfirm={confirmRemoveSale}
+      />
     </CollapsibleSection>
   )
 }

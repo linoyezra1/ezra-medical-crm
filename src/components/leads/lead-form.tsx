@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -27,6 +26,7 @@ import {
   formatLeadCourseType,
   resolveCourseTypeForSave,
 } from "@/lib/course-type"
+import { ensureInstructor } from "@/lib/actions"
 import {
   calcTotal,
   cleanPhone,
@@ -34,6 +34,7 @@ import {
   uid,
 } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
+import { resolveInstructorFee } from "@/lib/training-profit"
 import type { Lead } from "@/lib/types"
 
 const FORM_STEPS = ["details", "course", "logistics"] as const
@@ -54,7 +55,8 @@ function uniqueSorted(values: Iterable<string>): string[] {
 
 export function LeadForm({ existing }: Props) {
   const router = useRouter()
-  const { addLead, updateLead, settings, findClientByPhone, leads } = useApp()
+  const { addLead, updateLead, settings, findClientByPhone, leads, instructors } =
+    useApp()
 
   const categoryOptions = useMemo(() => {
     const fromDb: string[] = []
@@ -67,11 +69,14 @@ export function LeadForm({ existing }: Props) {
 
   const instructorOptions = useMemo(() => {
     const fromDb: string[] = [DEFAULT_INSTRUCTOR]
+    for (const i of instructors) {
+      if (i.active && i.name !== OTHER) fromDb.push(i.name)
+    }
     for (const l of leads) {
       if (l.instructor && l.instructor !== OTHER) fromDb.push(l.instructor)
     }
     return uniqueSorted(fromDb)
-  }, [leads])
+  }, [leads, instructors])
 
   const courseTypeOptions = useMemo(
     () => collectCourseTypeOptions(leads, settings.courses),
@@ -116,7 +121,6 @@ export function LeadForm({ existing }: Props) {
       name: "",
       phone: "",
       email: "",
-      urgent: false,
       status: "new",
       customerType: "new",
       courseType: "44_hours",
@@ -151,9 +155,13 @@ export function LeadForm({ existing }: Props) {
     null,
   )
   const [errors, setErrors] = useState<Record<string, boolean>>({})
-  const [instructorFee, setInstructorFee] = useState(
-    existing?.instructorFee ? String(existing.instructorFee) : "",
-  )
+  const [instructorFee, setInstructorFee] = useState(() => {
+    if (!existing || existing.instructor === DEFAULT_INSTRUCTOR) return ""
+    const live = resolveInstructorFee(existing, instructors)
+    return live > 0 || existing.instructorFeeOverride != null
+      ? String(existing.instructorFeeOverride ?? live)
+      : ""
+  })
   const [wizardStep, setWizardStep] = useState<FormStep>("details")
   const [savedFlash, setSavedFlash] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -327,60 +335,58 @@ export function LeadForm({ existing }: Props) {
     const catalog = findCourseCatalog(courseResolved.courseType, settings.courses)
     const instructor = resolveInstructor()
     const fee = Number(instructorFee) || 0
-    const expenses =
-      instructor !== DEFAULT_INSTRUCTOR && fee > 0
-        ? [
-            ...form.expenses.filter((e) => e.type !== "מדריך"),
-            {
-              id: uid("e"),
-              type: "מדריך",
-              amount: fee,
-              hasReceipt: false,
-              date: new Date().toISOString().slice(0, 10),
-            },
-          ]
-        : form.expenses
 
-    const payload: Lead = {
-      ...form,
-      phone: cleanPhone(form.phone),
-      phoneSecondary: form.phoneSecondary
-        ? cleanPhone(form.phoneSecondary)
-        : undefined,
-      // מחיר גלובלי / מחושב — נשמר כ־agreedPrice ב־DB
-      totalPrice: total,
-      pricingType: form.pricingType,
-      pricePerUnit: form.pricePerUnit,
-      participantsCount: form.participantsCount,
-      courseType: courseResolved.courseType,
-      courseTypeOther: courseResolved.courseTypeOther,
-      courseHours: catalog?.hours,
-      category,
-      categoryOther,
-      instructor,
-      instructorFee: instructor !== DEFAULT_INSTRUCTOR ? fee : undefined,
-      expenses,
-    }
+    setSaving(true)
+    try {
+      // תעריף חי בפרופיל המדריך — מקור אמת (לא העתקה להוצאות)
+      const ensured = await ensureInstructor(
+        instructor,
+        instructor === DEFAULT_INSTRUCTOR ? 0 : fee,
+      )
+      if (!ensured.ok) {
+        toast.error(ensured.error)
+        return
+      }
 
-    if (existing) {
-      setSaving(true)
-      try {
+      const payload: Lead = {
+        ...form,
+        phone: cleanPhone(form.phone),
+        phoneSecondary: form.phoneSecondary
+          ? cleanPhone(form.phoneSecondary)
+          : undefined,
+        // מחיר גלובלי / מחושב — נשמר כ־agreedPrice ב־DB
+        totalPrice: total,
+        pricingType: form.pricingType,
+        pricePerUnit: form.pricePerUnit,
+        participantsCount: form.participantsCount,
+        courseType: courseResolved.courseType,
+        courseTypeOther: courseResolved.courseTypeOther,
+        courseHours: catalog?.hours,
+        category,
+        categoryOther,
+        instructor: ensured.data.name,
+        instructorId: ensured.data.id,
+        // תעריף חי בפרופיל בלבד — מנקים דריסה ישנה/מועתקת
+        instructorFeeOverride: undefined,
+        // לא מעתיקים עלות מדריך להוצאות — החישוב דינמי מפרופיל המדריך
+        expenses: form.expenses.filter((e) => e.type !== "מדריך"),
+      }
+
+      if (existing) {
         const ok = await updateLead(existing.id, payload)
         if (!ok) return
         toast.success("השינויים נשמרו בהצלחה")
         router.push(`/leads/${existing.id}`)
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "שמירת השינויים נכשלה",
-        )
-      } finally {
-        setSaving(false)
+        return
       }
-      return
-    }
 
-    addLead(payload)
-    toast.success("ליד חדש נוצר")
+      addLead(payload)
+      toast.success("ליד חדש נוצר")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "שמירת השינויים נכשלה")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const categorySelectValue =
@@ -529,19 +535,6 @@ export function LeadForm({ existing }: Props) {
                 placeholder="הערות פנימיות לליד"
               />
             </Field>
-
-            <Card className="flex-row items-center justify-between p-4">
-              <div>
-                <p className="text-sm font-semibold">סימון כדחוף</p>
-                <p className="text-xs text-muted-foreground">
-                  יודגש באדום ויעלה לראש הרשימה
-                </p>
-              </div>
-              <Switch
-                checked={form.urgent}
-                onCheckedChange={(v) => set("urgent", v)}
-              />
-            </Card>
           </section>
 
           <section
@@ -788,6 +781,14 @@ export function LeadForm({ existing }: Props) {
                   if (next !== OTHER) {
                     set("instructor", next)
                     setInstructorOther("")
+                    if (next === DEFAULT_INSTRUCTOR) {
+                      setInstructorFee("")
+                    } else {
+                      const profile = instructors.find((i) => i.name === next)
+                      setInstructorFee(
+                        profile && profile.fee > 0 ? String(profile.fee) : "",
+                      )
+                    }
                   }
                 }}
               >
@@ -814,15 +815,18 @@ export function LeadForm({ existing }: Props) {
               </Field>
             )}
             {instructorSelect !== DEFAULT_INSTRUCTOR && (
-              <Field label="עלות מדריך (₪)">
+              <Field label="תעריף מדריך חי (₪)">
                 <Input
                   type="number"
                   min={0}
                   value={instructorFee}
                   onChange={(e) => setInstructorFee(e.target.value)}
-                  placeholder="סכום לתשלום למדריך"
+                  placeholder="מתעדכן בפרופיל המדריך"
                   dir="ltr"
                 />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  נשמר בפרופיל המדריך ומשמש לחישוב רווח בכל ההדרכות שלו
+                </p>
               </Field>
             )}
 

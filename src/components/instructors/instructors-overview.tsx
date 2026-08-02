@@ -8,13 +8,13 @@ import {
   formatCurrency,
   formatDateWithWeekday,
   formatTrainingDuration,
-  instructorPayAmount,
 } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
+import { resolveInstructorFee } from "@/lib/training-profit"
 
 /** סקירת הדרכות שבוצעו ע״י מדריכים — למנהל תחת ״עוד״ */
 export function InstructorsOverview() {
-  const { leads, settings } = useApp()
+  const { leads, settings, instructors } = useApp()
 
   const completed = leads
     .filter((l) => l.status === "done" && l.instructor?.trim())
@@ -22,7 +22,7 @@ export function InstructorsOverview() {
 
   const byInstructor = completed.reduce<Record<string, number>>((acc, l) => {
     const name = l.instructor!.trim()
-    acc[name] = (acc[name] || 0) + instructorPayAmount(l)
+    acc[name] = (acc[name] || 0) + resolveInstructorFee(l, instructors)
     return acc
   }, {})
 
@@ -75,7 +75,7 @@ export function InstructorsOverview() {
                     </p>
                   </div>
                   <span className="shrink-0 text-sm font-bold text-primary">
-                    {formatCurrency(instructorPayAmount(lead))}
+                    {formatCurrency(resolveInstructorFee(lead, instructors))}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">

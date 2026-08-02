@@ -15,8 +15,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import {
   deleteInventoryItem,
+  getInventoryItemSaleCount,
   upsertInventoryItem,
 } from "@/lib/actions"
 import { formatCurrency } from "@/lib/helpers"
@@ -42,6 +44,9 @@ export function EquipmentView() {
   )
   const [saving, setSaving] = useState(false)
   const [pickerQuery, setPickerQuery] = useState("")
+  const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null)
+  const [deleteHasSales, setDeleteHasSales] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const availableParts = useMemo(
     () => inventory.filter((i) => i.id !== editing?.id && !i.isComposite),
@@ -168,14 +173,24 @@ export function EquipmentView() {
     refresh()
   }
 
-  const remove = async (id: string) => {
-    const res = await deleteInventoryItem(id)
+  const requestDelete = async (item: InventoryItem) => {
+    const res = await getInventoryItemSaleCount(item.id)
+    setDeleteHasSales(Boolean(res.ok && res.data.count > 0))
+    setDeleteTarget(item)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const res = await deleteInventoryItem(deleteTarget.id)
+    setDeleting(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
-    setInventoryLocal(inventory.filter((i) => i.id !== id))
+    setInventoryLocal(inventory.filter((i) => i.id !== deleteTarget.id))
     toast.success("הפריט נמחק")
+    setDeleteTarget(null)
     refresh()
   }
 
@@ -238,7 +253,7 @@ export function EquipmentView() {
               aria-label="מחק"
               onClick={(e) => {
                 e.stopPropagation()
-                void remove(item.id)
+                void requestDelete(item)
               }}
             >
               <Trash2 className="size-4" />
@@ -441,6 +456,24 @@ export function EquipmentView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) {
+            setDeleteTarget(null)
+            setDeleteHasSales(false)
+          }
+        }}
+        description="האם אתה בטוח שברצונך למחוק פריט זה? פעולה זו תסיר את הפריט מהמערכת."
+        warning={
+          deleteHasSales
+            ? "שים לב: פריט זה שויך למכירות קודמות. האם אתה בטוח שברצונך למחוק פריט שנמכר?"
+            : null
+        }
+        confirming={deleting}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

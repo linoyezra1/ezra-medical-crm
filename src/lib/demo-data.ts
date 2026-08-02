@@ -151,5 +151,6 @@ export const DEFAULT_SETTINGS = {
   tiktokUrl: "",
   facebookUrl: "",
   instagramUrl: "",
+  lmsLoginUrl: "",
   courses: DEFAULT_COURSES,
 };

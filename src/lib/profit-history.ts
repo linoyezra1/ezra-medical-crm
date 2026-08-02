@@ -1,5 +1,11 @@
 import { formatCourseTypeLabel } from "@/lib/course-type"
-import type { CourseCatalogItem, EquipmentDeal, Lead } from "@/lib/types"
+import { computeTrainingProfit } from "@/lib/training-profit"
+import type {
+  CourseCatalogItem,
+  EquipmentDeal,
+  InstructorProfile,
+  Lead,
+} from "@/lib/types"
 
 export type ProfitTransaction = {
   id: string
@@ -65,6 +71,7 @@ export function buildProfitTransactions(
   leads: Lead[],
   equipment: EquipmentDeal[],
   courses?: CourseCatalogItem[],
+  instructors: InstructorProfile[] = [],
 ): ProfitTransaction[] {
   const rows: ProfitTransaction[] = []
 
@@ -73,8 +80,7 @@ export function buildProfitTransactions(
     if (!REVENUE_LEAD_STATUSES.has(lead.status)) continue
 
     const date = toDateKey(lead.date, lead.updatedAt || lead.createdAt)
-    const expenses = lead.expenses.reduce((s, e) => s + (e.amount || 0), 0)
-    const revenue = lead.totalPrice || 0
+    const profit = computeTrainingProfit(lead, instructors)
 
     rows.push({
       id: lead.id,
@@ -82,30 +88,12 @@ export function buildProfitTransactions(
       date,
       monthKey: date.slice(0, 7),
       itemLabel: courseItemLabel(lead, courses),
-      revenue,
-      expenses,
-      netProfit: revenue - expenses,
+      revenue: profit.revenue,
+      expenses: profit.totalExpenses,
+      netProfit: profit.netProfit,
       clientId: lead.clientId,
       clientName: lead.name,
     })
-
-    for (const sale of lead.trainingSales || []) {
-      const saleRevenue = (sale.unitSellingPrice || 0) * (sale.quantity || 0)
-      const saleCost = (sale.unitCostPrice || 0) * (sale.quantity || 0)
-      const saleDate = toDateKey(sale.createdAt, date)
-      rows.push({
-        id: sale.id,
-        kind: "training_sale",
-        date: saleDate,
-        monthKey: saleDate.slice(0, 7),
-        itemLabel: `מכירת ציוד: ${sale.itemName}`,
-        revenue: saleRevenue,
-        expenses: saleCost,
-        netProfit: saleRevenue - saleCost,
-        clientId: lead.clientId,
-        clientName: lead.name,
-      })
-    }
   }
 
   for (const deal of equipment) {

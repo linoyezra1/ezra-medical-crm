@@ -32,6 +32,7 @@ import {
   type BusinessSettings,
   type Client,
   type EquipmentDeal,
+  type InstructorProfile,
   type InventoryItem,
   type Lead,
   type Task,
@@ -45,6 +46,7 @@ interface AppState {
   trainees: Trainee[];
   inventory: InventoryItem[];
   equipment: EquipmentDeal[];
+  instructors: InstructorProfile[];
   tasks: Task[];
   settings: BusinessSettings;
   addLead: (lead: Lead) => void;
@@ -82,6 +84,7 @@ export function AppProvider({
   const [trainees, setTrainees] = useState(initial.trainees);
   const [inventory, setInventory] = useState(initial.inventory);
   const [equipment, setEquipment] = useState(initial.equipment);
+  const [instructors, setInstructors] = useState(initial.instructors);
   const [tasks, setTasks] = useState(initial.tasks);
   const [settings, setSettings] = useState(initial.settings);
 
@@ -91,6 +94,7 @@ export function AppProvider({
     setTrainees(initial.trainees);
     setInventory(initial.inventory);
     setEquipment(initial.equipment);
+    setInstructors(initial.instructors);
     setTasks(initial.tasks);
     setSettings(initial.settings);
   }, [initial]);
@@ -134,7 +138,6 @@ export function AppProvider({
         fd.set("phone", lead.phone);
         fd.set("email", lead.email || "");
         fd.set("city", lead.address.city || "");
-        fd.set("urgency", lead.urgent ? "urgent" : "normal");
         fd.set("activityType", "course");
         fd.set("leadSource", lead.customerType === "existing" ? "returning" : "website");
         fd.set("notes", lead.notes || "");
@@ -387,6 +390,7 @@ export function AppProvider({
       trainees,
       inventory,
       equipment,
+      instructors,
       tasks,
       settings,
       addLead,
@@ -412,6 +416,7 @@ export function AppProvider({
       trainees,
       inventory,
       equipment,
+      instructors,
       tasks,
       settings,
       addLead,

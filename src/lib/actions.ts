@@ -637,6 +637,7 @@ export async function fetchLeadParticipants(leadId: string) {
     shippingHouseNo: p.shippingHouseNo || undefined,
     shippingZip: p.shippingZip || undefined,
     attended: Boolean(p.attended),
+    hasLmsAccess: Boolean(p.hasLmsAccess),
     traineeId: p.traineeId || undefined,
   }));
 }
@@ -912,46 +913,16 @@ export async function upsertCourseAsset(data: {
   return { ok: true as const };
 }
 
-export async function createLmsUser(leadId: string): Promise<
+/** @deprecated יצירת LMS היא ברמת מודרך — השתמשו ב־/api/lms/create-user */
+export async function createLmsUser(
+  _leadId: string,
+): Promise<
   ActionResult<{ username: string; password: string; loginUrl: string; message: string }>
 > {
-  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-  if (!lead) return { ok: false, error: "ליד לא נמצא" };
-  if (!lead.email) return { ok: false, error: "נדרש אימייל ליצירת משתמש LMS" };
-
-  const settings = await prisma.settings.findUnique({ where: { id: "default" } });
-  const password = `Ezra${Math.random().toString(36).slice(2, 8)}!`;
-  const loginUrl = settings?.lmsLoginUrl || "https://lms.example.com/login";
-
-  // Stub external LMS API call
-  if (settings?.lmsApiUrl) {
-    try {
-      await fetch(settings.lmsApiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          full_name: lead.fullName,
-          email: lead.email,
-          phone: lead.phone,
-          course_id: lead.courseType,
-        }),
-      });
-    } catch {
-      console.warn("[lms] API request failed – credentials generated locally");
-    }
-  }
-
-  const { lmsWelcomeMessage } = await import("@/lib/whatsapp");
-  const message = lmsWelcomeMessage({
-    fullName: lead.fullName,
-    email: lead.email,
-    password,
-    loginUrl,
-  });
-
   return {
-    ok: true,
-    data: { username: lead.email, password, loginUrl, message },
+    ok: false,
+    error:
+      "יצירת משתמש LMS מתבצעת עבור מודרכים בטאב המשתתפים — לא עבור איש הקשר של הליד",
   };
 }
 

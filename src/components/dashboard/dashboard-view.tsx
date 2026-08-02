@@ -2,7 +2,6 @@
 
 import Link from "next/link"
 import {
-  AlertTriangle,
   ArrowLeft,
   CalendarClock,
   CheckCircle2,
@@ -19,10 +18,8 @@ import {
 import { PageHeader } from "@/components/app-shell"
 import { ProfitHistoryDialog } from "@/components/dashboard/profit-history-dialog"
 import { StandaloneSalesButton } from "@/components/dashboard/standalone-sales-button"
-import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { formatLeadCourseType } from "@/lib/course-type"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/helpers"
 
@@ -65,9 +62,6 @@ export function DashboardView() {
 
   const today = new Date().toISOString().slice(0, 10)
   const todayTasks = tasks.filter((t) => !t.done && t.date <= today)
-  const urgentLeads = activeLeads.filter(
-    (l) => l.urgent && l.status !== "completed",
-  )
 
   const socials = [
     { name: "טיקטוק", icon: Music2, url: settings.tiktokUrl?.trim() || "" },
@@ -133,37 +127,8 @@ export function DashboardView() {
           />
         </section>
 
-        {/* לידים דחופים */}
-        {urgentLeads.length > 0 && (
-          <section className="lg:col-span-7">
-            <SectionTitle
-              icon={AlertTriangle}
-              title="דורש טיפול מיידי"
-              tone="destructive"
-            />
-            <div className="space-y-2 md:grid md:grid-cols-2 md:gap-2 md:space-y-0">
-              {urgentLeads.map((l) => (
-                <Link key={l.id} href={`/leads/${l.id}`}>
-                  <Card className="flex-row items-center justify-between gap-2 border-r-4 border-r-destructive p-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="size-2 shrink-0 animate-pulse rounded-full bg-destructive" />
-                        <p className="truncate font-semibold">{l.name}</p>
-                      </div>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {formatLeadCourseType(l)}
-                      </p>
-                    </div>
-                    <LeadStatusBadge status={l.status} />
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
         {/* משימות היום */}
-        <section className={urgentLeads.length > 0 ? "lg:col-span-5" : "lg:col-span-7"}>
+        <section className="lg:col-span-7">
           <div className="mb-2 flex items-center justify-between">
             <SectionTitle icon={CalendarClock} title="המשימות שלי" />
             <Link
@@ -196,7 +161,7 @@ export function DashboardView() {
         </section>
 
         {/* שיווק ברשתות + מכירות עצמאיות */}
-        <section className={urgentLeads.length > 0 ? "lg:col-span-12" : "lg:col-span-5"}>
+        <section className="lg:col-span-5">
           <SectionTitle title="שיתוף וקידום" />
           <Card className="mx-auto max-w-none p-4 md:max-w-xl lg:max-w-none">
             <p className="mb-3 text-xs text-muted-foreground">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import {
   Phone,
   MessageCircle,
@@ -8,9 +8,7 @@ import {
   Link2,
   FileSpreadsheet,
   StickyNote,
-  UserPlus,
 } from "lucide-react";
-import { createLmsUser } from "@/lib/actions";
 import { buildWhatsAppUrl, summaryMessage } from "@/lib/whatsapp";
 import { sanitizePhone } from "@/lib/utils";
 
@@ -37,7 +35,6 @@ type Props = {
 };
 
 export function QuickActionsBar({ lead, asset }: Props) {
-  const [pending, startTransition] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
 
   const dialHref = `tel:${sanitizePhone(lead.phone)}`;
@@ -78,18 +75,6 @@ export function QuickActionsBar({ lead, asset }: Props) {
     openWhatsApp(text);
   }
 
-  function handleLms() {
-    startTransition(async () => {
-      const res = await createLmsUser(lead.id);
-      if (!res.ok) {
-        setToast(res.error);
-        return;
-      }
-      openWhatsApp(res.data.message);
-      setToast("פרטי LMS נוצרו ונפתח WhatsApp");
-    });
-  }
-
   const actions = [
     {
       label: "חייג",
@@ -107,7 +92,6 @@ export function QuickActionsBar({ lead, asset }: Props) {
     { label: "קישור מצגת", icon: Link2, onClick: sendPresentationLink },
     { label: "קובץ מצגת", icon: FileSpreadsheet, onClick: sendPresentationFile },
     { label: "סיכום קורס", icon: StickyNote, onClick: sendCourseSummary },
-    { label: "משתמש LMS", icon: UserPlus, onClick: handleLms, disabled: pending },
   ];
 
   return (
@@ -120,7 +104,6 @@ export function QuickActionsBar({ lead, asset }: Props) {
             type="button"
             className="btn btn-secondary text-xs py-2.5"
             onClick={a.onClick}
-            disabled={a.disabled}
           >
             <a.icon size={15} />
             {a.label}

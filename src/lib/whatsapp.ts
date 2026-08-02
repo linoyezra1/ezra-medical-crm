@@ -39,13 +39,15 @@ export function summaryMessage(lead: WhatsAppLeadContext): string {
   return `שלום ${lead.fullName}, סיכום הפרטים שסוכמו: ${courseTypeLabel(lead)} בתאריך ${date} בשעה ${time}, מיקום: ${address}. מצורף סילבוס.`;
 }
 
+/** @deprecated השתמשו ב־lmsParticipantWhatsAppMessage מ־@/lib/lms */
 export function lmsWelcomeMessage(params: {
   fullName: string;
-  email: string;
-  password: string;
+  email?: string;
+  password?: string;
   loginUrl: string;
 }): string {
-  return `שלום ${params.fullName}, חשבון ה-LMS שלך מוכן! שם משתמש: ${params.email}, סיסמה ראשונית: ${params.password}. התחברות: ${params.loginUrl}`;
+  const url = params.loginUrl.trim() || "קישור המערכת";
+  return `היי ${params.fullName}, נוצר עבורך משתמש במערכת הלמידה. הקישור: ${url}. שם המשתמש והסיסמה שלך הם מספר הטלפון שלך.`;
 }
 
 export function shareSocialMessage(label: string, url: string): string {

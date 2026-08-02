@@ -19,9 +19,8 @@ import { useApp } from "@/lib/store"
 import { LEAD_STATUS_LABELS, type Lead, type LeadStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-const FILTERS: { value: LeadStatus | "all" | "urgent"; label: string }[] = [
+const FILTERS: { value: LeadStatus | "all"; label: string }[] = [
   { value: "all", label: "הכל" },
-  { value: "urgent", label: "דחוף" },
   { value: "new", label: LEAD_STATUS_LABELS.new },
   { value: "closed", label: LEAD_STATUS_LABELS.closed },
   { value: "done", label: LEAD_STATUS_LABELS.done },
@@ -32,14 +31,13 @@ const FILTERS: { value: LeadStatus | "all" | "urgent"; label: string }[] = [
 
 export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
   const { leads, settings } = useApp()
-  const [filter, setFilter] = useState<LeadStatus | "all" | "urgent">("all")
+  const [filter, setFilter] = useState<LeadStatus | "all">("all")
   const [query, setQuery] = useState("")
 
   const filtered = useMemo(() => {
     return leads
       .filter((l) => {
         if (filter === "all") return l.status !== "lost"
-        if (filter === "urgent") return l.urgent && l.status !== "lost"
         return l.status === filter
       })
       .filter((l) => {
@@ -53,7 +51,10 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
           l.address.city.includes(q)
         )
       })
-      .sort((a, b) => Number(b.urgent) - Number(a.urgent))
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      )
   }, [leads, filter, query])
 
   const listPane = (

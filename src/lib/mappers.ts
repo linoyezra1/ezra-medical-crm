@@ -114,6 +114,7 @@ export function mapLead(db: DbLeadFull): Lead {
       shippingHouseNo: p.shippingHouseNo || undefined,
       shippingZip: p.shippingZip || undefined,
       attended: Boolean(p.attended),
+      hasLmsAccess: Boolean(p.hasLmsAccess),
       traineeId: p.traineeId || undefined,
     })),
     expenses: (db.expenses || []).map((e) => ({
@@ -271,6 +272,7 @@ export function mapSettings(
     tiktokUrl: settings?.tiktokUrl || "",
     facebookUrl: settings?.facebookUrl || "",
     instagramUrl: settings?.instagramUrl || "",
+    lmsLoginUrl: settings?.lmsLoginUrl || "",
     courses,
   };
 }

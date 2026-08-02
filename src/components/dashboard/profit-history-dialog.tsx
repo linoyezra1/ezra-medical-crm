@@ -20,13 +20,18 @@ import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 export function ProfitHistoryDialog() {
-  const { leads, equipment, settings } = useApp()
+  const { leads, equipment, settings, instructors } = useApp()
   const [open, setOpen] = useState(false)
 
   const months = useMemo(() => {
-    const txs = buildProfitTransactions(leads, equipment, settings.courses)
+    const txs = buildProfitTransactions(
+      leads,
+      equipment,
+      settings.courses,
+      instructors,
+    )
     return groupProfitByMonth(txs)
-  }, [leads, equipment, settings.courses])
+  }, [leads, equipment, settings.courses, instructors])
 
   const [expanded, setExpanded] = useState<string | null>(null)
 

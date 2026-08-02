@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS } from "@/lib/demo-data";
 import {
   mapClient,
   mapEquipmentDeal,
+  mapInstructor,
   mapInventoryItem,
   mapLead,
   mapSettings,
@@ -13,6 +14,7 @@ import type {
   BusinessSettings,
   Client,
   EquipmentDeal,
+  InstructorProfile,
   InventoryItem,
   Lead,
   Task,
@@ -25,6 +27,7 @@ export type AppData = {
   clients: Client[];
   trainees: Trainee[];
   inventory: InventoryItem[];
+  instructors: InstructorProfile[];
   tasks: Task[];
   settings: BusinessSettings;
 };
@@ -36,6 +39,7 @@ export function emptyAppData(): AppData {
     clients: [],
     trainees: [],
     inventory: [],
+    instructors: [],
     tasks: [],
     settings: DEFAULT_SETTINGS,
   };
@@ -44,49 +48,59 @@ export function emptyAppData(): AppData {
 export async function loadAppData(): Promise<AppData> {
   // During Railway image build, private DB host is unreachable — never fail the build.
   try {
-    const [leadsDb, accounts, tasksDb, settings, assets, traineesDb, inventoryDb] =
-      await Promise.all([
-        prisma.lead.findMany({
-          include: {
-            participants: true,
-            expenses: true,
-            trainingSales: { include: { inventoryItem: true } },
-          },
-          orderBy: { updatedAt: "desc" },
-        }),
-        prisma.account.findMany({
-          include: { contacts: true },
-          orderBy: { updatedAt: "desc" },
-        }),
-        prisma.followUpTask.findMany({
-          orderBy: { dueDate: "asc" },
-        }),
-        prisma.settings.findUnique({ where: { id: "default" } }),
-        prisma.courseAsset.findMany(),
-        prisma.trainee.findMany({
-          include: {
-            participants: {
-              include: {
-                lead: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    courseType: true,
-                    courseTypeOther: true,
-                  },
+    const [
+      leadsDb,
+      accounts,
+      tasksDb,
+      settings,
+      assets,
+      traineesDb,
+      inventoryDb,
+      instructorsDb,
+    ] = await Promise.all([
+      prisma.lead.findMany({
+        include: {
+          participants: true,
+          expenses: true,
+          trainingSales: { include: { inventoryItem: true } },
+          instructorRef: true,
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.account.findMany({
+        include: { contacts: true },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.followUpTask.findMany({
+        orderBy: { dueDate: "asc" },
+      }),
+      prisma.settings.findUnique({ where: { id: "default" } }),
+      prisma.courseAsset.findMany(),
+      prisma.trainee.findMany({
+        include: {
+          participants: {
+            include: {
+              lead: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  courseType: true,
+                  courseTypeOther: true,
                 },
               },
             },
           },
-          orderBy: { updatedAt: "desc" },
-        }),
-        prisma.inventoryItem.findMany({
-          include: {
-            components: { include: { child: true } },
-          },
-          orderBy: { name: "asc" },
-        }),
-      ]);
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.inventoryItem.findMany({
+        include: {
+          components: { include: { child: true } },
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.instructor.findMany({ orderBy: { name: "asc" } }),
+    ]);
 
     const leads = leadsDb.filter((l) => l.activityType !== "equipment").map(mapLead);
 
@@ -98,6 +112,7 @@ export async function loadAppData(): Promise<AppData> {
     const tasks = tasksDb.map(mapTask);
     const trainees = traineesDb.map(mapTrainee);
     const inventory = inventoryDb.map(mapInventoryItem);
+    const instructors = instructorsDb.map(mapInstructor);
     const businessSettings = mapSettings(settings, assets);
 
     return {
@@ -106,6 +121,7 @@ export async function loadAppData(): Promise<AppData> {
       clients,
       trainees,
       inventory,
+      instructors,
       tasks,
       settings: businessSettings,
     };

@@ -38,7 +38,6 @@ type LeadRecord = {
   email: string | null;
   city: string | null;
   leadSource: string | null;
-  urgency: string;
   activityType: string;
   courseStatus: string;
   equipmentStatus: string | null;
@@ -90,7 +89,6 @@ function toFormState(lead: LeadRecord) {
     email: lead.email ?? "",
     city: lead.city ?? "",
     leadSource: lead.leadSource ?? "",
-    urgency: lead.urgency,
     activityType: lead.activityType,
     courseStatus: lead.courseStatus,
     equipmentStatus: lead.equipmentStatus ?? "inquiry",
@@ -358,13 +356,6 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
                   {s.label}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>דחיפות</label>
-            <select value={form.urgency} onChange={(e) => setField("urgency", e.target.value)}>
-              <option value="normal">רגיל</option>
-              <option value="urgent">🔴 דחוף</option>
             </select>
           </div>
           <div className="field sm:col-span-2">

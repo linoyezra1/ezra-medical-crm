@@ -98,6 +98,8 @@ export interface Participant {
   shippingHouseNo?: string;
   shippingZip?: string;
   attended?: boolean;
+  /** נוצר משתמש LMS למודרך */
+  hasLmsAccess?: boolean;
   traineeId?: string;
 }
 
@@ -182,7 +184,6 @@ export interface Lead {
   /** טלפון משני אופציונלי */
   phoneSecondary?: string;
   email?: string;
-  urgent: boolean;
   status: LeadStatus;
   customerType: CustomerType;
   courseType: string;
@@ -205,8 +206,13 @@ export interface Lead {
   /** שעת סיום HH:mm */
   endTime?: string;
   instructor?: string;
-  /** עלות מדריך חיצוני (כשלא יצחק) */
-  instructorFee?: number;
+  /** מזהה מדריך בפרופיל — מקור האמת לתעריף */
+  instructorId?: string;
+  /**
+   * דריסת תעריף להדרכה זו בלבד.
+   * אם לא הוגדר — משתמשים בתעריף החי מפרופיל המדריך.
+   */
+  instructorFeeOverride?: number;
   contactName?: string;
   notes?: string;
   quoteSentAt?: string;
@@ -355,5 +361,15 @@ export interface BusinessSettings {
   tiktokUrl: string;
   facebookUrl: string;
   instagramUrl: string;
+  /** קישור התחברות LMS להודעות מודרכים */
+  lmsLoginUrl?: string;
   courses: CourseCatalogItem[];
+}
+
+/** פרופיל מדריך במסד הנתונים */
+export interface InstructorProfile {
+  id: string;
+  name: string;
+  fee: number;
+  active: boolean;
 }
