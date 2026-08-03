@@ -684,21 +684,126 @@ export async function fetchLeadParticipants(leadId: string) {
 export async function updateTrainee(
   id: string,
   data: {
+    fullName?: string;
+    idNumber?: string;
+    phone?: string | null;
+    email?: string | null;
     certificateEmailSent?: boolean;
     certificateCardPrinted?: boolean;
     notes?: string;
   },
 ): Promise<ActionResult<{ id: string }>> {
-  await prisma.trainee.update({
-    where: { id },
-    data: {
-      certificateEmailSent: data.certificateEmailSent,
-      certificateCardPrinted: data.certificateCardPrinted,
-      notes: data.notes === undefined ? undefined : data.notes.trim() || null,
-    },
+  const existing = await prisma.trainee.findUnique({ where: { id } });
+  if (!existing) return { ok: false, error: "המודרך לא נמצא" };
+
+  const nextIdNumber =
+    data.idNumber !== undefined
+      ? data.idNumber.trim().replace(/[-\s]/g, "")
+      : existing.idNumber;
+  const nextFullName =
+    data.fullName !== undefined ? data.fullName.trim() : existing.fullName;
+
+  if (!nextFullName || !nextIdNumber) {
+    return { ok: false, error: "שם מלא ות״ז הם שדות חובה" };
+  }
+
+  if (nextIdNumber !== existing.idNumber) {
+    const clash = await prisma.trainee.findUnique({
+      where: { idNumber: nextIdNumber },
+    });
+    if (clash && clash.id !== id) {
+      return { ok: false, error: "קיים כבר מודרך עם ת״ז זו" };
+    }
+  }
+
+  const nextPhone =
+    data.phone === undefined
+      ? existing.phone
+      : data.phone?.trim() || null;
+  const nextEmail =
+    data.email === undefined
+      ? existing.email
+      : data.email?.trim() || null;
+
+  // עדכון מקור המודרך + סנכרון לכל רשומות המשתתף המשויכות
+  await prisma.$transaction([
+    prisma.trainee.update({
+      where: { id },
+      data: {
+        fullName: nextFullName,
+        idNumber: nextIdNumber,
+        phone: nextPhone,
+        email: nextEmail,
+        certificateEmailSent: data.certificateEmailSent,
+        certificateCardPrinted: data.certificateCardPrinted,
+        notes:
+          data.notes === undefined ? undefined : data.notes.trim() || null,
+      },
+    }),
+    prisma.participant.updateMany({
+      where: { traineeId: id },
+      data: {
+        fullName: nextFullName,
+        idNumber: nextIdNumber,
+        phone: nextPhone,
+        email: nextEmail,
+      },
+    }),
+  ]);
+
+  const linked = await prisma.participant.findMany({
+    where: { traineeId: id },
+    select: { leadId: true },
   });
+  for (const p of linked) {
+    revalidatePath(`/leads/${p.leadId}`);
+  }
   revalidatePath("/clients");
+  revalidatePath("/leads");
   return { ok: true, data: { id } };
+}
+
+/** מחיקה לצמיתות של מודרך + כל רשומות המשתתף בהדרכות המשויכות */
+export async function deleteTrainee(
+  id: string,
+): Promise<ActionResult<{ id: string; deletedParticipants: number }>> {
+  const existing = await prisma.trainee.findUnique({
+    where: { id },
+  });
+  if (!existing) return { ok: false, error: "המודרך לא נמצא" };
+
+  const leadIds = [
+    ...new Set(
+      (
+        await prisma.participant.findMany({
+          where: {
+            OR: [{ traineeId: id }, { idNumber: existing.idNumber }],
+          },
+          select: { leadId: true },
+        })
+      ).map((p) => p.leadId),
+    ),
+  ];
+
+  const deleted = await prisma.$transaction(async (tx) => {
+    const removed = await tx.participant.deleteMany({
+      where: {
+        OR: [{ traineeId: id }, { idNumber: existing.idNumber }],
+      },
+    });
+    await tx.trainee.delete({ where: { id } });
+    return removed.count;
+  });
+
+  for (const leadId of leadIds) {
+    revalidatePath(`/leads/${leadId}`);
+  }
+  revalidatePath("/clients");
+  revalidatePath("/leads");
+  return {
+    ok: true,
+    data: { id, deletedParticipants: deleted },
+  };
 }
 
 export type TraineeImportPayloadRow = {

@@ -143,9 +143,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="min-h-dvh bg-background md:flex md:overflow-x-hidden">
       {/* —— Desktop sidebar (RTL: start = ימין) —— */}
-      <aside className="fixed inset-y-0 start-0 z-40 hidden w-56 flex-col border-e border-border bg-card md:flex">
+      <aside className="sticky top-0 z-40 hidden h-dvh w-64 flex-shrink-0 flex-col border-e border-border bg-card md:flex">
         <div className="border-b border-border px-4 py-4">
           <p className="text-xs font-medium text-muted-foreground">מערכת ניהול</p>
           <p className="text-base font-bold text-foreground">עזרה!</p>
@@ -177,8 +177,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* —— Main column —— */}
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-x-hidden md:ms-56 md:max-w-full">
-        <main className="min-w-0 flex-1 overflow-x-hidden pb-24 md:pb-0">
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-x-hidden md:max-w-none md:min-w-0 md:flex-1 md:max-w-full">
+        <main className="min-w-0 max-w-full flex-1 overflow-x-hidden pb-24 md:pb-0">
           {children}
         </main>
       </div>

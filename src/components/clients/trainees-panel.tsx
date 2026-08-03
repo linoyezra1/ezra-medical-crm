@@ -7,19 +7,23 @@ import {
   FileSpreadsheet,
   Link2,
   MessageCircle,
+  Pencil,
   Plus,
   Search,
+  Trash2,
   UserPlus,
 } from "lucide-react"
 import { toast } from "sonner"
 import { TraineeAddDialog } from "@/components/clients/trainee-add-dialog"
 import { TraineeAssignDialog } from "@/components/clients/trainee-assign-dialog"
+import { TraineeEditDialog } from "@/components/clients/trainee-edit-dialog"
 import { TraineeImportDialog } from "@/components/clients/trainee-import-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { updateTrainee } from "@/lib/actions"
+import { deleteTrainee, updateTrainee } from "@/lib/actions"
 import { formatPhone, whatsappLink } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Trainee } from "@/lib/types"
@@ -34,7 +38,7 @@ function trainingLabel(t: Trainee) {
 }
 
 export function TraineesPanel() {
-  const { trainees, updateTraineeLocal } = useApp()
+  const { trainees, updateTraineeLocal, refresh } = useApp()
   const [q, setQ] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -42,6 +46,9 @@ export function TraineesPanel() {
   const [addOpen, setAddOpen] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
   const [assignIds, setAssignIds] = useState<string[]>([])
+  const [editTrainee, setEditTrainee] = useState<Trainee | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Trainee | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -102,6 +109,25 @@ export function TraineesPanel() {
     if (!res.ok) toast.error(res.error)
   }
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const res = await deleteTrainee(deleteTarget.id)
+    setDeleting(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success("המודרך נמחק לצמיתות")
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(deleteTarget.id)
+      return next
+    })
+    setDeleteTarget(null)
+    refresh()
+  }
+
   const toolbar = (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
       <Button
@@ -138,10 +164,64 @@ export function TraineesPanel() {
     </div>
   )
 
+  const actionButtons = (t: Trainee, compact = false) => (
+    <div className={cn("flex items-center gap-0.5", compact && "justify-end")}>
+      <button
+        type="button"
+        onClick={() => setEditTrainee(t)}
+        className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+        aria-label="עריכה"
+        title="עריכה"
+      >
+        <Pencil className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => setDeleteTarget(t)}
+        className="flex size-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
+        aria-label="מחיקה"
+        title="מחיקה"
+      >
+        <Trash2 className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => openAssign([t.id])}
+        className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+        aria-label="שיוך להדרכה"
+        title="שיוך להדרכה"
+      >
+        <Link2 className="size-3.5" />
+      </button>
+      {t.phone && (
+        <a
+          href={whatsappLink(t.phone)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex size-8 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
+          aria-label="וואטסאפ"
+          title="וואטסאפ"
+        >
+          <MessageCircle className="size-3.5" />
+        </a>
+      )}
+      {t.trainings[0]?.leadId && (
+        <Link
+          href={`/leads/${t.trainings[0].leadId}`}
+          className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"
+          aria-label="פתח הדרכה"
+          title="פתח הדרכה"
+        >
+          <ExternalLink className="size-3.5" />
+        </Link>
+      )}
+    </div>
+  )
+
   return (
-    <div className="space-y-3">
+    <div className="w-full max-w-full space-y-3 overflow-x-hidden">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="relative w-full lg:max-w-md">
+        <div className="relative w-full min-w-0 lg:max-w-md">
           <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={q}
@@ -188,11 +268,11 @@ export function TraineesPanel() {
         <>
           {/* —— Desktop table —— */}
           <div className="hidden w-full max-w-full overflow-x-hidden md:block">
-            <div className="w-full overflow-hidden rounded-xl border border-border bg-card">
+            <div className="w-full max-w-full overflow-hidden rounded-xl border border-border bg-card">
               <table className="w-full table-fixed text-right text-sm">
                 <thead className="bg-secondary/50 text-xs text-muted-foreground">
                   <tr>
-                    <th className="w-10 px-3 py-2 font-semibold">
+                    <th className="w-9 px-2 py-2 font-semibold">
                       <Checkbox
                         checked={allFilteredSelected}
                         onCheckedChange={(v) =>
@@ -201,30 +281,21 @@ export function TraineesPanel() {
                         aria-label="בחר הכל"
                       />
                     </th>
-                    <th className="w-[15%] px-3 py-2 font-semibold">
-                      שם מודרך
-                    </th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">ת״ז</th>
-                    <th className="w-[11%] px-3 py-2 font-semibold">טלפון</th>
-                    <th className="w-[14%] px-3 py-2 font-semibold">
+                    <th className="w-[14%] px-2 py-2 font-semibold">שם מודרך</th>
+                    <th className="w-[10%] px-2 py-2 font-semibold">ת״ז</th>
+                    <th className="w-[11%] px-2 py-2 font-semibold">טלפון</th>
+                    <th className="w-[13%] px-2 py-2 font-semibold">
                       הדרכה שיוך
                     </th>
-                    <th className="w-[9%] px-3 py-2 font-semibold">
-                      נשלחה תעודה במייל
-                    </th>
-                    <th className="w-[9%] px-3 py-2 font-semibold">
-                      הודפס כרטיס תעודה
-                    </th>
-                    <th className="w-[13%] px-3 py-2 font-semibold">הערות</th>
-                    <th className="w-[12%] px-3 py-2 font-semibold">
-                      פעולות מהירות
-                    </th>
+                    <th className="w-[7%] px-2 py-2 font-semibold">מייל</th>
+                    <th className="w-[7%] px-2 py-2 font-semibold">כרטיס</th>
+                    <th className="w-[14%] px-2 py-2 font-semibold">הערות</th>
+                    <th className="w-[16%] px-2 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((t) => {
                     const via = trainingLabel(t)
-                    const leadId = t.trainings[0]?.leadId
                     return (
                       <tr
                         key={t.id}
@@ -233,7 +304,7 @@ export function TraineesPanel() {
                           selectedIds.has(t.id) && "bg-primary/5",
                         )}
                       >
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-2">
                           <Checkbox
                             checked={selectedIds.has(t.id)}
                             onCheckedChange={(v) =>
@@ -242,25 +313,25 @@ export function TraineesPanel() {
                             aria-label={`בחירה ${t.fullName}`}
                           />
                         </td>
-                        <td className="max-w-0 truncate px-3 py-2 font-medium">
+                        <td className="max-w-0 truncate px-2 py-2 font-medium">
                           {t.fullName}
                         </td>
                         <td
-                          className="max-w-0 truncate px-3 py-2 dir-ltr text-left"
+                          className="max-w-0 truncate px-2 py-2 dir-ltr text-left"
                           dir="ltr"
                         >
                           {t.idNumber}
                         </td>
                         <td
-                          className="max-w-0 truncate px-3 py-2 dir-ltr text-left"
+                          className="max-w-0 truncate px-2 py-2 dir-ltr text-left"
                           dir="ltr"
                         >
                           {t.phone ? formatPhone(t.phone) : "—"}
                         </td>
-                        <td className="max-w-0 truncate px-3 py-2 text-muted-foreground">
+                        <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
                           {via}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-2">
                           <div className="flex justify-center">
                             <Checkbox
                               checked={t.certificateEmailSent}
@@ -273,7 +344,7 @@ export function TraineesPanel() {
                             />
                           </div>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-2">
                           <div className="flex justify-center">
                             <Checkbox
                               checked={t.certificateCardPrinted}
@@ -286,7 +357,7 @@ export function TraineesPanel() {
                             />
                           </div>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-2">
                           <Input
                             value={t.notes || ""}
                             onChange={(e) =>
@@ -301,41 +372,7 @@ export function TraineesPanel() {
                             className="h-8 text-xs"
                           />
                         </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => openAssign([t.id])}
-                              className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
-                              aria-label="שיוך להדרכה"
-                              title="שיוך להדרכה"
-                            >
-                              <Link2 className="size-3.5" />
-                            </button>
-                            {t.phone && (
-                              <a
-                                href={whatsappLink(t.phone)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex size-8 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
-                                aria-label="וואטסאפ"
-                                title="וואטסאפ"
-                              >
-                                <MessageCircle className="size-3.5" />
-                              </a>
-                            )}
-                            {leadId && (
-                              <Link
-                                href={`/leads/${leadId}`}
-                                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"
-                                aria-label="פתח הדרכה"
-                                title="פתח הדרכה"
-                              >
-                                <ExternalLink className="size-3.5" />
-                              </Link>
-                            )}
-                          </div>
-                        </td>
+                        <td className="px-2 py-2">{actionButtons(t, true)}</td>
                       </tr>
                     )
                   })}
@@ -384,14 +421,10 @@ export function TraineesPanel() {
                         הדרכה דרך: {via}
                       </p>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => openAssign([t.id])}
-                      className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border text-primary"
-                      aria-label="שיוך להדרכה"
-                    >
-                      <Link2 className="size-4" />
-                    </button>
+                  </div>
+
+                  <div className="mt-2 flex justify-end border-t border-border pt-2">
+                    {actionButtons(t)}
                   </div>
 
                   {open && (
@@ -448,11 +481,30 @@ export function TraineesPanel() {
 
       <TraineeImportDialog open={importOpen} onOpenChange={setImportOpen} />
       <TraineeAddDialog open={addOpen} onOpenChange={setAddOpen} />
+      <TraineeEditDialog
+        trainee={editTrainee}
+        open={Boolean(editTrainee)}
+        onOpenChange={(v) => {
+          if (!v) setEditTrainee(null)
+        }}
+      />
       <TraineeAssignDialog
         open={assignOpen}
         onOpenChange={setAssignOpen}
         traineeIds={assignIds}
         onAssigned={() => setSelectedIds(new Set())}
+      />
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => {
+          if (!v) setDeleteTarget(null)
+        }}
+        title="אישור מחיקה"
+        description="האם אתה בטוח שברצונך למחוק מודרך זה? המודרך ימחק לצמיתות גם מההדרכה המשויכת."
+        confirmLabel="אישור מחיקה"
+        cancelLabel="ביטול"
+        confirming={deleting}
+        onConfirm={confirmDelete}
       />
     </div>
   )
