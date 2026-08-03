@@ -10,11 +10,7 @@ import { LeadStatusBadge } from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatLeadCourseType } from "@/lib/course-type"
-import {
-  formatCurrency,
-  formatDateWithWeekday,
-  leadStatusCardClass,
-} from "@/lib/helpers"
+import { formatCurrency, formatDateWithWeekday } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import { LEAD_STATUS_LABELS, type Lead, type LeadStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -32,7 +28,7 @@ const FILTERS: { value: LeadStatus | "all"; label: string }[] = [
 type DesktopBrowseMode = "cards" | "table"
 
 export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
-  const { leads, settings } = useApp()
+  const { leads } = useApp()
   const [filter, setFilter] = useState<LeadStatus | "all">("all")
   const [query, setQuery] = useState("")
   const [browseMode, setBrowseMode] = useState<DesktopBrowseMode>("cards")
@@ -93,119 +89,36 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
     </div>
   )
 
-  const listPane = (
+  /** מובייל בלבד — רשימת כרטיסים (בדסקטופ אין פיצול כשיש ליד נבחר) */
+  const mobileListPane = (
     <div className="flex h-full min-h-0 w-full max-w-full flex-col overflow-x-hidden">
       <PageHeader
         title="לידים"
         subtitle={`${filtered.length} רשומות`}
         action={
-          <div className="flex items-center gap-2">
-            {!selectedId && (
-              <div className="hidden items-center rounded-xl border border-border bg-card p-0.5 md:flex">
-                <button
-                  type="button"
-                  onClick={() => setBrowseMode("cards")}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors",
-                    browseMode === "cards"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-secondary",
-                  )}
-                  aria-pressed={browseMode === "cards"}
-                >
-                  <LayoutGrid className="size-3.5" />
-                  כרטיסים
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBrowseMode("table")}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors",
-                    browseMode === "table"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-secondary",
-                  )}
-                  aria-pressed={browseMode === "table"}
-                >
-                  <LayoutList className="size-3.5" />
-                  טבלה
-                </button>
-              </div>
-            )}
-            <Button
-              size="icon"
-              nativeButton={false}
-              className="size-10 shrink-0 rounded-full md:size-9"
-              render={
-                <Link href="/leads/new" aria-label="ליד חדש">
-                  <Plus className="size-5" />
-                </Link>
-              }
-            />
-          </div>
+          <Button
+            size="icon"
+            nativeButton={false}
+            className="size-10 shrink-0 rounded-full"
+            render={
+              <Link href="/leads/new" aria-label="ליד חדש">
+                <Plus className="size-5" />
+              </Link>
+            }
+          />
         }
       />
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4 md:px-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4">
         {searchBox}
         {filtersBar}
-
-        {/* מובייל: כרטיסים מלאים */}
-        <div className="space-y-3 md:hidden">
+        <div className="space-y-3">
           {filtered.length === 0 ? (
             <EmptyList />
           ) : (
             filtered.map((lead) => <LeadCard key={lead.id} lead={lead} />)
           )}
         </div>
-
-        {/* דסקטופ בפיצול (כשיש ליד נבחר): שורות קומפקטיות */}
-        {selectedId && (
-          <div className="hidden space-y-1 md:block">
-            {filtered.length === 0 ? (
-              <EmptyList />
-            ) : (
-              filtered.map((lead) => {
-                const selected = lead.id === selectedId
-                return (
-                  <Link
-                    key={lead.id}
-                    href={`/leads/${lead.id}`}
-                    className={cn(
-                      "block rounded-xl border-2 px-2.5 py-2 transition-colors",
-                      leadStatusCardClass(lead.status),
-                      selected
-                        ? "ring-2 ring-primary/50"
-                        : "hover:brightness-[0.98]",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold">{lead.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {formatLeadCourseType(lead, settings.courses)}
-                          {lead.address.city ? ` · ${lead.address.city}` : ""}
-                        </p>
-                      </div>
-                      <LeadStatusBadge status={lead.status} />
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
-                      {lead.date && (
-                        <span>
-                          {formatDateWithWeekday(lead.date)}
-                          {lead.time ? ` · ${lead.time}` : ""}
-                        </span>
-                      )}
-                      <span className="font-semibold text-foreground">
-                        {formatCurrency(lead.totalPrice)}
-                      </span>
-                    </div>
-                  </Link>
-                )
-              })
-            )}
-          </div>
-        )}
       </div>
     </div>
   )
@@ -285,26 +198,21 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
         </div>
       )}
 
-      {/* —— Desktop: ליד נבחר — רשימה + פרטים —— */}
+      {/* —— Desktop: ליד נבחר — תצוגת פרטים במלוא הרוחב (ללא פיצול) —— */}
       {selectedId && (
-        <div className="hidden h-full w-full max-w-full grid-cols-12 gap-0 overflow-x-hidden md:grid">
-          <aside className="col-span-12 flex min-h-0 min-w-0 flex-col border-e border-border lg:col-span-4 xl:col-span-4">
-            {listPane}
-          </aside>
-          <section className="col-span-12 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden lg:col-span-8 xl:col-span-8">
-            <LeadDetailView leadId={selectedId} embedded />
-          </section>
+        <div className="hidden h-full min-h-0 w-full max-w-full overflow-y-auto overflow-x-hidden md:block">
+          <LeadDetailView leadId={selectedId} embedded />
         </div>
       )}
 
       {/* —— Mobile —— */}
       <div
         className={cn(
-          "flex min-h-0 w-full max-w-full flex-col overflow-x-hidden md:hidden",
+          "min-h-0 w-full max-w-full flex-col overflow-x-hidden md:hidden",
           selectedId ? "hidden" : "flex",
         )}
       >
-        {listPane}
+        {mobileListPane}
       </div>
       {selectedId && (
         <div className="min-h-0 w-full max-w-full overflow-x-hidden md:hidden">

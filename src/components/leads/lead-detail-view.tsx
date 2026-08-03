@@ -147,6 +147,16 @@ export function LeadDetailView({
         <div className="sticky top-0 z-30 shrink-0">
           {/* —— Expanded action header (separated from tabs) —— */}
           <header className="border-b border-slate-200/80 bg-slate-50/90 px-5 py-4 shadow-sm backdrop-blur-md md:px-6 md:py-5">
+            {embedded && (
+              <Link
+                href="/leads"
+                className="mb-3 hidden w-fit items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-secondary md:inline-flex"
+              >
+                <ArrowRight className="size-4 shrink-0" />
+                חזרה לכלל הלידים וההדרכות
+              </Link>
+            )}
+
             <div className="flex items-start gap-3">
               {embedded ? (
                 <Link

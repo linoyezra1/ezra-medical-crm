@@ -44,7 +44,7 @@ export function ClientsView() {
         subtitle={`${clients.length} לקוחות · ${trainees.length} מודרכים`}
       />
 
-      <div className="px-4 pt-3 md:mx-auto md:max-w-6xl md:px-6">
+      <div className="px-4 pt-3 md:px-5">
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
           <TabsList className="grid w-full grid-cols-2 md:max-w-sm">
             <TabsTrigger value="trainees" className="text-xs">
@@ -58,7 +58,7 @@ export function ClientsView() {
       </div>
 
       {tab === "trainees" ? (
-        <div className="p-4 md:mx-auto md:max-w-6xl md:p-6">
+        <div className="p-4 md:p-5">
           <TraineesPanel />
         </div>
       ) : (
