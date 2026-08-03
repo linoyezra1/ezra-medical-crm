@@ -225,6 +225,15 @@ export interface Lead {
   trainingIndex?: number;
   createdAt: string;
   updatedAt: string;
+  /** נוצר על ידי — לינוי / יצחק */
+  createdBy?: string;
+  /** עודכן לאחרונה על ידי */
+  lastUpdatedBy?: string;
+  /** מי סגר את העסקה */
+  closedBy?: string;
+  assignedTo?: string;
+  /** היסטוריית שינויי סטטוס */
+  activityLogs?: ActivityLogEntry[];
   /** raw DB fields for advanced edit */
   location?: string;
   activityType?: string;
@@ -235,6 +244,14 @@ export interface Lead {
   sessionDuration?: string | null;
   bookletRequired?: boolean;
   reason?: string | null;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  performedBy: string;
+  previousStatus?: string;
+  newStatus: string;
+  createdAt: string;
 }
 
 export type EquipmentStatus =

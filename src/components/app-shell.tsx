@@ -23,6 +23,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { instructorPortalPath } from "@/lib/instructor-portal"
+import { UserSwitcher } from "@/components/user-switcher"
 import { cn } from "@/lib/utils"
 
 const NAV = [
@@ -148,6 +149,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="border-b border-border px-4 py-4">
           <p className="text-xs font-medium text-muted-foreground">מערכת ניהול</p>
           <p className="text-base font-bold text-foreground">עזרה!</p>
+          <div className="mt-3">
+            <UserSwitcher />
+          </div>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
           {DESKTOP_NAV.map((item) => {
@@ -217,21 +221,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SheetHeader className="text-right">
                 <SheetTitle>תפריט נוסף</SheetTitle>
               </SheetHeader>
-              <div className="grid grid-cols-3 gap-3 p-4">
-                {MORE.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMoreOpen(false)}
-                      className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-secondary/40 p-4 text-center text-xs font-medium text-foreground active:scale-95 transition-transform"
-                    >
-                      <Icon className="size-7 text-primary" strokeWidth={1.8} />
-                      {item.label}
-                    </Link>
-                  )
-                })}
+              <div className="space-y-3 p-4 pt-0">
+                <UserSwitcher />
+                <div className="grid grid-cols-3 gap-3">
+                  {MORE.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMoreOpen(false)}
+                        className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-secondary/40 p-4 text-center text-xs font-medium text-foreground active:scale-95 transition-transform"
+                      >
+                        <Icon className="size-7 text-primary" strokeWidth={1.8} />
+                        {item.label}
+                      </Link>
+                    )
+                  })}
+                </div>
               </div>
             </SheetContent>
           </Sheet>

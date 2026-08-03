@@ -1,4 +1,5 @@
 import { AppProvider } from "@/lib/store";
+import { CrmUserProvider } from "@/lib/crm-user-context";
 import { emptyAppData, loadAppData } from "@/lib/load-app-data";
 import { AppShell } from "@/components/app-shell";
 
@@ -10,8 +11,10 @@ export async function AppProviders({ children }: { children: React.ReactNode }) 
   const initial = isBuild ? emptyAppData() : await loadAppData();
 
   return (
-    <AppProvider initial={initial}>
-      <AppShell>{children}</AppShell>
-    </AppProvider>
+    <CrmUserProvider>
+      <AppProvider initial={initial}>
+        <AppShell>{children}</AppShell>
+      </AppProvider>
+    </CrmUserProvider>
   );
 }

@@ -12,12 +12,14 @@ import type {
   InventoryComponent,
   TrainingSale as DbTrainingSale,
   Instructor as DbInstructor,
+  ActivityLog as DbActivityLog,
 } from "@/generated/prisma/client";
 import { DEFAULT_COURSES } from "@/lib/demo-data";
 import { formatInJerusalem } from "@/lib/timezone";
 import {
   dbEquipmentToUi,
   dbStatusToUi,
+  type ActivityLogEntry,
   type BusinessSettings,
   type Client,
   type EquipmentDeal,
@@ -34,6 +36,7 @@ type DbLeadFull = DbLead & {
   expenses?: Expense[];
   trainingSales?: (DbTrainingSale & { inventoryItem?: { name: string } | null })[];
   instructorRef?: DbInstructor | null;
+  activityLogs?: DbActivityLog[];
 };
 
 export function mapInstructor(db: DbInstructor): InstructorProfile {
@@ -42,6 +45,16 @@ export function mapInstructor(db: DbInstructor): InstructorProfile {
     name: db.name,
     fee: db.fee || 0,
     active: db.active,
+  };
+}
+
+export function mapActivityLog(db: DbActivityLog): ActivityLogEntry {
+  return {
+    id: db.id,
+    performedBy: db.performedBy,
+    previousStatus: db.previousStatus || undefined,
+    newStatus: db.newStatus,
+    createdAt: db.createdAt.toISOString(),
   };
 }
 
@@ -137,6 +150,17 @@ export function mapLead(db: DbLeadFull): Lead {
     ),
     createdAt: db.createdAt.toISOString(),
     updatedAt: db.updatedAt.toISOString(),
+    createdBy: db.createdBy || undefined,
+    lastUpdatedBy: db.lastUpdatedBy || undefined,
+    closedBy: db.closedBy || undefined,
+    assignedTo: db.assignedTo || undefined,
+    activityLogs: (db.activityLogs || [])
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      .map(mapActivityLog),
     location: db.location || undefined,
     activityType: db.activityType,
     equipmentStatus: db.equipmentStatus,

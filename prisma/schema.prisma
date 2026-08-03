@@ -106,6 +106,14 @@ model Lead {
   googleCalendarEventId String?
   conflictBypassed      Boolean @default(false)
 
+  /** ביקורת משתמשים — לינוי / יצחק */
+  createdBy      String?
+  lastUpdatedBy  String?
+  /** מי סגר את העסקה (סטטוס נסגר) */
+  closedBy       String?
+  /** שיוך אופציונלי */
+  assignedTo     String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -113,12 +121,27 @@ model Lead {
   expenses      Expense[]
   tasks         FollowUpTask[]
   trainingSales TrainingSale[]
+  activityLogs  ActivityLog[]
 
   @@index([phone])
   @@index([courseStatus])
   @@index([urgency])
   @@index([scheduledStart])
   @@index([instructorId])
+}
+
+/** יומן שינויי סטטוס / פעולות על ליד */
+model ActivityLog {
+  id             String   @id @default(cuid())
+  leadId         String
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  performedBy    String
+  previousStatus String?
+  newStatus      String
+  createdAt      DateTime @default(now())
+
+  @@index([leadId])
+  @@index([createdAt])
 }
 
 /** פרופיל מדריך — תעריף חי כמקור אמת לחישוב רווח */

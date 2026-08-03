@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/db";
+import { getActiveCrmUser } from "@/lib/crm-user-server";
 import { jerusalemLocalToUtcDate } from "@/lib/timezone";
 import { sanitizePhone } from "@/lib/utils";
 import { validateStatusTransition } from "@/lib/conflicts";
@@ -188,6 +189,7 @@ export async function createLead(formData: FormData): Promise<
     };
   }
 
+  const actor = await getActiveCrmUser();
   const lead = await prisma.lead.create({
     data: {
       fullName,
@@ -198,6 +200,17 @@ export async function createLead(formData: FormData): Promise<
       urgency: "normal",
       activityType: String(formData.get("activityType") ?? "course"),
       notes: String(formData.get("notes") ?? "") || null,
+      createdBy: actor,
+      lastUpdatedBy: actor,
+    },
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      leadId: lead.id,
+      performedBy: actor,
+      previousStatus: null,
+      newStatus: lead.courseStatus,
     },
   });
 
@@ -337,6 +350,13 @@ export async function updateLead(
 
   // Google Calendar: manual export via TEMPLATE link in UI (no background sync)
 
+  const actor = await getActiveCrmUser();
+  const statusChanged = nextStatus !== existing.courseStatus;
+  const closedByValue =
+    nextStatus === "closed"
+      ? actor
+      : existing.closedBy;
+
   await prisma.lead.update({
     where: { id: leadId },
     data: {
@@ -401,8 +421,27 @@ export async function updateLead(
       notes: merged.notes,
       collectCertificateShipping: Boolean(merged.collectCertificateShipping),
       conflictBypassed: Boolean(opts.bypassConflict) || existing.conflictBypassed,
+      lastUpdatedBy: actor,
+      closedBy: closedByValue,
+      assignedTo:
+        raw.assignedTo !== undefined
+          ? raw.assignedTo
+            ? String(raw.assignedTo)
+            : null
+          : existing.assignedTo,
     },
   });
+
+  if (statusChanged) {
+    await prisma.activityLog.create({
+      data: {
+        leadId,
+        performedBy: actor,
+        previousStatus: existing.courseStatus,
+        newStatus: nextStatus,
+      },
+    });
+  }
 
   await ensureNetFollowUp(leadId, merged.paymentTerms);
 

@@ -47,6 +47,7 @@ import {
   whatsappLink,
   whatsappSummary,
 } from "@/lib/helpers"
+import { formatActivityLogLine } from "@/lib/activity-log"
 import { useApp } from "@/lib/store"
 import { computeTrainingProfit } from "@/lib/training-profit"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -407,6 +408,48 @@ function HomeTab({
 
       <LifecycleControls lead={lead} hideParticipantsManage />
 
+      <Card className="gap-2 rounded-2xl border border-border/80 bg-card p-4 shadow-sm text-sm">
+        <h2 className="text-sm font-bold text-foreground">מעקב משתמשים</h2>
+        <p className="text-muted-foreground">
+          נוצר על ידי:{" "}
+          <span className="font-medium text-foreground">
+            {lead.createdBy || "—"}
+          </span>
+        </p>
+        <p className="text-muted-foreground">
+          עודכן לאחרונה על ידי:{" "}
+          <span className="font-medium text-foreground">
+            {lead.lastUpdatedBy || "—"}
+          </span>
+        </p>
+        {(lead.status === "closed" || lead.closedBy) && (
+          <p className="text-muted-foreground">
+            העסקה נסגרה על ידי:{" "}
+            <span className="font-medium text-foreground">
+              {lead.closedBy || "—"}
+            </span>
+          </p>
+        )}
+      </Card>
+
+      <Card className="gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
+        <h2 className="text-sm font-bold text-foreground">היסטוריית שינויים</h2>
+        {(lead.activityLogs || []).length === 0 ? (
+          <p className="text-xs text-muted-foreground">אין שינויים מתועדים עדיין</p>
+        ) : (
+          <ul className="space-y-2">
+            {(lead.activityLogs || []).map((entry) => (
+              <li
+                key={entry.id}
+                className="rounded-xl bg-secondary/40 px-3 py-2 text-xs leading-relaxed text-foreground"
+              >
+                {formatActivityLogLine(entry)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       {canCollect && (
         <Button
           className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
@@ -535,13 +578,6 @@ function FinanceTab({ lead }: { lead: Lead }) {
           <strong className="text-primary">
             {formatCurrency(profit.netProfit)}
           </strong>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            ({formatCurrency(profit.revenue)} הכנסות −{" "}
-            {formatCurrency(profit.totalExpenses)} הוצאות)
-            {profit.salesCost > 0
-              ? ` · כולל עלות מלאי ${formatCurrency(profit.salesCost)}`
-              : ""}
-          </p>
         </div>
       </Card>
 

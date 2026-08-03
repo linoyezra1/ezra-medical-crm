@@ -75,6 +75,16 @@ export function LeadCard({ lead }: { lead: Lead }) {
           </span>
         </div>
 
+        {(lead.createdBy || lead.lastUpdatedBy) && (
+          <p className="text-[11px] text-muted-foreground">
+            {lead.createdBy ? `נוצר על ידי: ${lead.createdBy}` : null}
+            {lead.createdBy && lead.lastUpdatedBy ? " · " : null}
+            {lead.lastUpdatedBy
+              ? `עודכן: ${lead.lastUpdatedBy}`
+              : null}
+          </p>
+        )}
+
         <div className="flex items-center gap-2 border-t border-border pt-3">
           <a
             href={`tel:${lead.phone}`}

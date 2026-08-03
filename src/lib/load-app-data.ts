@@ -64,6 +64,7 @@ export async function loadAppData(): Promise<AppData> {
           expenses: true,
           trainingSales: { include: { inventoryItem: true } },
           instructorRef: true,
+          activityLogs: { orderBy: { createdAt: "desc" }, take: 50 },
         },
         orderBy: { updatedAt: "desc" },
       }),
