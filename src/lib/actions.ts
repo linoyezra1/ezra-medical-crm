@@ -701,6 +701,335 @@ export async function updateTrainee(
   return { ok: true, data: { id } };
 }
 
+export type TraineeImportPayloadRow = {
+  fullName: string;
+  idNumber: string;
+  phone?: string;
+  email?: string;
+  organizerName?: string;
+  trainingDate?: string;
+  courseType?: string;
+  satisfaction?: string;
+  feedback?: string;
+  interestedInFirstAidKit?: string;
+  /** Explicit lead; otherwise try match by organizerName */
+  leadId?: string;
+  notes?: string;
+};
+
+const ASSIGNABLE_DB_STATUSES = ["closed", "certificates_pending"] as const;
+
+function normalizeMatch(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+async function findAssignableLeadId(opts: {
+  leadId?: string;
+  organizerName?: string;
+  trainingDate?: string;
+}): Promise<string | null> {
+  if (opts.leadId) {
+    const lead = await prisma.lead.findUnique({ where: { id: opts.leadId } });
+    if (
+      lead &&
+      (ASSIGNABLE_DB_STATUSES as readonly string[]).includes(lead.courseStatus)
+    ) {
+      return lead.id;
+    }
+    return null;
+  }
+
+  const organizer = opts.organizerName?.trim();
+  if (!organizer) return null;
+
+  const candidates = await prisma.lead.findMany({
+    where: { courseStatus: { in: [...ASSIGNABLE_DB_STATUSES] } },
+    select: {
+      id: true,
+      fullName: true,
+      scheduledStart: true,
+    },
+  });
+
+  const target = normalizeMatch(organizer);
+  const byName = candidates.filter(
+    (l) =>
+      normalizeMatch(l.fullName) === target ||
+      normalizeMatch(l.fullName).includes(target) ||
+      target.includes(normalizeMatch(l.fullName)),
+  );
+
+  if (byName.length === 1) return byName[0].id;
+  if (byName.length > 1 && opts.trainingDate) {
+    const day = opts.trainingDate.trim().slice(0, 10);
+    const dated = byName.find((l) => {
+      if (!l.scheduledStart) return false;
+      const iso = l.scheduledStart.toISOString().slice(0, 10);
+      return iso === day;
+    });
+    if (dated) return dated.id;
+  }
+  return byName[0]?.id ?? null;
+}
+
+/** יצירת מודרך ידנית (+ שיוך להדרכה אופציונלי) */
+export async function createTraineeManual(data: {
+  fullName: string;
+  idNumber: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  leadId?: string;
+}): Promise<ActionResult<{ traineeId: string; participantId?: string }>> {
+  if (!data.fullName.trim() || !data.idNumber.trim()) {
+    return { ok: false, error: "שם מלא ות״ז הם שדות חובה" };
+  }
+
+  const idNumber = data.idNumber.trim().replace(/[-\s]/g, "");
+  const trainee = await upsertTraineeFromParticipant({
+    fullName: data.fullName,
+    idNumber,
+    phone: data.phone,
+    email: data.email,
+  });
+
+  if (data.notes?.trim()) {
+    await prisma.trainee.update({
+      where: { id: trainee.id },
+      data: { notes: data.notes.trim() },
+    });
+  }
+
+  let participantId: string | undefined;
+  if (data.leadId) {
+    const leadId = await findAssignableLeadId({ leadId: data.leadId });
+    if (!leadId) {
+      return {
+        ok: false,
+        error: "ההדרכה שנבחרה אינה זמינה לשיוך (נדרש סטטוס סגור/ממתין לתעודות)",
+      };
+    }
+
+    const existing = await prisma.participant.findFirst({
+      where: { leadId, idNumber },
+    });
+    if (existing) {
+      await prisma.participant.update({
+        where: { id: existing.id },
+        data: {
+          traineeId: trainee.id,
+          fullName: data.fullName.trim(),
+          phone: data.phone?.trim() || existing.phone,
+          email: data.email?.trim() || existing.email,
+          attended: true,
+        },
+      });
+      participantId = existing.id;
+    } else {
+      const created = await prisma.participant.create({
+        data: {
+          leadId,
+          traineeId: trainee.id,
+          fullName: data.fullName.trim(),
+          idNumber,
+          phone: data.phone?.trim() || null,
+          email: data.email?.trim() || null,
+          attended: true,
+        },
+      });
+      participantId = created.id;
+    }
+    revalidatePath(`/leads/${leadId}`);
+  }
+
+  revalidatePath("/clients");
+  revalidatePath("/leads");
+  return { ok: true, data: { traineeId: trainee.id, participantId } };
+}
+
+/** ייבוא מרובה מאקסל — יוצר/מעדכן מודרכים ומשייך להדרכות כשאפשר */
+export async function bulkImportTrainees(
+  rows: TraineeImportPayloadRow[],
+  defaultLeadId?: string,
+): Promise<
+  ActionResult<{
+    created: number;
+    updated: number;
+    linked: number;
+    skipped: number;
+    errors: string[];
+  }>
+> {
+  if (!rows.length) return { ok: false, error: "אין שורות לייבוא" };
+
+  let created = 0;
+  let updated = 0;
+  let linked = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const fullName = row.fullName?.trim() || "";
+    const idNumber = (row.idNumber || "").trim().replace(/[-\s]/g, "");
+    if (!fullName || !idNumber) {
+      skipped += 1;
+      errors.push(`שורה ${i + 1}: חסר שם או ת״ז`);
+      continue;
+    }
+
+    try {
+      const existing = await prisma.trainee.findUnique({ where: { idNumber } });
+      const trainee = await upsertTraineeFromParticipant({
+        fullName,
+        idNumber,
+        phone: row.phone,
+        email: row.email,
+      });
+      if (existing) updated += 1;
+      else created += 1;
+
+      if (row.feedback?.trim() || row.notes?.trim()) {
+        const noteParts = [
+          existing?.notes,
+          row.notes?.trim(),
+          row.feedback?.trim()
+            ? `משוב: ${row.feedback.trim()}`
+            : undefined,
+        ].filter(Boolean);
+        if (noteParts.length) {
+          await prisma.trainee.update({
+            where: { id: trainee.id },
+            data: { notes: noteParts.join("\n") },
+          });
+        }
+      }
+
+      const leadId = await findAssignableLeadId({
+        leadId: row.leadId || defaultLeadId,
+        organizerName: row.organizerName,
+        trainingDate: row.trainingDate,
+      });
+
+      if (leadId) {
+        const kit =
+          row.interestedInFirstAidKit?.trim() || null;
+        const dup = await prisma.participant.findFirst({
+          where: { leadId, idNumber },
+        });
+        if (dup) {
+          await prisma.participant.update({
+            where: { id: dup.id },
+            data: {
+              traineeId: trainee.id,
+              fullName,
+              phone: row.phone?.trim() || dup.phone,
+              email: row.email?.trim() || dup.email,
+              organizerName:
+                row.organizerName?.trim() || dup.organizerName,
+              courseDate: row.trainingDate?.trim() || dup.courseDate,
+              satisfaction:
+                row.satisfaction?.trim() || dup.satisfaction,
+              feedback: row.feedback?.trim() || dup.feedback,
+              kitInterest: kit || dup.kitInterest,
+              attended: true,
+            },
+          });
+        } else {
+          await prisma.participant.create({
+            data: {
+              leadId,
+              traineeId: trainee.id,
+              fullName,
+              idNumber,
+              phone: row.phone?.trim() || null,
+              email: row.email?.trim() || null,
+              organizerName: row.organizerName?.trim() || null,
+              courseDate: row.trainingDate?.trim() || null,
+              satisfaction: row.satisfaction?.trim() || null,
+              feedback: row.feedback?.trim() || null,
+              kitInterest: kit,
+              attended: true,
+            },
+          });
+        }
+        linked += 1;
+        revalidatePath(`/leads/${leadId}`);
+      }
+    } catch (e) {
+      skipped += 1;
+      errors.push(
+        `שורה ${i + 1} (${fullName}): ${e instanceof Error ? e.message : "שגיאה"}`,
+      );
+    }
+  }
+
+  revalidatePath("/clients");
+  revalidatePath("/leads");
+  return {
+    ok: true,
+    data: { created, updated, linked, skipped, errors },
+  };
+}
+
+/** שיוך מודרכים קיימים להדרכה */
+export async function assignTraineesToLead(
+  traineeIds: string[],
+  leadId: string,
+): Promise<ActionResult<{ linked: number; skipped: number }>> {
+  if (!traineeIds.length) return { ok: false, error: "לא נבחרו מודרכים" };
+
+  const resolved = await findAssignableLeadId({ leadId });
+  if (!resolved) {
+    return {
+      ok: false,
+      error: "ההדרכה אינה זמינה לשיוך (נדרש סטטוס סגור/ממתין לתעודות)",
+    };
+  }
+
+  const trainees = await prisma.trainee.findMany({
+    where: { id: { in: traineeIds } },
+  });
+
+  let linked = 0;
+  let skipped = 0;
+
+  for (const t of trainees) {
+    const existing = await prisma.participant.findFirst({
+      where: { leadId: resolved, idNumber: t.idNumber },
+    });
+    if (existing) {
+      if (existing.traineeId !== t.id) {
+        await prisma.participant.update({
+          where: { id: existing.id },
+          data: { traineeId: t.id, attended: true },
+        });
+        linked += 1;
+      } else {
+        skipped += 1;
+      }
+      continue;
+    }
+    await prisma.participant.create({
+      data: {
+        leadId: resolved,
+        traineeId: t.id,
+        fullName: t.fullName,
+        idNumber: t.idNumber,
+        phone: t.phone,
+        email: t.email,
+        attended: true,
+      },
+    });
+    linked += 1;
+  }
+
+  revalidatePath(`/leads/${resolved}`);
+  revalidatePath("/clients");
+  revalidatePath("/leads");
+  return { ok: true, data: { linked, skipped } };
+}
+
 async function recomputeCompositeCost(parentId: string) {
   const comps = await prisma.inventoryComponent.findMany({
     where: { parentId },

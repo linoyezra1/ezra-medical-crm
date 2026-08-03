@@ -2,8 +2,20 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { ExternalLink, MessageCircle, Search } from "lucide-react"
+import {
+  ExternalLink,
+  FileSpreadsheet,
+  Link2,
+  MessageCircle,
+  Plus,
+  Search,
+  UserPlus,
+} from "lucide-react"
 import { toast } from "sonner"
+import { TraineeAddDialog } from "@/components/clients/trainee-add-dialog"
+import { TraineeAssignDialog } from "@/components/clients/trainee-assign-dialog"
+import { TraineeImportDialog } from "@/components/clients/trainee-import-dialog"
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -11,6 +23,7 @@ import { updateTrainee } from "@/lib/actions"
 import { formatPhone, whatsappLink } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Trainee } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 function trainingLabel(t: Trainee) {
   return (
@@ -24,6 +37,11 @@ export function TraineesPanel() {
   const { trainees, updateTraineeLocal } = useApp()
   const [q, setQ] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [importOpen, setImportOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assignIds, setAssignIds] = useState<string[]>([])
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -42,6 +60,38 @@ export function TraineesPanel() {
     )
   }, [trainees, q])
 
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((t) => selectedIds.has(t.id))
+
+  const toggleSelected = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const toggleSelectAllFiltered = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const t of filtered) {
+        if (checked) next.add(t.id)
+        else next.delete(t.id)
+      }
+      return next
+    })
+  }
+
+  const openAssign = (ids: string[]) => {
+    if (!ids.length) {
+      toast.error("יש לבחור לפחות מודרך אחד")
+      return
+    }
+    setAssignIds(ids)
+    setAssignOpen(true)
+  }
+
   const patch = async (t: Trainee, data: Partial<Trainee>) => {
     updateTraineeLocal(t.id, data)
     const res = await updateTrainee(t.id, {
@@ -52,21 +102,87 @@ export function TraineesPanel() {
     if (!res.ok) toast.error(res.error)
   }
 
+  const toolbar = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-10 gap-2 rounded-xl sm:h-9"
+        onClick={() => setImportOpen(true)}
+      >
+        <FileSpreadsheet className="size-4" />
+        ייבוא מאקסל
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-10 gap-2 rounded-xl sm:h-9"
+        onClick={() => setAddOpen(true)}
+      >
+        <Plus className="size-4" />
+        הוספת מודרך ידנית
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        className="h-10 gap-2 rounded-xl sm:h-9"
+        disabled={selectedIds.size === 0}
+        onClick={() => openAssign([...selectedIds])}
+      >
+        <Link2 className="size-4" />
+        שיוך לנבחרים
+        {selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+      </Button>
+    </div>
+  )
+
   return (
     <div className="space-y-3">
-      <div className="relative md:max-w-md">
-        <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="חיפוש מודרך / מארגן / ת״ז"
-          className="h-9 pr-10 text-sm"
-        />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative w-full lg:max-w-md">
+          <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="חיפוש מודרך / מארגן / ת״ז"
+            className="h-9 pr-10 text-sm"
+          />
+        </div>
+        {toolbar}
       </div>
 
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          לא נמצאו מודרכים
+          {trainees.length === 0 ? (
+            <div className="space-y-3">
+              <p>עדיין אין מודרכים במערכת</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-2 rounded-xl"
+                  onClick={() => setImportOpen(true)}
+                >
+                  <FileSpreadsheet className="size-4" />
+                  ייבוא מאקסל
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 rounded-xl"
+                  onClick={() => setAddOpen(true)}
+                >
+                  <UserPlus className="size-4" />
+                  הוספה ידנית
+                </Button>
+              </div>
+            </div>
+          ) : (
+            "לא נמצאו מודרכים"
+          )}
         </div>
       ) : (
         <>
@@ -76,20 +192,31 @@ export function TraineesPanel() {
               <table className="w-full table-fixed text-right text-sm">
                 <thead className="bg-secondary/50 text-xs text-muted-foreground">
                   <tr>
-                    <th className="w-[16%] px-3 py-2 font-semibold">שם מודרך</th>
-                    <th className="w-[11%] px-3 py-2 font-semibold">ת״ז</th>
-                    <th className="w-[12%] px-3 py-2 font-semibold">טלפון</th>
-                    <th className="w-[16%] px-3 py-2 font-semibold">
+                    <th className="w-10 px-3 py-2 font-semibold">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        onCheckedChange={(v) =>
+                          toggleSelectAllFiltered(Boolean(v))
+                        }
+                        aria-label="בחר הכל"
+                      />
+                    </th>
+                    <th className="w-[15%] px-3 py-2 font-semibold">
+                      שם מודרך
+                    </th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">ת״ז</th>
+                    <th className="w-[11%] px-3 py-2 font-semibold">טלפון</th>
+                    <th className="w-[14%] px-3 py-2 font-semibold">
                       הדרכה שיוך
                     </th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">
+                    <th className="w-[9%] px-3 py-2 font-semibold">
                       נשלחה תעודה במייל
                     </th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">
+                    <th className="w-[9%] px-3 py-2 font-semibold">
                       הודפס כרטיס תעודה
                     </th>
-                    <th className="w-[15%] px-3 py-2 font-semibold">הערות</th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">
+                    <th className="w-[13%] px-3 py-2 font-semibold">הערות</th>
+                    <th className="w-[12%] px-3 py-2 font-semibold">
                       פעולות מהירות
                     </th>
                   </tr>
@@ -101,8 +228,20 @@ export function TraineesPanel() {
                     return (
                       <tr
                         key={t.id}
-                        className="border-t border-border hover:bg-secondary/30"
+                        className={cn(
+                          "border-t border-border hover:bg-secondary/30",
+                          selectedIds.has(t.id) && "bg-primary/5",
+                        )}
                       >
+                        <td className="px-3 py-2">
+                          <Checkbox
+                            checked={selectedIds.has(t.id)}
+                            onCheckedChange={(v) =>
+                              toggleSelected(t.id, Boolean(v))
+                            }
+                            aria-label={`בחירה ${t.fullName}`}
+                          />
+                        </td>
                         <td className="max-w-0 truncate px-3 py-2 font-medium">
                           {t.fullName}
                         </td>
@@ -164,6 +303,15 @@ export function TraineesPanel() {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-end gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => openAssign([t.id])}
+                              className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+                              aria-label="שיוך להדרכה"
+                              title="שיוך להדרכה"
+                            >
+                              <Link2 className="size-3.5" />
+                            </button>
                             {t.phone && (
                               <a
                                 href={whatsappLink(t.phone)}
@@ -201,25 +349,50 @@ export function TraineesPanel() {
             {filtered.map((t) => {
               const open = expandedId === t.id
               const via = trainingLabel(t)
+              const selected = selectedIds.has(t.id)
               return (
                 <div
                   key={t.id}
-                  className="rounded-2xl border border-border bg-card p-3"
+                  className={cn(
+                    "rounded-2xl border border-border bg-card p-3",
+                    selected && "border-primary/40 bg-primary/5",
+                  )}
                 >
-                  <button
-                    type="button"
-                    className="w-full text-right"
-                    onClick={() => setExpandedId(open ? null : t.id)}
-                  >
-                    <p className="text-sm font-semibold">{t.fullName}</p>
-                    <p className="text-[11px] text-muted-foreground" dir="ltr">
-                      {t.idNumber}
-                      {t.phone ? ` · ${t.phone}` : ""}
-                    </p>
-                    <p className="mt-1 text-[11px] text-primary">
-                      הדרכה דרך: {via}
-                    </p>
-                  </button>
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      checked={selected}
+                      onCheckedChange={(v) =>
+                        toggleSelected(t.id, Boolean(v))
+                      }
+                      aria-label={`בחירה ${t.fullName}`}
+                      className="mt-1"
+                    />
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 text-right"
+                      onClick={() => setExpandedId(open ? null : t.id)}
+                    >
+                      <p className="text-sm font-semibold">{t.fullName}</p>
+                      <p
+                        className="text-[11px] text-muted-foreground"
+                        dir="ltr"
+                      >
+                        {t.idNumber}
+                        {t.phone ? ` · ${t.phone}` : ""}
+                      </p>
+                      <p className="mt-1 text-[11px] text-primary">
+                        הדרכה דרך: {via}
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openAssign([t.id])}
+                      className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border text-primary"
+                      aria-label="שיוך להדרכה"
+                    >
+                      <Link2 className="size-4" />
+                    </button>
+                  </div>
 
                   {open && (
                     <div className="mt-3 space-y-2 border-t border-border pt-3">
@@ -272,6 +445,15 @@ export function TraineesPanel() {
           </div>
         </>
       )}
+
+      <TraineeImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      <TraineeAddDialog open={addOpen} onOpenChange={setAddOpen} />
+      <TraineeAssignDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        traineeIds={assignIds}
+        onAssigned={() => setSelectedIds(new Set())}
+      />
     </div>
   )
 }
