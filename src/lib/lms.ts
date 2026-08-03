@@ -92,18 +92,79 @@ export type LmsWebhookPayload = {
   courseType: string
 }
 
-/** קריאה ל־LMS webhook עם מפתח API */
+/** נתיב webhook ידוע ב־LMS (fallback כש־LMS_API_URL מחזיר 404) */
+export const LMS_WEBHOOK_FALLBACK_URL =
+  "https://learningsystem-production.up.railway.app/api/webhooks/create-user"
+
+function isEndpointNotFound(status: number, bodyText: string): boolean {
+  if (status === 404) return true
+  const lower = bodyText.toLowerCase()
+  return (
+    lower.includes("api endpoint not found") ||
+    lower.includes("endpoint not found")
+  )
+}
+
+async function postToLmsUrl(
+  url: string,
+  secret: string,
+  payload: LmsWebhookPayload,
+): Promise<{
+  ok: boolean
+  status: number
+  detail: string
+}> {
+  const body = JSON.stringify({
+    fullName: payload.fullName,
+    phone: payload.phone,
+    username: payload.username,
+    password: payload.password,
+    courseType: payload.courseType,
+  })
+
+  console.info(`[lms] POST → ${url}`)
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": secret,
+        "X-Webhook-Secret": secret,
+      },
+      body,
+    })
+
+    let detail = ""
+    try {
+      detail = (await res.text()).slice(0, 400)
+    } catch {
+      /* ignore */
+    }
+
+    if (res.status === 200 || res.status === 201) {
+      console.info(`[lms] SUCCESS ← ${url} (status ${res.status})`)
+      return { ok: true, status: res.status, detail }
+    }
+
+    console.warn(
+      `[lms] FAILED ← ${url} (status ${res.status}) body=${detail || "(empty)"}`,
+    )
+    return { ok: false, status: res.status, detail }
+  } catch (err) {
+    console.error(`[lms] NETWORK ERROR ← ${url}`, err)
+    return {
+      ok: false,
+      status: 502,
+      detail: err instanceof Error ? err.message : "network error",
+    }
+  }
+}
+
+/** קריאה ל־LMS webhook עם מפתח API + fallback ל־404 */
 export async function postLmsWebhookCreateUser(
   payload: LmsWebhookPayload,
 ): Promise<{ ok: true; status: number } | { ok: false; status: number; error: string }> {
   const { apiUrl, secret } = getLmsEnvConfig()
-  if (!apiUrl) {
-    return {
-      ok: false,
-      status: 500,
-      error: "חסר LMS_API_URL בהגדרות הסביבה",
-    }
-  }
   if (!secret) {
     return {
       ok: false,
@@ -112,37 +173,45 @@ export async function postLmsWebhookCreateUser(
     }
   }
 
-  try {
-    const res = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": secret,
-      },
-      body: JSON.stringify(payload),
-    })
+  const primary = apiUrl
+  const fallback = LMS_WEBHOOK_FALLBACK_URL
 
-    if (res.status === 200 || res.status === 201) {
-      return { ok: true, status: res.status }
+  if (primary) {
+    const first = await postToLmsUrl(primary, secret, payload)
+    if (first.ok) {
+      return { ok: true, status: first.status }
     }
 
-    let detail = ""
-    try {
-      detail = (await res.text()).slice(0, 200)
-    } catch {
-      /* ignore */
+    if (isEndpointNotFound(first.status, first.detail)) {
+      console.warn(
+        `[lms] primary 404/not-found — trying fallback ${fallback}`,
+      )
+      const second = await postToLmsUrl(fallback, secret, payload)
+      if (second.ok) {
+        return { ok: true, status: second.status }
+      }
+      return {
+        ok: false,
+        status: second.status,
+        error: second.detail || `שגיאת LMS (${second.status})`,
+      }
     }
+
     return {
       ok: false,
-      status: res.status,
-      error: detail || `שגיאת LMS (${res.status})`,
+      status: first.status,
+      error: first.detail || `שגיאת LMS (${first.status})`,
     }
-  } catch (err) {
-    console.error("[lms] webhook failed", err)
-    return {
-      ok: false,
-      status: 502,
-      error: "לא ניתן להתחבר לשרת ה־LMS",
-    }
+  }
+
+  console.warn(`[lms] LMS_API_URL empty — using fallback ${fallback}`)
+  const only = await postToLmsUrl(fallback, secret, payload)
+  if (only.ok) {
+    return { ok: true, status: only.status }
+  }
+  return {
+    ok: false,
+    status: only.status,
+    error: only.detail || `שגיאת LMS (${only.status})`,
   }
 }
