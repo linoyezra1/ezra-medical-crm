@@ -177,8 +177,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* —— Main column —— */}
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col md:ms-56 md:max-w-none">
-        <main className="flex-1 pb-24 md:pb-0">{children}</main>
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-x-hidden md:ms-56 md:max-w-full">
+        <main className="min-w-0 flex-1 overflow-x-hidden pb-24 md:pb-0">
+          {children}
+        </main>
       </div>
 
       {/* —— Mobile bottom nav —— */}
