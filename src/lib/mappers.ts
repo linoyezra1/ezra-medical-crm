@@ -279,14 +279,8 @@ export function mapSettings(
   return {
     businessName: (() => {
       const name = settings?.businessName?.trim();
-      if (
-        !name ||
-        name === "עזרא" ||
-        name === "עזרה ורפואה" ||
-        name === "עזרא ורפואה"
-      ) {
-        return "עזרה!";
-      }
+      // "עזרה!" היה מיתוג ישן ללא משמעות — מוחלף בברירת מחדל
+      if (!name || name === "עזרה!") return "עזרא ורפואה";
       return name;
     })(),
     websiteUrl:

@@ -93,8 +93,6 @@ export function InstructorTrainingsView({
             const address = [lead.address?.street, lead.address?.houseNumber]
               .filter(Boolean)
               .join(" ")
-            const canCollect =
-              lead.status === "closed" || lead.status === "done"
             return (
               <Card key={lead.id} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -136,16 +134,14 @@ export function InstructorTrainingsView({
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {canCollect && (
-                    <Button
-                      size="sm"
-                      className="gap-1.5 rounded-xl"
-                      onClick={() => setCollectLead(lead)}
-                    >
-                      <UserPlus className="size-3.5" />
-                      משתתפים
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    className="gap-1.5 rounded-xl"
+                    onClick={() => setCollectLead(lead)}
+                  >
+                    <UserPlus className="size-3.5" />
+                    משתתפים
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"

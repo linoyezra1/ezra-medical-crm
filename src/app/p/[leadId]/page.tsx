@@ -2,7 +2,6 @@ import { PublicParticipantForm } from "@/components/public/public-participant-fo
 import { prisma } from "@/lib/db"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { mapLead, mapSettings } from "@/lib/mappers"
-import { dbStatusToUi } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
 
@@ -26,21 +25,6 @@ export default async function PublicParticipantPage({
           <h1 className="text-lg font-bold">ההדרכה לא נמצאה</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             ייתכן שהקישור אינו תקין או שפג תוקפו.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  const uiStatus = dbStatusToUi(leadDb.courseStatus)
-  const allowed = uiStatus === "closed" || uiStatus === "done" || uiStatus === "pending_certificates"
-  if (!allowed && leadDb.courseStatus !== "closed_won") {
-    return (
-      <div className="flex min-h-dvh items-center justify-center px-6 text-center">
-        <div>
-          <h1 className="text-lg font-bold">ההרשמה אינה פתוחה כרגע</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            ניתן להירשם רק להדרכות שנסגרו או שבוצעו.
           </p>
         </div>
       </div>

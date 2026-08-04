@@ -623,11 +623,6 @@ export async function submitPublicParticipant(
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "ההדרכה לא נמצאה" };
 
-  const allowed = ["closed", "completed", "certificates_pending", "closed_won"];
-  if (!allowed.includes(lead.courseStatus)) {
-    return { ok: false, error: "לא ניתן להירשם להדרכה זו כרגע" };
-  }
-
   if (!data.fullName?.trim() || !data.idNumber?.trim()) {
     return { ok: false, error: "שם מלא ותעודת זהות הם שדות חובה" };
   }

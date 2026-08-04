@@ -171,7 +171,9 @@ export function DashboardView() {
               <StandaloneSalesButton />
               {settings.googleReviewUrl?.trim() ? (
                 <a
-                  href={settings.googleReviewUrl.trim()}
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `נשמח אם תוכל לדרג אותנו בגוגל בקישור הבא:\n${settings.googleReviewUrl.trim()}`,
+                  )}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex flex-col items-center gap-1 rounded-2xl border border-border bg-card p-3 text-xs font-medium active:scale-95 transition-transform"

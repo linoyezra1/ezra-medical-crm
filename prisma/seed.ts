@@ -16,7 +16,7 @@ async function main() {
     where: { id: "default" },
     create: {
       id: "default",
-      businessName: "עזרה!",
+      businessName: "עזרא ורפואה",
       facebookUrl: "https://facebook.com/",
       instagramUrl: "https://instagram.com/",
       tiktokUrl: "https://tiktok.com/",
@@ -24,6 +24,12 @@ async function main() {
       calendarEnabled: false,
     },
     update: {},
+  });
+
+  // הסרת מיתוג ישן "עזרה!" אם עדיין שמור בהגדרות
+  await prisma.settings.updateMany({
+    where: { id: "default", businessName: "עזרה!" },
+    data: { businessName: "עזרא ורפואה" },
   });
 
   for (const c of DEFAULT_COURSES) {

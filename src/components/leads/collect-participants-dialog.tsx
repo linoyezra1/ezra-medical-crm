@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { useApp } from "@/lib/store"
+import { whatsappLink } from "@/lib/helpers"
 import type { Lead } from "@/lib/types"
 
 type Option = "qr_form" | "copy_link" | "qr_site"
@@ -57,7 +58,20 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
   const sendRegistrationWhatsApp = () => {
     const text = registrationWhatsAppText()
     window.open(
-      `https://wa.me/?text=${encodeURIComponent(text)}`,
+      whatsappLink(lead.phone, text),
+      "_blank",
+      "noopener,noreferrer",
+    )
+  }
+
+  const sendGoogleReviewWhatsApp = () => {
+    if (!googleReviewUrl) {
+      toast.error("לא הוגדר קישור דירוג בגוגל בהגדרות")
+      return
+    }
+    const text = `נשמח אם תוכל לדרג אותנו בגוגל בקישור הבא:\n${googleReviewUrl}`
+    window.open(
+      whatsappLink(lead.phone, text),
       "_blank",
       "noopener,noreferrer",
     )
@@ -234,16 +248,15 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
             </Button>
             <div className="flex items-center justify-center gap-3 pt-1">
               {googleReviewUrl && (
-                <a
-                  href={googleReviewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={sendGoogleReviewWhatsApp}
                   className="flex size-11 items-center justify-center rounded-full bg-amber-100 text-amber-700"
-                  title="דירוג בגוגל"
-                  aria-label="דירוג בגוגל"
+                  title="שלח קישור דירוג בגוגל בוואטסאפ"
+                  aria-label="שלח קישור דירוג בגוגל בוואטסאפ"
                 >
                   <Star className="size-5 fill-current" />
-                </a>
+                </button>
               )}
               {facebookUrl && (
                 <a

@@ -85,9 +85,6 @@ export function LeadDetailView({
     )
   }
 
-  const canCollectParticipants =
-    lead.status === "closed" || lead.status === "done"
-
   const course = findCourseCatalog(lead.courseType, settings.courses)
   const courseLabel = formatLeadCourseType(lead, settings.courses)
 
@@ -252,7 +249,6 @@ export function LeadDetailView({
               lead={lead}
               addressLine={addressLine}
               wazeUrl={wazeUrl}
-              canCollect={canCollectParticipants}
               onCollect={() => setCollectOpen(true)}
             />
           </TabsContent>
@@ -260,7 +256,6 @@ export function LeadDetailView({
           <TabsContent value="participants" className="m-0 space-y-4 p-4 md:p-6">
             <ParticipantsTab
               lead={lead}
-              canCollect={canCollectParticipants}
               onCollect={() => setCollectOpen(true)}
             />
           </TabsContent>
@@ -353,13 +348,11 @@ function HomeTab({
   lead,
   addressLine,
   wazeUrl,
-  canCollect,
   onCollect,
 }: {
   lead: Lead
   addressLine: string
   wazeUrl: string | null
-  canCollect: boolean
   onCollect: () => void
 }) {
   return (
@@ -477,26 +470,22 @@ function HomeTab({
         )}
       </Card>
 
-      {canCollect && (
-        <Button
-          className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
-          onClick={onCollect}
-        >
-          <UserPlus className="size-5" />
-          הוסף משתתפים
-        </Button>
-      )}
+      <Button
+        className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
+        onClick={onCollect}
+      >
+        <UserPlus className="size-5" />
+        הוסף משתתפים
+      </Button>
     </>
   )
 }
 
 function ParticipantsTab({
   lead,
-  canCollect,
   onCollect,
 }: {
   lead: Lead
-  canCollect: boolean
   onCollect: () => void
 }) {
   return (
@@ -506,20 +495,13 @@ function ParticipantsTab({
         <p className="text-xs text-muted-foreground">
           QR, העתקת קישור ושליחה בוואטסאפ — כולל בקשת דירוג בגוגל
         </p>
-        {canCollect ? (
-          <Button
-            className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
-            onClick={onCollect}
-          >
-            <UserPlus className="size-5" />
-            פתח אפשרויות רישום
-          </Button>
-        ) : (
-          <p className="rounded-2xl bg-secondary/50 px-3 py-3 text-center text-xs text-muted-foreground">
-            כלי הרישום זמינים לאחר שההדרכה בסטטוס ״נסגר / נרשם ביומן״ או ״הדרכה
-            בוצעה״
-          </p>
-        )}
+        <Button
+          className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
+          onClick={onCollect}
+        >
+          <UserPlus className="size-5" />
+          פתח אפשרויות רישום
+        </Button>
       </Card>
 
       <ParticipantsSection lead={lead} />
@@ -557,49 +539,40 @@ function MaterialsTab({
   }
 
   return (
-    <div className="space-y-4">
-      <Card className="gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-        <h2 className="text-sm font-bold">שיתוף פרטי הדרכה למדריך</h2>
-        <Button
-          type="button"
-          className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
-          onClick={shareWithInstructor}
-        >
-          <MessageCircle className="size-5" />
-          שליחה למדריך ב-WhatsApp
-        </Button>
-      </Card>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <ActionButton icon={BookOpen} label="שלח חוברת" onClick={onBooklet} />
-        <ActionButton
-          icon={Printer}
-          label="חוברת להדפסה"
-          onClick={() => onStatic("booklet44WordPrint", "חוברת להדפסה (Word)")}
-        />
-        <ActionButton
-          icon={FileText}
-          label="מבחן גרסה 1"
-          onClick={() => onStatic("exam44v1", "מבחן 44 גרסה 1")}
-        />
-        <ActionButton
-          icon={ClipboardList}
-          label="מבחן גרסה 2"
-          onClick={() => onStatic("exam44v2", "מבחן 44 גרסה 2")}
-        />
-        <ActionButton
-          icon={FileSpreadsheet}
-          label="טבלת משתתפים"
-          onClick={() => onStatic("participantsTable", "פורמט טבלת משתתפים")}
-        />
-        <ActionButton
-          icon={Presentation}
-          label="קישור מצגת"
-          onClick={onPresentation}
-        />
-        <ActionButton icon={Copy} label="העתק סיכום" onClick={onCopySummary} />
-        <ActionButton icon={Send} label="סיכום שיחה" onClick={onSendSummary} />
-      </div>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <ActionButton
+        icon={MessageCircle}
+        label="שליחה למדריך"
+        onClick={shareWithInstructor}
+      />
+      <ActionButton icon={BookOpen} label="שלח חוברת" onClick={onBooklet} />
+      <ActionButton
+        icon={Printer}
+        label="חוברת להדפסה"
+        onClick={() => onStatic("booklet44WordPrint", "חוברת להדפסה (Word)")}
+      />
+      <ActionButton
+        icon={FileText}
+        label="מבחן גרסה 1"
+        onClick={() => onStatic("exam44v1", "מבחן 44 גרסה 1")}
+      />
+      <ActionButton
+        icon={ClipboardList}
+        label="מבחן גרסה 2"
+        onClick={() => onStatic("exam44v2", "מבחן 44 גרסה 2")}
+      />
+      <ActionButton
+        icon={FileSpreadsheet}
+        label="טבלת משתתפים"
+        onClick={() => onStatic("participantsTable", "פורמט טבלת משתתפים")}
+      />
+      <ActionButton
+        icon={Presentation}
+        label="קישור מצגת"
+        onClick={onPresentation}
+      />
+      <ActionButton icon={Copy} label="העתק סיכום" onClick={onCopySummary} />
+      <ActionButton icon={Send} label="סיכום שיחה" onClick={onSendSummary} />
     </div>
   )
 }

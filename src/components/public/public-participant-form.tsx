@@ -108,9 +108,11 @@ export function PublicParticipantForm({
   return (
     <div className="min-h-dvh bg-gradient-to-b from-sky-50 via-slate-50 to-white px-4 py-6 md:py-10">
       <div className="mx-auto mb-5 max-w-lg text-center md:mb-6">
-        <p className="text-xs font-semibold tracking-wide text-sky-700">
-          {businessName}
-        </p>
+        {businessName.trim() && businessName.trim() !== "עזרה!" ? (
+          <p className="text-xs font-semibold tracking-wide text-sky-700">
+            {businessName}
+          </p>
+        ) : null}
         <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
           הרשמת משתתף
         </h1>

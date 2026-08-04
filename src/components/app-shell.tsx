@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/sheet"
 import { instructorPortalPath } from "@/lib/instructor-portal"
 import { UserSwitcher } from "@/components/user-switcher"
+import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 const NAV = [
@@ -44,6 +45,7 @@ const DESKTOP_NAV = [...NAV, ...MORE]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const { settings } = useApp()
   const [moreOpen, setMoreOpen] = useState(false)
   const isPublicForm = pathname.startsWith("/p/")
   const instructorTokenMatch = pathname.match(
@@ -148,7 +150,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="sticky top-0 z-40 hidden h-dvh w-64 flex-shrink-0 flex-col border-e border-border bg-card md:flex">
         <div className="border-b border-border px-4 py-4">
           <p className="text-xs font-medium text-muted-foreground">מערכת ניהול</p>
-          <p className="text-base font-bold text-foreground">עזרה!</p>
+          <p className="text-base font-bold text-foreground">
+            {settings.businessName}
+          </p>
           <div className="mt-3">
             <UserSwitcher />
           </div>

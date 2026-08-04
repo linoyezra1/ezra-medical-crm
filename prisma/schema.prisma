@@ -297,7 +297,7 @@ model CourseAsset {
 
 model Settings {
   id            String @id @default("default")
-  businessName  String @default("עזרה!")
+  businessName  String @default("עזרא ורפואה")
   websiteUrl    String?
   googleReviewUrl String?
   tiktokUrl     String?
