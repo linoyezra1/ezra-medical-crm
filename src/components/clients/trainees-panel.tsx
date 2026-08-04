@@ -184,15 +184,17 @@ export function TraineesPanel() {
       >
         <Trash2 className="size-3.5" />
       </button>
-      <button
-        type="button"
-        onClick={() => openAssign([t.id])}
-        className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
-        aria-label="שיוך להדרכה"
-        title="שיוך להדרכה"
-      >
-        <Link2 className="size-3.5" />
-      </button>
+      {t.trainings.length === 0 && (
+        <button
+          type="button"
+          onClick={() => openAssign([t.id])}
+          className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+          aria-label="שיוך להדרכה"
+          title="שיוך להדרכה"
+        >
+          <Link2 className="size-3.5" />
+        </button>
+      )}
       {t.phone && (
         <a
           href={whatsappLink(t.phone)}

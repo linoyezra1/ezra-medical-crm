@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getActiveCrmUser } from "@/lib/crm-user-server";
-import { jerusalemLocalToUtcDate } from "@/lib/timezone";
+import { formatCourseTypeLabel } from "@/lib/course-type";
+import {
+  ASSIGN_INSTRUCTOR_TASK_PREFIX,
+  assignInstructorTaskTitle,
+  isInstructorUnassigned,
+} from "@/lib/instructor";
+import { formatInJerusalem, jerusalemLocalToUtcDate } from "@/lib/timezone";
 import { sanitizePhone } from "@/lib/utils";
 import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
@@ -140,6 +146,66 @@ async function ensureNetFollowUp(leadId: string, paymentTerms: string | null | u
       },
     });
   }
+}
+
+/** משימה אוטומטית כשאין מדריך משובץ; סוגרת אותה כששובץ */
+async function syncUnassignedInstructorTask(lead: {
+  id: string;
+  fullName: string;
+  instructor: string | null;
+  courseType: string | null;
+  courseTypeOther: string | null;
+  scheduledStart: Date | null;
+}) {
+  const courseLabel = formatCourseTypeLabel(lead.courseType || "", {
+    other: lead.courseTypeOther,
+  });
+  const title = assignInstructorTaskTitle(lead.fullName, courseLabel);
+
+  if (isInstructorUnassigned(lead.instructor)) {
+    let dueDate: Date | null = null;
+    if (lead.scheduledStart) {
+      const { date } = formatInJerusalem(lead.scheduledStart);
+      if (date) dueDate = jerusalemLocalToUtcDate(date, "09:00");
+    }
+
+    const existing = await prisma.followUpTask.findFirst({
+      where: {
+        leadId: lead.id,
+        completed: false,
+        title: { startsWith: ASSIGN_INSTRUCTOR_TASK_PREFIX },
+      },
+    });
+
+    if (existing) {
+      await prisma.followUpTask.update({
+        where: { id: existing.id },
+        data: { title, dueDate },
+      });
+    } else {
+      await prisma.followUpTask.create({
+        data: {
+          leadId: lead.id,
+          title,
+          dueDate,
+          assignee: "מכירות",
+          notes: "נוצר אוטומטית — טרם שובץ מדריך",
+        },
+      });
+    }
+    revalidatePath("/calendar");
+    revalidatePath("/dashboard");
+    return;
+  }
+
+  await prisma.followUpTask.updateMany({
+    where: {
+      leadId: lead.id,
+      completed: false,
+      title: { startsWith: ASSIGN_INSTRUCTOR_TASK_PREFIX },
+    },
+    data: { completed: true },
+  });
 }
 
 export async function checkDuplicatePhone(phone: string, excludeLeadId?: string) {
@@ -444,6 +510,19 @@ export async function updateLead(
   }
 
   await ensureNetFollowUp(leadId, merged.paymentTerms);
+
+  const after = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      fullName: true,
+      instructor: true,
+      courseType: true,
+      courseTypeOther: true,
+      scheduledStart: true,
+    },
+  });
+  if (after) await syncUnassignedInstructorTask(after);
 
   // Returning account classification when closing won
   if (nextStatus === "closed_won" && existing.accountId) {

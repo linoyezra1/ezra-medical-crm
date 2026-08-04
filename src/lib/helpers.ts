@@ -189,6 +189,42 @@ export function whatsappLink(phone: string, text?: string): string {
     : `https://wa.me/${intl}`;
 }
 
+/** הודעת שיתוף פרטי הדרכה למדריך (ללא מספר יעד — בחירה ב‑WhatsApp) */
+export function instructorAssignmentWhatsAppMessage(
+  lead: Lead,
+  opts: { courseLabel: string; registrationUrl: string },
+): string {
+  const contact = lead.contactName?.trim() || lead.name
+  const address = [
+    lead.address?.street,
+    lead.address?.houseNumber,
+    lead.address?.city,
+  ]
+    .filter(Boolean)
+    .join(" ")
+  const timeLine = lead.time
+    ? `${lead.time}${lead.endTime ? `–${lead.endTime}` : ""}`
+    : "—"
+
+  return [
+    "📋 פרטי הדרכה :",
+    "",
+    `📅 תאריך: ${lead.date ? formatDate(lead.date) : "—"}`,
+    `⏰ שעה: ${timeLine}`,
+    `🎓 סוג הדרכה: ${opts.courseLabel}`,
+    `👤 איש קשר: ${contact}`,
+    `📞 טלפון איש קשר: ${lead.phone || "—"}`,
+    `📍 כתובת: ${address || "—"}`,
+    "",
+    "נא לאשר שקיבלת את ההדרכה",
+    "",
+    "שים לב יש ליצור קשר יום לפני ההדרכה ולוודא מיקום ופרטים להגעה.",
+    "",
+    "🔗 קישור לרישום משתתפים להדרכה:",
+    opts.registrationUrl,
+  ].join("\n")
+}
+
 export function uid(prefix = "id"): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }

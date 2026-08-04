@@ -8,7 +8,14 @@ import {
   findCourseCatalog,
   formatLeadCourseType,
 } from "@/lib/course-type"
-import { formatCurrency, formatDateWithWeekday, whatsappLink, whatsappSummary, leadStatusCardClass } from "@/lib/helpers"
+import {
+  formatCurrency,
+  formatDateWithWeekday,
+  whatsappLink,
+  whatsappSummary,
+  leadStatusCardClass,
+} from "@/lib/helpers"
+import { isInstructorUnassigned } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -73,6 +80,13 @@ export function LeadCard({ lead }: { lead: Lead }) {
           <span className="font-semibold text-foreground">
             {formatCurrency(lead.totalPrice)}
           </span>
+          {isInstructorUnassigned(lead.instructor) ? (
+            <span className="font-bold text-red-600">לא שובץ מדריך</span>
+          ) : (
+            <span className="font-medium text-foreground">
+              {lead.instructor}
+            </span>
+          )}
         </div>
 
         {(lead.createdBy || lead.lastUpdatedBy) && (

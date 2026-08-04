@@ -14,6 +14,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -33,6 +34,11 @@ import {
   formatCurrency,
   uid,
 } from "@/lib/helpers"
+import {
+  isInstructorUnassigned,
+  UNASSIGNED_INSTRUCTOR,
+  UNASSIGNED_INSTRUCTOR_VALUE,
+} from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { resolveInstructorFee } from "@/lib/training-profit"
 import type { Lead } from "@/lib/types"
@@ -45,7 +51,6 @@ interface Props {
 }
 
 const OTHER = "אחר"
-const DEFAULT_INSTRUCTOR = "יצחק"
 
 function uniqueSorted(values: Iterable<string>): string[] {
   return Array.from(new Set(Array.from(values).map((v) => v.trim()).filter(Boolean))).sort(
@@ -68,12 +73,24 @@ export function LeadForm({ existing }: Props) {
   }, [leads])
 
   const instructorOptions = useMemo(() => {
-    const fromDb: string[] = [DEFAULT_INSTRUCTOR]
+    const fromDb: string[] = []
     for (const i of instructors) {
-      if (i.active && i.name !== OTHER) fromDb.push(i.name)
+      if (
+        i.active &&
+        i.name !== OTHER &&
+        !isInstructorUnassigned(i.name)
+      ) {
+        fromDb.push(i.name)
+      }
     }
     for (const l of leads) {
-      if (l.instructor && l.instructor !== OTHER) fromDb.push(l.instructor)
+      if (
+        l.instructor &&
+        l.instructor !== OTHER &&
+        !isInstructorUnassigned(l.instructor)
+      ) {
+        fromDb.push(l.instructor)
+      }
     }
     return uniqueSorted(fromDb)
   }, [leads, instructors])
@@ -91,9 +108,14 @@ export function LeadForm({ existing }: Props) {
   })()
 
   const initialInstructorSelect = (() => {
-    if (!existing?.instructor) return DEFAULT_INSTRUCTOR
-    if (instructorOptions.includes(existing.instructor)) return existing.instructor
-    return OTHER
+    if (isInstructorUnassigned(existing?.instructor)) {
+      return UNASSIGNED_INSTRUCTOR_VALUE
+    }
+    if (existing?.instructor && instructorOptions.includes(existing.instructor)) {
+      return existing.instructor
+    }
+    if (existing?.instructor) return OTHER
+    return UNASSIGNED_INSTRUCTOR_VALUE
   })()
 
   const initialCourseLabel = existing
@@ -132,7 +154,7 @@ export function LeadForm({ existing }: Props) {
       participantsCount: 25,
       totalPrice: 0,
       certificateDelivery: "עזרה ורפואה",
-      instructor: DEFAULT_INSTRUCTOR,
+      instructor: UNASSIGNED_INSTRUCTOR,
       notes: "",
       address: { street: "", houseNumber: "", city: "", zip: "" },
       participants: [],
@@ -156,7 +178,7 @@ export function LeadForm({ existing }: Props) {
   )
   const [errors, setErrors] = useState<Record<string, boolean>>({})
   const [instructorFee, setInstructorFee] = useState(() => {
-    if (!existing || existing.instructor === DEFAULT_INSTRUCTOR) return ""
+    if (!existing || isInstructorUnassigned(existing.instructor)) return ""
     const live = resolveInstructorFee(existing, instructors)
     return live > 0 || existing.instructorFeeOverride != null
       ? String(existing.instructorFeeOverride ?? live)
@@ -320,6 +342,12 @@ export function LeadForm({ existing }: Props) {
 
   const resolveInstructor = (): string => {
     if (instructorSelect === OTHER) return instructorOther.trim()
+    if (
+      instructorSelect === UNASSIGNED_INSTRUCTOR_VALUE ||
+      isInstructorUnassigned(instructorSelect)
+    ) {
+      return UNASSIGNED_INSTRUCTOR
+    }
     return instructorSelect
   }
 
@@ -335,17 +363,25 @@ export function LeadForm({ existing }: Props) {
     const catalog = findCourseCatalog(courseResolved.courseType, settings.courses)
     const instructor = resolveInstructor()
     const fee = Number(instructorFee) || 0
+    const unassigned = isInstructorUnassigned(instructor)
 
     setSaving(true)
     try {
-      // תעריף חי בפרופיל המדריך — מקור אמת (לא העתקה להוצאות)
-      const ensured = await ensureInstructor(
-        instructor,
-        instructor === DEFAULT_INSTRUCTOR ? 0 : fee,
-      )
-      if (!ensured.ok) {
-        toast.error(ensured.error)
-        return
+      let instructorName = instructor
+      let instructorId: string | undefined
+
+      if (unassigned) {
+        instructorName = UNASSIGNED_INSTRUCTOR
+        instructorId = undefined
+      } else {
+        // תעריף חי בפרופיל המדריך — מקור אמת (לא העתקה להוצאות)
+        const ensured = await ensureInstructor(instructor, fee)
+        if (!ensured.ok) {
+          toast.error(ensured.error)
+          return
+        }
+        instructorName = ensured.data.name
+        instructorId = ensured.data.id
       }
 
       const payload: Lead = {
@@ -364,8 +400,8 @@ export function LeadForm({ existing }: Props) {
         courseHours: catalog?.hours,
         category,
         categoryOther,
-        instructor: ensured.data.name,
-        instructorId: ensured.data.id,
+        instructor: instructorName,
+        instructorId,
         // תעריף חי בפרופיל בלבד — מנקים דריסה ישנה/מועתקת
         instructorFeeOverride: undefined,
         // לא מעתיקים עלות מדריך להוצאות — החישוב דינמי מפרופיל המדריך
@@ -776,26 +812,52 @@ export function LeadForm({ existing }: Props) {
               <Select
                 value={instructorSelect}
                 onValueChange={(v) => {
-                  const next = v ?? DEFAULT_INSTRUCTOR
+                  const next = v ?? UNASSIGNED_INSTRUCTOR_VALUE
                   setInstructorSelect(next)
-                  if (next !== OTHER) {
-                    set("instructor", next)
+                  if (next === OTHER) return
+                  if (
+                    next === UNASSIGNED_INSTRUCTOR_VALUE ||
+                    isInstructorUnassigned(next)
+                  ) {
+                    set("instructor", UNASSIGNED_INSTRUCTOR)
                     setInstructorOther("")
-                    if (next === DEFAULT_INSTRUCTOR) {
-                      setInstructorFee("")
-                    } else {
-                      const profile = instructors.find((i) => i.name === next)
-                      setInstructorFee(
-                        profile && profile.fee > 0 ? String(profile.fee) : "",
-                      )
-                    }
+                    setInstructorFee("")
+                    return
                   }
+                  set("instructor", next)
+                  setInstructorOther("")
+                  const profile = instructors.find((i) => i.name === next)
+                  setInstructorFee(
+                    profile && profile.fee > 0 ? String(profile.fee) : "",
+                  )
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="בחר מדריך" />
+                  <SelectValue placeholder="בחר מדריך">
+                    {(value: string | null) => {
+                      if (
+                        !value ||
+                        value === UNASSIGNED_INSTRUCTOR_VALUE ||
+                        isInstructorUnassigned(value)
+                      ) {
+                        return UNASSIGNED_INSTRUCTOR
+                      }
+                      if (value === OTHER) return OTHER
+                      return value
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false} className="max-h-[min(280px,70vh)]">
+                <SelectContent
+                  alignItemWithTrigger={false}
+                  className="max-h-[min(320px,70vh)]"
+                >
+                  <SelectItem
+                    value={UNASSIGNED_INSTRUCTOR_VALUE}
+                    className="font-semibold text-red-600 focus:text-red-700"
+                  >
+                    {UNASSIGNED_INSTRUCTOR}
+                  </SelectItem>
+                  <SelectSeparator />
                   {instructorOptions.map((i) => (
                     <SelectItem key={i} value={i}>
                       {i}
@@ -814,7 +876,7 @@ export function LeadForm({ existing }: Props) {
                 />
               </Field>
             )}
-            {instructorSelect !== DEFAULT_INSTRUCTOR && (
+            {!isInstructorUnassigned(instructorSelect) && (
               <Field label="תעריף מדריך חי (₪)">
                 <Input
                   type="number"

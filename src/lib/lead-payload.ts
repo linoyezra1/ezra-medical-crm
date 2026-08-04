@@ -1,4 +1,8 @@
 import { jerusalemLocalToISO } from "@/lib/timezone"
+import {
+  isInstructorUnassigned,
+  UNASSIGNED_INSTRUCTOR,
+} from "@/lib/instructor"
 import { uiStatusToDb, type Lead } from "@/lib/types"
 
 /** המרת Lead מ־UI ל־payload של Prisma / API */
@@ -10,6 +14,7 @@ export function leadToDbPayload(
   const date = merged.date
   const time = merged.time
   const endTime = merged.endTime
+  const unassigned = isInstructorUnassigned(merged.instructor)
 
   const raw: Record<string, unknown> = {
     fullName: merged.name,
@@ -29,8 +34,10 @@ export function leadToDbPayload(
     expectedParticipants: merged.participantsCount,
     /** מחיר כולל / מחיר גלובלי — נשמר כ־agreedPrice */
     agreedPrice: merged.totalPrice,
-    instructor: merged.instructor?.trim() || null,
-    instructorId: merged.instructorId || null,
+    instructor: unassigned
+      ? UNASSIGNED_INSTRUCTOR
+      : merged.instructor?.trim() || null,
+    instructorId: unassigned ? null : merged.instructorId || null,
     instructorFeeOverride:
       merged.instructorFeeOverride != null &&
       Number.isFinite(merged.instructorFeeOverride)

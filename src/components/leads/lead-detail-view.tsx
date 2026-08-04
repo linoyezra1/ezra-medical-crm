@@ -13,6 +13,7 @@ import {
   FileText,
   LayoutDashboard,
   MapPin,
+  MessageCircle,
   Pencil,
   Phone,
   Presentation,
@@ -44,10 +45,12 @@ import {
   formatCurrency,
   formatDateWithWeekday,
   downloadLeadIcs,
+  instructorAssignmentWhatsAppMessage,
   whatsappLink,
   whatsappSummary,
 } from "@/lib/helpers"
 import { formatActivityLogLine } from "@/lib/activity-log"
+import { isInstructorUnassigned } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { computeTrainingProfit } from "@/lib/training-profit"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -264,6 +267,8 @@ export function LeadDetailView({
 
           <TabsContent value="materials" className="m-0 space-y-4 p-4 md:p-6">
             <MaterialsTab
+              lead={lead}
+              courseLabel={courseLabel}
               onBooklet={() => setBookletOpen(true)}
               onStatic={sendStaticMaterial}
               onPresentation={() => sendFile("מצגת", course?.presentationUrl)}
@@ -373,7 +378,19 @@ function HomeTab({
                 : "—"
             }
           />
-          <Info label="מדריך" value={lead.instructor || "—"} />
+          <Info
+            label="מדריך"
+            value={
+              isInstructorUnassigned(lead.instructor)
+                ? "לא שובץ מדריך"
+                : lead.instructor || "—"
+            }
+            valueClassName={
+              isInstructorUnassigned(lead.instructor)
+                ? "font-bold text-red-600"
+                : undefined
+            }
+          />
           <Info
             label="משתתפים משוער"
             value={String(lead.participantsCount || "—")}
@@ -511,48 +528,78 @@ function ParticipantsTab({
 }
 
 function MaterialsTab({
+  lead,
+  courseLabel,
   onBooklet,
   onStatic,
   onPresentation,
   onCopySummary,
   onSendSummary,
 }: {
+  lead: Lead
+  courseLabel: string
   onBooklet: () => void
   onStatic: (key: CourseMaterialKey, label: string) => void
   onPresentation: () => void
   onCopySummary: () => void
   onSendSummary: () => void
 }) {
+  const shareWithInstructor = () => {
+    const registrationUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/p/${lead.id}`
+        : `/p/${lead.id}`
+    const text = instructorAssignmentWhatsAppMessage(lead, {
+      courseLabel,
+      registrationUrl,
+    })
+    window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <ActionButton icon={BookOpen} label="שלח חוברת" onClick={onBooklet} />
-      <ActionButton
-        icon={Printer}
-        label="חוברת להדפסה"
-        onClick={() => onStatic("booklet44WordPrint", "חוברת להדפסה (Word)")}
-      />
-      <ActionButton
-        icon={FileText}
-        label="מבחן גרסה 1"
-        onClick={() => onStatic("exam44v1", "מבחן 44 גרסה 1")}
-      />
-      <ActionButton
-        icon={ClipboardList}
-        label="מבחן גרסה 2"
-        onClick={() => onStatic("exam44v2", "מבחן 44 גרסה 2")}
-      />
-      <ActionButton
-        icon={FileSpreadsheet}
-        label="טבלת משתתפים"
-        onClick={() => onStatic("participantsTable", "פורמט טבלת משתתפים")}
-      />
-      <ActionButton
-        icon={Presentation}
-        label="קישור מצגת"
-        onClick={onPresentation}
-      />
-      <ActionButton icon={Copy} label="העתק סיכום" onClick={onCopySummary} />
-      <ActionButton icon={Send} label="סיכום שיחה" onClick={onSendSummary} />
+    <div className="space-y-4">
+      <Card className="gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
+        <h2 className="text-sm font-bold">שיתוף פרטי הדרכה למדריך</h2>
+        <Button
+          type="button"
+          className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
+          onClick={shareWithInstructor}
+        >
+          <MessageCircle className="size-5" />
+          שליחה למדריך ב-WhatsApp
+        </Button>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <ActionButton icon={BookOpen} label="שלח חוברת" onClick={onBooklet} />
+        <ActionButton
+          icon={Printer}
+          label="חוברת להדפסה"
+          onClick={() => onStatic("booklet44WordPrint", "חוברת להדפסה (Word)")}
+        />
+        <ActionButton
+          icon={FileText}
+          label="מבחן גרסה 1"
+          onClick={() => onStatic("exam44v1", "מבחן 44 גרסה 1")}
+        />
+        <ActionButton
+          icon={ClipboardList}
+          label="מבחן גרסה 2"
+          onClick={() => onStatic("exam44v2", "מבחן 44 גרסה 2")}
+        />
+        <ActionButton
+          icon={FileSpreadsheet}
+          label="טבלת משתתפים"
+          onClick={() => onStatic("participantsTable", "פורמט טבלת משתתפים")}
+        />
+        <ActionButton
+          icon={Presentation}
+          label="קישור מצגת"
+          onClick={onPresentation}
+        />
+        <ActionButton icon={Copy} label="העתק סיכום" onClick={onCopySummary} />
+        <ActionButton icon={Send} label="סיכום שיחה" onClick={onSendSummary} />
+      </div>
     </div>
   )
 }
@@ -601,15 +648,24 @@ function Info({
   label,
   value,
   strong,
+  valueClassName,
 }: {
   label: string
   value: string
   strong?: boolean
+  valueClassName?: string
 }) {
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={strong ? "font-bold text-primary" : "font-medium"}>{value}</p>
+      <p
+        className={cn(
+          strong ? "font-bold text-primary" : "font-medium",
+          valueClassName,
+        )}
+      >
+        {value}
+      </p>
     </div>
   )
 }

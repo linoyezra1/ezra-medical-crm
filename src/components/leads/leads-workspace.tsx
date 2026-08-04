@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { formatCurrency, formatDateWithWeekday } from "@/lib/helpers"
+import { isInstructorUnassigned } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { LEAD_STATUS_LABELS, type Lead, type LeadStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -283,7 +284,11 @@ function DesktopLeadsTable({ leads }: { leads: Lead[] }) {
                 {lead.time ? ` ${lead.time}` : ""}
               </td>
               <td className="max-w-0 truncate px-2 py-2">
-                {lead.instructor || "—"}
+                {isInstructorUnassigned(lead.instructor) ? (
+                  <span className="font-bold text-red-600">לא שובץ מדריך</span>
+                ) : (
+                  lead.instructor || "—"
+                )}
               </td>
               <td
                 className="max-w-0 truncate px-2 py-2 dir-ltr text-left"
