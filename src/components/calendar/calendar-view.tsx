@@ -35,9 +35,11 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { formatDate, uid } from "@/lib/helpers"
+import { leadCalendarSessions } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { jerusalemLocalToUtcDate } from "@/lib/timezone"
 import type { Lead, Task } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 type PendingDelete = {
   kind: "task" | "training"
@@ -78,26 +80,55 @@ export function CalendarView() {
     }
   }
 
-  // אירועים = הדרכות מתוזמנות + משימות, מקובצות לפי יום
+  // אירועים = הדרכות מתוזמנות (כולל מפגשים מרובים) + משימות
   const agenda = useMemo(() => {
     type Item =
-      | { kind: "training"; id: string; date: string; time?: string; title: string; sub: string }
-      | { kind: "task"; id: string; date: string; time?: string; title: string; sub: string; done: boolean }
+      | {
+          kind: "training"
+          id: string
+          date: string
+          time?: string
+          title: string
+          sub: string
+          isPrivate?: boolean
+          sessionKey: string
+        }
+      | {
+          kind: "task"
+          id: string
+          date: string
+          time?: string
+          title: string
+          sub: string
+          done: boolean
+        }
     const items: Item[] = []
     for (const l of leads) {
-      if (l.date && (l.status === "closed" || l.status === "done")) {
+      if (
+        !["closed", "done", "pending_certificates", "completed"].includes(
+          l.status,
+        )
+      ) {
+        continue
+      }
+      const sessions = leadCalendarSessions(l)
+      sessions.forEach((s, idx) => {
         items.push({
           kind: "training",
           id: l.id,
-          date: l.date,
-          time: l.time,
+          date: s.date,
+          time: s.time,
           title: formatLeadCourseType(l),
-          sub: `${l.name} · ${l.address.city || ""}`,
+          sub: `${l.name} · ${l.address.city || ""}${
+            sessions.length > 1 ? ` · מפגש ${idx + 1}` : ""
+          }`,
+          isPrivate: Boolean(l.isPrivateCourse),
+          sessionKey: `${l.id}-${s.date}-${s.time}-${idx}`,
         })
-      }
+      })
     }
     for (const t of tasks) {
-      if (!t.date) continue // משימות ללא תאריך מופיעות בלשונית משימות בלבד
+      if (!t.date) continue
       items.push({
         kind: "task",
         id: t.id,
@@ -158,24 +189,50 @@ export function CalendarView() {
                 {items.map((it) =>
                   it.kind === "training" ? (
                     <div
-                      key={it.id}
-                      className="flex items-center gap-2 rounded-2xl border-r-4 border-primary bg-card p-3"
+                      key={it.sessionKey}
+                      className={cn(
+                        "flex items-center gap-2 rounded-2xl border-r-4 bg-card p-3",
+                        it.isPrivate
+                          ? "border-pink-500"
+                          : "border-primary",
+                      )}
                     >
                       <Link
                         href={`/leads/${it.id}`}
                         className="flex min-w-0 flex-1 items-center gap-3 active:scale-[0.99] transition-transform"
                       >
                         <div className="flex w-12 shrink-0 flex-col items-center">
-                          <span className="text-sm font-bold text-primary">
+                          <span
+                            className={cn(
+                              "text-sm font-bold",
+                              it.isPrivate
+                                ? "text-pink-600"
+                                : "text-primary",
+                            )}
+                          >
                             {it.time || "--:--"}
                           </span>
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-foreground">
-                            <GraduationCap className="size-3.5 text-primary" />
+                            <GraduationCap
+                              className={cn(
+                                "size-3.5",
+                                it.isPrivate
+                                  ? "text-pink-600"
+                                  : "text-primary",
+                              )}
+                            />
                             {it.title}
+                            {it.isPrivate ? (
+                              <span className="text-[10px] font-bold text-pink-600">
+                                פרטי
+                              </span>
+                            ) : null}
                           </p>
-                          <p className="truncate text-xs text-muted-foreground">{it.sub}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {it.sub}
+                          </p>
                         </div>
                       </Link>
                       <DeleteEventButton

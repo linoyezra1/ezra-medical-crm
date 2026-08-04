@@ -15,6 +15,7 @@ import type {
   ActivityLog as DbActivityLog,
 } from "@/generated/prisma/client";
 import { DEFAULT_COURSES } from "@/lib/demo-data";
+import { parseSessionsJson } from "@/lib/payment";
 import { formatInJerusalem } from "@/lib/timezone";
 import {
   dbEquipmentToUi,
@@ -166,7 +167,15 @@ export function mapLead(db: DbLeadFull): Lead {
     equipmentStatus: db.equipmentStatus,
     paymentTerms: db.paymentTerms,
     paymentStatus: db.paymentStatus,
+    paymentDate: db.paymentDate
+      ? formatInJerusalem(db.paymentDate).date
+      : undefined,
+    paymentMethod: db.paymentMethod || undefined,
+    paymentReceivedBy: db.paymentReceivedBy || undefined,
+    paymentReceiptIssued: Boolean(db.paymentReceiptIssued),
+    isPrivateCourse: Boolean(db.isPrivateCourse),
     sessionsCount: db.sessionsCount,
+    sessions: parseSessionsJson(db.sessionsJson),
     sessionDuration: db.sessionDuration,
     bookletRequired: db.bookletRequired,
     reason: db.reason,
@@ -280,7 +289,7 @@ export function mapSettings(
     businessName: (() => {
       const name = settings?.businessName?.trim();
       // "עזרה!" היה מיתוג ישן ללא משמעות — מוחלף בברירת מחדל
-      if (!name || name === "עזרה!") return "עזרא ורפואה";
+      if (!name || name === "עזרה!" || name === "עזרא ורפואה") return "עזרה ורפואה";
       return name;
     })(),
     websiteUrl:

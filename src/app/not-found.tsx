@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "לא נמצא | עזרא ורפואה CRM",
+  title: "לא נמצא | עזרה ורפואה CRM",
 };
 
 export default function NotFound() {

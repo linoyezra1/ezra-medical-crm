@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { MapPin, MessageCircle, Phone } from "lucide-react"
+import { Layers, MapPin, MessageCircle, Phone } from "lucide-react"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
 import {
@@ -16,6 +16,7 @@ import {
   leadStatusCardClass,
 } from "@/lib/helpers"
 import { isInstructorUnassigned } from "@/lib/instructor"
+import { leadCalendarSessions } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -25,6 +26,8 @@ export function LeadCard({ lead }: { lead: Lead }) {
   const { settings } = useApp()
   const course = findCourseCatalog(lead.courseType, settings.courses)
   const courseLabel = formatLeadCourseType(lead, settings.courses)
+  const sessions = leadCalendarSessions(lead)
+  const sessionsCount = lead.sessionsCount || sessions.length || 1
   const stop = (e: React.MouseEvent) => {
     e.stopPropagation()
   }
@@ -48,12 +51,18 @@ export function LeadCard({ lead }: { lead: Lead }) {
         className={cn(
           "gap-3 border-2 p-4 active:scale-[0.99] transition-transform",
           leadStatusCardClass(lead.status),
+          lead.isPrivateCourse && "border-pink-400 ring-1 ring-pink-200",
         )}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="truncate font-bold text-foreground">{lead.name}</h3>
+              {lead.isPrivateCourse ? (
+                <span className="shrink-0 rounded-md bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold text-pink-700">
+                  פרטי
+                </span>
+              ) : null}
             </div>
             <p className="truncate text-sm text-muted-foreground">
               {courseLabel}
@@ -62,7 +71,18 @@ export function LeadCard({ lead }: { lead: Lead }) {
               )}
             </p>
           </div>
-          <LeadStatusBadge status={lead.status} />
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <LeadStatusBadge status={lead.status} />
+            {sessionsCount > 0 ? (
+              <span
+                className="inline-flex items-center gap-1 rounded-lg bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                title={`${sessionsCount} מפגשים`}
+              >
+                <Layers className="size-3" />
+                {sessionsCount}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">

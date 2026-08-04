@@ -7,6 +7,7 @@ import {
   ArrowRight,
   BookOpen,
   CalendarPlus,
+  CreditCard,
   ClipboardList,
   Copy,
   FileSpreadsheet,
@@ -26,6 +27,7 @@ import {
 import { toast } from "sonner"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
+import { LeadPaymentDialog } from "@/components/leads/lead-payment-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
 import { ParticipantsSection } from "@/components/leads/participants-section"
@@ -72,6 +74,7 @@ export function LeadDetailView({
   const lead = getLead(leadId)
   const [bookletOpen, setBookletOpen] = useState(false)
   const [collectOpen, setCollectOpen] = useState(false)
+  const [paymentOpen, setPaymentOpen] = useState(false)
   const [detailTab, setDetailTab] = useState<DetailTab>("home")
 
   if (!lead) {
@@ -218,6 +221,14 @@ export function LeadDetailView({
               </IconAction>
               <button
                 type="button"
+                onClick={() => setPaymentOpen(true)}
+                aria-label="רישום תשלום"
+                className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform"
+              >
+                <CreditCard className="size-6" />
+              </button>
+              <button
+                type="button"
                 onClick={syncCalendar}
                 aria-label="הכנס ללו״ז"
                 className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform"
@@ -284,6 +295,11 @@ export function LeadDetailView({
         lead={lead}
         open={collectOpen}
         onOpenChange={setCollectOpen}
+      />
+      <LeadPaymentDialog
+        lead={lead}
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
       />
       <SendBookletDialog
         lead={lead}
@@ -387,6 +403,21 @@ function HomeTab({
           <Info
             label="משתתפים משוער"
             value={String(lead.participantsCount || "—")}
+          />
+          <Info
+            label="מפגשים"
+            value={String(
+              lead.sessionsCount ||
+                lead.sessions?.length ||
+                (lead.date ? 1 : "—"),
+            )}
+          />
+          <Info
+            label="סוג"
+            value={lead.isPrivateCourse ? "קורס פרטי" : "קבוצה"}
+            valueClassName={
+              lead.isPrivateCourse ? "font-semibold text-pink-600" : undefined
+            }
           />
         </div>
 

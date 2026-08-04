@@ -159,6 +159,9 @@ export function LeadForm({ existing }: Props) {
       address: { street: "", houseNumber: "", city: "", zip: "" },
       participants: [],
       expenses: [],
+      isPrivateCourse: false,
+      sessionsCount: 1,
+      sessions: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -187,9 +190,69 @@ export function LeadForm({ existing }: Props) {
   const [wizardStep, setWizardStep] = useState<FormStep>("details")
   const [savedFlash, setSavedFlash] = useState(false)
   const [saving, setSaving] = useState(false)
+  const initialSessionsCount = Math.max(1, existing?.sessionsCount || existing?.sessions?.length || 1)
+  const [sessionsMode, setSessionsMode] = useState<"1" | "2" | "3" | "other">(
+    initialSessionsCount === 1
+      ? "1"
+      : initialSessionsCount === 2
+        ? "2"
+        : initialSessionsCount === 3
+          ? "3"
+          : "other",
+  )
+  const [sessionsOtherCount, setSessionsOtherCount] = useState(
+    initialSessionsCount > 3 ? String(initialSessionsCount) : "",
+  )
   const isNew = !existing
   const sectionRefs = useRef<Partial<Record<FormStep, HTMLElement | null>>>({})
   const scrollingToStep = useRef(false)
+
+  const resolvedSessionsCount = useMemo(() => {
+    if (sessionsMode === "other") {
+      const n = Number(sessionsOtherCount)
+      return Number.isFinite(n) && n >= 1 ? Math.min(Math.floor(n), 12) : 1
+    }
+    return Number(sessionsMode)
+  }, [sessionsMode, sessionsOtherCount])
+
+  const sessionSlots = useMemo(() => {
+    const existingSessions = form.sessions?.length
+      ? form.sessions
+      : form.date && form.time
+        ? [{ date: form.date, time: form.time, endTime: form.endTime }]
+        : []
+    return Array.from({ length: resolvedSessionsCount }, (_, i) => {
+      const s = existingSessions[i]
+      return {
+        date: s?.date || (i === 0 ? form.date || "" : ""),
+        time: s?.time || (i === 0 ? form.time || "" : ""),
+        endTime: s?.endTime || (i === 0 ? form.endTime || "" : ""),
+      }
+    })
+  }, [
+    resolvedSessionsCount,
+    form.sessions,
+    form.date,
+    form.time,
+    form.endTime,
+  ])
+
+  const setSessionSlot = (
+    index: number,
+    patch: Partial<{ date: string; time: string; endTime: string }>,
+  ) => {
+    const next = sessionSlots.map((s, i) =>
+      i === index ? { ...s, ...patch } : s,
+    )
+    setForm((f) => ({
+      ...f,
+      sessionsCount: resolvedSessionsCount,
+      sessions: next,
+      date: next[0]?.date || f.date,
+      time: next[0]?.time || f.time,
+      endTime: next[0]?.endTime || f.endTime,
+    }))
+  }
 
   const goToStep = (step: FormStep) => {
     setWizardStep(step)
@@ -327,6 +390,18 @@ export function LeadForm({ existing }: Props) {
     if (instructorSelect === OTHER && !instructorOther.trim()) {
       e.instructorOther = true
     }
+    if (sessionsMode === "other") {
+      const n = Number(sessionsOtherCount)
+      if (!Number.isFinite(n) || n < 1) e.sessionsOtherCount = true
+    }
+    // מפגשים מרובים מחייבים תאריך ושעה לכל מפגש
+    if (resolvedSessionsCount >= 2) {
+      for (let i = 0; i < sessionSlots.length; i++) {
+        if (!sessionSlots[i].date?.trim() || !sessionSlots[i].time?.trim()) {
+          e[`session_${i}`] = true
+        }
+      }
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -406,6 +481,16 @@ export function LeadForm({ existing }: Props) {
         instructorFeeOverride: undefined,
         // לא מעתיקים עלות מדריך להוצאות — החישוב דינמי מפרופיל המדריך
         expenses: form.expenses.filter((e) => e.type !== "מדריך"),
+        isPrivateCourse: Boolean(form.isPrivateCourse),
+        sessionsCount: resolvedSessionsCount,
+        sessions: sessionSlots.map((s) => ({
+          date: s.date,
+          time: s.time,
+          endTime: s.endTime || undefined,
+        })),
+        date: sessionSlots[0]?.date || form.date,
+        time: sessionSlots[0]?.time || form.time,
+        endTime: sessionSlots[0]?.endTime || form.endTime,
       }
 
       if (existing) {
@@ -781,32 +866,169 @@ export function LeadForm({ existing }: Props) {
               sectionRefs.current.logistics = el
             }}
             className="mt-8 scroll-mt-28 space-y-4 overflow-visible border-t border-border pt-6"
-          >            <div className="grid grid-cols-3 gap-3">
-              <Field label="תאריך">
-                <Input
-                  type="date"
-                  value={form.date ?? ""}
-                  onChange={(e) => set("date", e.target.value)}
-                  dir="ltr"
-                />
-              </Field>
-              <Field label="משעה">
-                <Input
-                  type="time"
-                  value={form.time ?? ""}
-                  onChange={(e) => set("time", e.target.value)}
-                  dir="ltr"
-                />
-              </Field>
-              <Field label="עד שעה">
-                <Input
-                  type="time"
-                  value={form.endTime ?? ""}
-                  onChange={(e) => set("endTime", e.target.value)}
-                  dir="ltr"
-                />
-              </Field>
+          >
+            <label className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-sm">
+              <Checkbox
+                checked={Boolean(form.isPrivateCourse)}
+                onCheckedChange={(v) => set("isPrivateCourse", Boolean(v))}
+              />
+              <span className="font-semibold">קורס פרטי</span>
+              <span className="text-xs text-muted-foreground">
+                (ברירת מחדל: קבוצה · בלו״ז יופיע בוורוד)
+              </span>
+            </label>
+
+            <div className="space-y-2">
+              <Label className="text-sm">מספר מפגשים</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {(["1", "2", "3", "other"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setSessionsMode(mode)
+                      const count =
+                        mode === "other"
+                          ? Math.max(1, Number(sessionsOtherCount) || 1)
+                          : Number(mode)
+                      setForm((f) => {
+                        const base =
+                          f.sessions?.length
+                            ? f.sessions
+                            : f.date && f.time
+                              ? [
+                                  {
+                                    date: f.date,
+                                    time: f.time,
+                                    endTime: f.endTime,
+                                  },
+                                ]
+                              : []
+                        const next = Array.from({ length: count }, (_, i) => ({
+                          date: base[i]?.date || (i === 0 ? f.date || "" : ""),
+                          time: base[i]?.time || (i === 0 ? f.time || "" : ""),
+                          endTime:
+                            base[i]?.endTime ||
+                            (i === 0 ? f.endTime || "" : ""),
+                        }))
+                        return {
+                          ...f,
+                          sessionsCount: count,
+                          sessions: next,
+                          date: next[0]?.date || f.date,
+                          time: next[0]?.time || f.time,
+                          endTime: next[0]?.endTime || f.endTime,
+                        }
+                      })
+                    }}
+                    className={
+                      sessionsMode === mode
+                        ? "rounded-xl border-2 border-primary bg-primary/10 py-2 text-sm font-semibold text-primary"
+                        : "rounded-xl border border-border bg-card py-2 text-sm text-muted-foreground"
+                    }
+                  >
+                    {mode === "other" ? "אחר" : mode}
+                  </button>
+                ))}
+              </div>
+              {sessionsMode === "other" && (
+                <Field
+                  label="כמה מפגשים?"
+                  error={errors.sessionsOtherCount}
+                  required
+                >
+                  <Input
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={sessionsOtherCount}
+                    onChange={(e) => {
+                      setSessionsOtherCount(e.target.value)
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n) || n < 1) return
+                      const count = Math.min(Math.floor(n), 12)
+                      setForm((f) => {
+                        const base =
+                          f.sessions?.length
+                            ? f.sessions
+                            : f.date && f.time
+                              ? [
+                                  {
+                                    date: f.date,
+                                    time: f.time,
+                                    endTime: f.endTime,
+                                  },
+                                ]
+                              : []
+                        const next = Array.from(
+                          { length: count },
+                          (_, i) => ({
+                            date:
+                              base[i]?.date || (i === 0 ? f.date || "" : ""),
+                            time:
+                              base[i]?.time || (i === 0 ? f.time || "" : ""),
+                            endTime:
+                              base[i]?.endTime ||
+                              (i === 0 ? f.endTime || "" : ""),
+                          }),
+                        )
+                        return {
+                          ...f,
+                          sessionsCount: count,
+                          sessions: next,
+                        }
+                      })
+                    }}
+                    dir="ltr"
+                  />
+                </Field>
+              )}
             </div>
+
+            {sessionSlots.map((slot, idx) => (
+              <div
+                key={`session-${idx}`}
+                className="space-y-2 rounded-xl border border-border bg-secondary/20 p-3"
+              >
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {sessionSlots.length > 1
+                    ? `מפגש ${idx + 1}`
+                    : "תאריך ושעה"}
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="תאריך" error={errors[`session_${idx}`]} required>
+                    <Input
+                      type="date"
+                      value={slot.date}
+                      onChange={(e) =>
+                        setSessionSlot(idx, { date: e.target.value })
+                      }
+                      dir="ltr"
+                    />
+                  </Field>
+                  <Field label="משעה" error={errors[`session_${idx}`]} required>
+                    <Input
+                      type="time"
+                      value={slot.time}
+                      onChange={(e) =>
+                        setSessionSlot(idx, { time: e.target.value })
+                      }
+                      dir="ltr"
+                    />
+                  </Field>
+                  <Field label="עד שעה">
+                    <Input
+                      type="time"
+                      value={slot.endTime}
+                      onChange={(e) =>
+                        setSessionSlot(idx, { endTime: e.target.value })
+                      }
+                      dir="ltr"
+                    />
+                  </Field>
+                </div>
+              </div>
+            ))}
 
             <Field label="מדריך" error={errors.instructorOther}>
               <Select

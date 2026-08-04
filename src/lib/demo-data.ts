@@ -144,7 +144,7 @@ export const DEFAULT_COURSES: CourseCatalogItem[] = [
 ];
 
 export const DEFAULT_SETTINGS = {
-  businessName: "עזרא ורפואה",
+  businessName: "עזרה ורפואה",
   websiteUrl:
     "https://www.ezra-medical.com/%D7%9B%D7%A0%D7%99%D7%A1%D7%94-%D7%9C%D7%AA%D7%9C%D7%9E%D7%99%D7%93%D7%99%D7%9D",
   googleReviewUrl: "",

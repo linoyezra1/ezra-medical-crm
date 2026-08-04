@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { AlertTriangle, ChevronLeft, Plus, Trash2, XCircle } from "lucide-react"
 import { toast } from "sonner"
+import { LeadPaymentDialog } from "@/components/leads/lead-payment-dialog"
 import { ParticipantsDialog } from "@/components/leads/participants-dialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -20,6 +21,7 @@ import {
   missingForClose,
   requiresPhysicalAddress,
 } from "@/lib/helpers"
+import { isLeadPaid } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import {
   LEAD_STATUS_LABELS,
@@ -60,6 +62,8 @@ export function LifecycleControls({
   const [participantsOpen, setParticipantsOpen] = useState(false)
   const [confirmRegress, setConfirmRegress] = useState<LeadStatus | null>(null)
   const [googleCalOpen, setGoogleCalOpen] = useState(false)
+  const [paymentBlockOpen, setPaymentBlockOpen] = useState(false)
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
 
   const currentIdx = LEAD_STATUS_ORDER.indexOf(lead.status)
   const nextStatus =
@@ -98,10 +102,10 @@ export function LifecycleControls({
       return
     }
 
-    // מעבר ל"בוצעה" ומעלה — ללא פתיחה אוטומטית של מודל משתתפים
+    // מעבר ל"בוצעה" → אוטומטית "ממתין לתעודות"
     if (target === "done") {
-      updateLead(lead.id, { status: "done" })
-      toast.success("ההדרכה סומנה כבוצעה")
+      updateLead(lead.id, { status: "pending_certificates" })
+      toast.success("ההדרכה סומנה כבוצעה ועברה אוטומטית לממתין לתעודות")
       return
     }
 
@@ -112,6 +116,10 @@ export function LifecycleControls({
     }
 
     if (target === "completed") {
+      if (!isLeadPaid(lead)) {
+        setPaymentBlockOpen(true)
+        return
+      }
       updateLead(lead.id, { status: "completed" })
       toast.success("ההדרכה הושלמה ותאריך סגירה נרשם")
       return
@@ -359,6 +367,42 @@ export function LifecycleControls({
         lead={lead}
         open={participantsOpen}
         onOpenChange={setParticipantsOpen}
+      />
+
+      <Dialog open={paymentBlockOpen} onOpenChange={setPaymentBlockOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-right">לא בוצע תשלום</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            לא ניתן להעביר את ההדרכה לסטטוס ״הסתיים״ לפני שנרשם תשלום. יש להוסיף
+            או לעדכן תשלום תחילה.
+          </p>
+          <DialogFooter className="flex-row gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setPaymentBlockOpen(false)}
+            >
+              ביטול
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                setPaymentBlockOpen(false)
+                setPaymentDialogOpen(true)
+              }}
+            >
+              הוספת / עדכון תשלום
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <LeadPaymentDialog
+        lead={lead}
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
       />
     </Card>
   )

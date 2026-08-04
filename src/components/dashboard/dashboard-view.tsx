@@ -22,15 +22,16 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/helpers"
+import { isLeadPaid } from "@/lib/payment"
 
 export function DashboardView() {
   const { leads, tasks, settings } = useApp()
 
   const activeLeads = leads.filter((l) => l.status !== "lost")
-  // רווח בדשבורד — רק הדרכות בסטטוס "הדרכה בוצעה"
-  const doneLeads = activeLeads.filter((l) => l.status === "done")
-  const courseIncome = doneLeads.reduce((s, l) => s + l.totalPrice, 0)
-  const salesIncome = doneLeads.reduce(
+  // רווח בדשבורד — רק הדרכות ששולמו בפועל (ללא תלות בסטטוס ההדרכה)
+  const paidLeads = activeLeads.filter((l) => isLeadPaid(l))
+  const courseIncome = paidLeads.reduce((s, l) => s + l.totalPrice, 0)
+  const salesIncome = paidLeads.reduce(
     (s, l) =>
       s +
       (l.trainingSales || []).reduce(
@@ -40,11 +41,11 @@ export function DashboardView() {
     0,
   )
   const income = courseIncome + salesIncome
-  const courseExpenses = doneLeads.reduce(
+  const courseExpenses = paidLeads.reduce(
     (s, l) => s + l.expenses.reduce((a, e) => a + e.amount, 0),
     0,
   )
-  const salesCost = doneLeads.reduce(
+  const salesCost = paidLeads.reduce(
     (s, l) =>
       s +
       (l.trainingSales || []).reduce(

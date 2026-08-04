@@ -1,4 +1,5 @@
 import { formatCourseTypeLabel } from "@/lib/course-type"
+import { isLeadPaid } from "@/lib/payment"
 import { computeTrainingProfit } from "@/lib/training-profit"
 import type {
   CourseCatalogItem,
@@ -29,11 +30,12 @@ export type ProfitMonthGroup = {
   transactions: ProfitTransaction[]
 }
 
-const REVENUE_LEAD_STATUSES = new Set([
-  "done",
-])
-
 const REVENUE_EQUIPMENT_STATUSES = new Set(["order", "invoice", "paid"])
+
+/** הדרכות שנכללות ברווח — רק אם שולמו */
+function isRevenueLead(lead: Lead): boolean {
+  return isLeadPaid(lead)
+}
 
 function toDateKey(isoOrDate: string | undefined, fallback: string): string {
   if (isoOrDate && /^\d{4}-\d{2}-\d{2}/.test(isoOrDate)) {
@@ -77,9 +79,12 @@ export function buildProfitTransactions(
 
   for (const lead of leads) {
     if (lead.status === "lost") continue
-    if (!REVENUE_LEAD_STATUSES.has(lead.status)) continue
+    if (!isRevenueLead(lead)) continue
 
-    const date = toDateKey(lead.date, lead.updatedAt || lead.createdAt)
+    const date = toDateKey(
+      lead.paymentDate || lead.date,
+      lead.updatedAt || lead.createdAt,
+    )
     const profit = computeTrainingProfit(lead, instructors)
 
     rows.push({

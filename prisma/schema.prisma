@@ -93,6 +93,17 @@ model Lead {
   paymentTerms       String? // immediate | net_30 | net_60 | other
   paymentStatus      String  @default("pending_official_order")
   // pending_official_order | invoice_issued_pending_net | paid_in_full
+  /** תאריך ביצוע התשלום בפועל */
+  paymentDate        DateTime?
+  /** bit | bank_transfer | cash | paybox | other */
+  paymentMethod      String?
+  /** יצחק | לינוי */
+  paymentReceivedBy  String?
+  paymentReceiptIssued Boolean @default(false)
+  /** קורס פרטי (לו״ז ורוד) מול קבוצה */
+  isPrivateCourse    Boolean @default(false)
+  /** מפגשים נוספים כ־JSON: [{date,time,endTime?}] */
+  sessionsJson       String?
   shippingStreet     String?
   shippingHouseNo    String?
   shippingCity       String?
@@ -297,7 +308,7 @@ model CourseAsset {
 
 model Settings {
   id            String @id @default("default")
-  businessName  String @default("עזרא ורפואה")
+  businessName  String @default("עזרה ורפואה")
   websiteUrl    String?
   googleReviewUrl String?
   tiktokUrl     String?

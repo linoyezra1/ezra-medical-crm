@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import {
+  Download,
   ExternalLink,
   FileSpreadsheet,
   Link2,
@@ -14,6 +15,7 @@ import {
   UserPlus,
 } from "lucide-react"
 import { toast } from "sonner"
+import * as XLSX from "xlsx"
 import { TraineeAddDialog } from "@/components/clients/trainee-add-dialog"
 import { TraineeAssignDialog } from "@/components/clients/trainee-assign-dialog"
 import { TraineeEditDialog } from "@/components/clients/trainee-edit-dialog"
@@ -99,6 +101,35 @@ export function TraineesPanel() {
     setAssignOpen(true)
   }
 
+  const exportSelectedExcel = () => {
+    const selected = trainees.filter((t) => selectedIds.has(t.id))
+    if (!selected.length) {
+      toast.error("יש לבחור לפחות מודרך אחד לייצוא")
+      return
+    }
+    const rows = selected.map((t) => {
+      const tr = t.trainings[0]
+      return {
+        "שם מלא": t.fullName,
+        "תעודת זהות": t.idNumber,
+        "תאריך הדרכה": tr?.courseDate || "",
+        אימייל: t.email || "",
+        טלפון: t.phone || "",
+        "שם מארגן הקורס":
+          tr?.organizerName || tr?.leadName || "",
+        "חותמת זמן": t.createdAt,
+      }
+    })
+    const sheet = XLSX.utils.json_to_sheet(rows)
+    const book = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(book, sheet, "מודרכים")
+    XLSX.writeFile(
+      book,
+      `modrachim-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    )
+    toast.success(`יוצאו ${selected.length} מודרכים`)
+  }
+
   const patch = async (t: Trainee, data: Partial<Trainee>) => {
     updateTraineeLocal(t.id, data)
     const res = await updateTrainee(t.id, {
@@ -129,7 +160,12 @@ export function TraineesPanel() {
   }
 
   const toolbar = (
-    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      {selectedIds.size > 0 ? (
+        <span className="rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
+          {selectedIds.size} נבחרו
+        </span>
+      ) : null}
       <Button
         type="button"
         variant="outline"
@@ -139,6 +175,18 @@ export function TraineesPanel() {
       >
         <FileSpreadsheet className="size-4" />
         ייבוא מאקסל
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-10 gap-2 rounded-xl sm:h-9"
+        disabled={selectedIds.size === 0}
+        onClick={exportSelectedExcel}
+      >
+        <Download className="size-4" />
+        ייצוא לאקסל
+        {selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
       </Button>
       <Button
         type="button"
@@ -283,16 +331,17 @@ export function TraineesPanel() {
                         aria-label="בחר הכל"
                       />
                     </th>
-                    <th className="w-[14%] px-2 py-2 font-semibold">שם מודרך</th>
-                    <th className="w-[10%] px-2 py-2 font-semibold">ת״ז</th>
-                    <th className="w-[11%] px-2 py-2 font-semibold">טלפון</th>
-                    <th className="w-[13%] px-2 py-2 font-semibold">
+                    <th className="w-[13%] px-2 py-2 font-semibold">שם מודרך</th>
+                    <th className="w-[9%] px-2 py-2 font-semibold">ת״ז</th>
+                    <th className="w-[10%] px-2 py-2 font-semibold">טלפון</th>
+                    <th className="w-[12%] px-2 py-2 font-semibold">אימייל</th>
+                    <th className="w-[12%] px-2 py-2 font-semibold">
                       הדרכה שיוך
                     </th>
-                    <th className="w-[7%] px-2 py-2 font-semibold">מייל</th>
+                    <th className="w-[7%] px-2 py-2 font-semibold">תעודה</th>
                     <th className="w-[7%] px-2 py-2 font-semibold">כרטיס</th>
-                    <th className="w-[14%] px-2 py-2 font-semibold">הערות</th>
-                    <th className="w-[16%] px-2 py-2 font-semibold">פעולות</th>
+                    <th className="w-[12%] px-2 py-2 font-semibold">הערות</th>
+                    <th className="w-[14%] px-2 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -329,6 +378,13 @@ export function TraineesPanel() {
                           dir="ltr"
                         >
                           {t.phone ? formatPhone(t.phone) : "—"}
+                        </td>
+                        <td
+                          className="max-w-0 truncate px-2 py-2 dir-ltr text-left text-xs"
+                          dir="ltr"
+                          title={t.email || undefined}
+                        >
+                          {t.email || "—"}
                         </td>
                         <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
                           {via}
@@ -422,6 +478,14 @@ export function TraineesPanel() {
                       <p className="mt-1 text-[11px] text-primary">
                         הדרכה דרך: {via}
                       </p>
+                      {t.email ? (
+                        <p
+                          className="mt-0.5 truncate text-[11px] text-muted-foreground"
+                          dir="ltr"
+                        >
+                          {t.email}
+                        </p>
+                      ) : null}
                     </button>
                   </div>
 

@@ -311,7 +311,13 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
           inputMode="search"
         />
       </div>
-      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
+      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+        <span className="inline-flex items-center gap-1.5 rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
+          {participants.length} נרשמים
+          <span className="font-medium text-muted-foreground">
+            · {attendedCount} נוכחים
+          </span>
+        </span>
         <Button
           type="button"
           variant="outline"

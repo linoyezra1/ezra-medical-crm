@@ -13,7 +13,7 @@ const assistant = Assistant({
 });
 
 export const metadata: Metadata = {
-  title: "עזרא ורפואה | CRM",
+  title: "עזרה ורפואה | CRM",
   description: "מערכת ניהול לידים, הדרכות, ציוד ולקוחות - מותאמת לשימוש מהשטח",
 };
 

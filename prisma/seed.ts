@@ -16,7 +16,7 @@ async function main() {
     where: { id: "default" },
     create: {
       id: "default",
-      businessName: "עזרא ורפואה",
+      businessName: "עזרה ורפואה",
       facebookUrl: "https://facebook.com/",
       instagramUrl: "https://instagram.com/",
       tiktokUrl: "https://tiktok.com/",
@@ -28,8 +28,11 @@ async function main() {
 
   // הסרת מיתוג ישן "עזרה!" אם עדיין שמור בהגדרות
   await prisma.settings.updateMany({
-    where: { id: "default", businessName: "עזרה!" },
-    data: { businessName: "עזרא ורפואה" },
+    where: {
+      id: "default",
+      businessName: { in: ["עזרה!", "עזרא ורפואה"] },
+    },
+    data: { businessName: "עזרה ורפואה" },
   });
 
   for (const c of DEFAULT_COURSES) {

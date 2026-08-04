@@ -11,7 +11,7 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   closed: "סגרנו נרשם ביומן",
   done: "הדרכה בוצעה",
   pending_certificates: "ממתין לתעודות",
-  completed: "הושלם",
+  completed: "הסתיים",
   lost: "אבוד / בוטל",
 };
 
@@ -240,7 +240,16 @@ export interface Lead {
   equipmentStatus?: string | null;
   paymentTerms?: string | null;
   paymentStatus?: string;
+  /** תאריך תשלום YYYY-MM-DD */
+  paymentDate?: string;
+  paymentMethod?: string;
+  paymentReceivedBy?: string;
+  paymentReceiptIssued?: boolean;
+  /** קורס פרטי */
+  isPrivateCourse?: boolean;
   sessionsCount?: number | null;
+  /** מפגשים מרובים */
+  sessions?: Array<{ date: string; time: string; endTime?: string }>;
   sessionDuration?: string | null;
   bookletRequired?: boolean;
   reason?: string | null;

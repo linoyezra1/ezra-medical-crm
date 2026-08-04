@@ -11,6 +11,13 @@ import {
   isInstructorUnassigned,
 } from "@/lib/instructor";
 import { formatInJerusalem, jerusalemLocalToUtcDate } from "@/lib/timezone";
+import {
+  PAID_PAYMENT_STATUS,
+  UNPAID_PAYMENT_TASK_PREFIX,
+  isLeadPaid,
+  unpaidPaymentTaskTitle,
+  parseSessionsJson,
+} from "@/lib/payment";
 import { sanitizePhone } from "@/lib/utils";
 import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
@@ -208,6 +215,61 @@ async function syncUnassignedInstructorTask(lead: {
   });
 }
 
+/** משימת גבייה אוטומטית כל עוד ההדרכה לא שולמה */
+async function syncUnpaidPaymentTask(lead: {
+  id: string;
+  fullName: string;
+  paymentStatus: string | null;
+  scheduledStart: Date | null;
+}) {
+  const title = unpaidPaymentTaskTitle(lead.fullName);
+
+  if (!isLeadPaid(lead)) {
+    let dueDate: Date | null = null;
+    if (lead.scheduledStart) {
+      const { date } = formatInJerusalem(lead.scheduledStart);
+      if (date) dueDate = jerusalemLocalToUtcDate(date, "09:00");
+    }
+
+    const existing = await prisma.followUpTask.findFirst({
+      where: {
+        leadId: lead.id,
+        completed: false,
+        title: { startsWith: UNPAID_PAYMENT_TASK_PREFIX },
+      },
+    });
+
+    if (existing) {
+      await prisma.followUpTask.update({
+        where: { id: existing.id },
+        data: { title, dueDate },
+      });
+    } else {
+      await prisma.followUpTask.create({
+        data: {
+          leadId: lead.id,
+          title,
+          dueDate,
+          assignee: "מכירות",
+          notes: "נוצר אוטומטית — ממתין לתשלום",
+        },
+      });
+    }
+    revalidatePath("/calendar");
+    revalidatePath("/dashboard");
+    return;
+  }
+
+  await prisma.followUpTask.updateMany({
+    where: {
+      leadId: lead.id,
+      completed: false,
+      title: { startsWith: UNPAID_PAYMENT_TASK_PREFIX },
+    },
+    data: { completed: true },
+  });
+}
+
 export async function checkDuplicatePhone(phone: string, excludeLeadId?: string) {
   const sanitized = sanitizePhone(phone);
   if (!sanitized || sanitized.length < 9) return { duplicates: [] as { id: string; fullName: string }[] };
@@ -316,10 +378,6 @@ export async function updateLead(
     }
   }
 
-  const nextStatus =
-    raw.courseStatus != null ? String(raw.courseStatus) : existing.courseStatus;
-
-
   const merged = {
     ...existing,
     ...Object.fromEntries(
@@ -329,7 +387,10 @@ export async function updateLead(
       })
     ),
     phone,
-    courseStatus: nextStatus,
+    courseStatus:
+      raw.courseStatus != null
+        ? String(raw.courseStatus)
+        : existing.courseStatus,
   } as typeof existing;
 
   // Coerce numeric / date fields — מחרוזות ללא offset נחשבות שעון ישראל
@@ -362,6 +423,37 @@ export async function updateLead(
   }
   if (raw.collectCertificateShipping != null) {
     merged.collectCertificateShipping = Boolean(raw.collectCertificateShipping);
+  }
+
+  let nextStatus = String(merged.courseStatus ?? existing.courseStatus);
+
+  // אוטומציה: מעבר ל־"בוצעה" (DB completed) → "ממתין לתעודות"
+  if (
+    nextStatus === "completed" &&
+    existing.courseStatus !== "completed" &&
+    existing.courseStatus !== "certificates_pending" &&
+    existing.courseStatus !== "closed_won"
+  ) {
+    nextStatus = "certificates_pending";
+    merged.courseStatus = "certificates_pending";
+  }
+
+  // חסימת "הסתיים" ללא תשלום
+  if (
+    nextStatus === "closed_won" &&
+    existing.courseStatus !== "closed_won"
+  ) {
+    const paid =
+      String(merged.paymentStatus ?? existing.paymentStatus) ===
+      PAID_PAYMENT_STATUS;
+    if (!paid) {
+      return {
+        ok: false,
+        error:
+          "לא ניתן לסמן הדרכה כ״הסתיים״ לפני שבוצע תשלום. יש לרשום תשלום תחילה.",
+        code: "payment_required",
+      };
+    }
   }
 
   if (nextStatus !== existing.courseStatus) {
@@ -479,6 +571,41 @@ export async function updateLead(
       quoteSentAt,
       paymentTerms: merged.paymentTerms,
       paymentStatus: merged.paymentStatus ?? "pending_official_order",
+      paymentDate:
+        raw.paymentDate !== undefined
+          ? raw.paymentDate
+            ? jerusalemLocalToUtcDate(
+                String(raw.paymentDate).slice(0, 10),
+                "12:00",
+              )
+            : null
+          : existing.paymentDate,
+      paymentMethod:
+        raw.paymentMethod !== undefined
+          ? raw.paymentMethod
+            ? String(raw.paymentMethod)
+            : null
+          : existing.paymentMethod,
+      paymentReceivedBy:
+        raw.paymentReceivedBy !== undefined
+          ? raw.paymentReceivedBy
+            ? String(raw.paymentReceivedBy)
+            : null
+          : existing.paymentReceivedBy,
+      paymentReceiptIssued:
+        raw.paymentReceiptIssued !== undefined
+          ? Boolean(raw.paymentReceiptIssued)
+          : existing.paymentReceiptIssued,
+      isPrivateCourse:
+        raw.isPrivateCourse !== undefined
+          ? Boolean(raw.isPrivateCourse)
+          : existing.isPrivateCourse,
+      sessionsJson:
+        raw.sessionsJson !== undefined
+          ? raw.sessionsJson
+            ? String(raw.sessionsJson)
+            : null
+          : existing.sessionsJson,
       shippingStreet: merged.shippingStreet,
       shippingHouseNo: merged.shippingHouseNo,
       shippingCity: merged.shippingCity,
@@ -520,9 +647,13 @@ export async function updateLead(
       courseType: true,
       courseTypeOther: true,
       scheduledStart: true,
+      paymentStatus: true,
     },
   });
-  if (after) await syncUnassignedInstructorTask(after);
+  if (after) {
+    await syncUnassignedInstructorTask(after);
+    await syncUnpaidPaymentTask(after);
+  }
 
   // Returning account classification when closing won
   if (nextStatus === "closed_won" && existing.accountId) {
@@ -537,6 +668,59 @@ export async function updateLead(
   revalidatePath(`/leads/${leadId}`);
   revalidatePath(`/p/${leadId}`);
   revalidatePath("/dashboard");
+  return { ok: true, data: { id: leadId } };
+}
+
+/** רישום תשלום מהיר להדרכה */
+export async function recordLeadPayment(
+  leadId: string,
+  data: {
+    paymentDate: string;
+    paymentMethod: string;
+    paymentReceivedBy: string;
+    paymentReceiptIssued: boolean;
+  },
+): Promise<ActionResult<{ id: string }>> {
+  const existing = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!existing) return { ok: false, error: "ההדרכה לא נמצאה" };
+  if (!data.paymentDate?.trim()) {
+    return { ok: false, error: "יש לבחור תאריך תשלום" };
+  }
+  if (!data.paymentMethod?.trim()) {
+    return { ok: false, error: "יש לבחור אופן תשלום" };
+  }
+  if (!data.paymentReceivedBy?.trim()) {
+    return { ok: false, error: "יש לבחור מי קיבל את הכסף" };
+  }
+
+  const actor = await getActiveCrmUser();
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      paymentStatus: PAID_PAYMENT_STATUS,
+      paymentDate: jerusalemLocalToUtcDate(data.paymentDate.trim(), "12:00"),
+      paymentMethod: data.paymentMethod.trim(),
+      paymentReceivedBy: data.paymentReceivedBy.trim(),
+      paymentReceiptIssued: Boolean(data.paymentReceiptIssued),
+      lastUpdatedBy: actor,
+    },
+  });
+
+  const after = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      fullName: true,
+      paymentStatus: true,
+      scheduledStart: true,
+    },
+  });
+  if (after) await syncUnpaidPaymentTask(after);
+
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
   return { ok: true, data: { id: leadId } };
 }
 

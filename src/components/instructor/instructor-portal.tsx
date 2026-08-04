@@ -152,6 +152,9 @@ export function InstructorTrainingsView({
                   >
                     <ClipboardCheck className="size-3.5" />
                     נוכחות
+                    <span className="rounded-md bg-secondary px-1.5 text-[10px] font-bold">
+                      {lead.participants.length || lead.participantsCount || 0}
+                    </span>
                   </Button>
                 </div>
                 {rollLeadId === lead.id && (

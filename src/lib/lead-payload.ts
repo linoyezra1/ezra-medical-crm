@@ -57,6 +57,17 @@ export function leadToDbPayload(
       null,
     deliveryMethod: merged.certificateDelivery || "עזרה ורפואה",
     leadSource: merged.customerType === "existing" ? "returning" : "website",
+    paymentStatus: merged.paymentStatus || undefined,
+    paymentDate: merged.paymentDate || undefined,
+    paymentMethod: merged.paymentMethod || undefined,
+    paymentReceivedBy: merged.paymentReceivedBy || undefined,
+    paymentReceiptIssued: Boolean(merged.paymentReceiptIssued),
+    isPrivateCourse: Boolean(merged.isPrivateCourse),
+    sessionsCount: merged.sessionsCount ?? null,
+    sessionsJson:
+      merged.sessions && merged.sessions.length > 0
+        ? JSON.stringify(merged.sessions)
+        : null,
   }
 
   if (patch.quoteSentAt || merged.quoteSentAt) {
