@@ -1,3 +1,4 @@
+import { isOwnerInstructor } from "@/lib/instructor"
 import type { InstructorProfile, Lead } from "@/lib/types"
 
 const INSTRUCTOR_EXPENSE_TYPES = new Set([
@@ -13,11 +14,14 @@ export function isInstructorExpenseType(type: string): boolean {
 /**
  * תעריף מדריך חי מפרופיל (מקור אמת).
  * דריסה להדרכה ספציפית נלקחת רק אם אין פרופיל חי זמין.
+ * יצחק — ללא עלות מדריך.
  */
 export function resolveInstructorFee(
   lead: Pick<Lead, "instructorId" | "instructorFeeOverride" | "instructor">,
   instructors: InstructorProfile[],
 ): number {
+  if (isOwnerInstructor(lead.instructor)) return 0
+
   const byId = lead.instructorId
     ? instructors.find((i) => i.id === lead.instructorId)
     : undefined

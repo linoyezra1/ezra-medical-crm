@@ -14,6 +14,7 @@ import {
   UserRound,
   Users,
   Wallet,
+  Zap,
 } from "lucide-react"
 import {
   Sheet,
@@ -35,13 +36,19 @@ const NAV = [
 ]
 
 const MORE = [
+  { href: "/quick-actions", label: "פעולות מהירות", icon: Zap },
   { href: "/equipment", label: "ניהול מלאי", icon: Boxes },
   { href: "/calendar", label: "יומן ומשימות", icon: CalendarDays },
   { href: "/instructors", label: "הדרכות מדריכים", icon: UserRound },
   { href: "/settings", label: "הגדרות עסק", icon: Settings },
 ]
 
-const DESKTOP_NAV = [...NAV, ...MORE]
+/** דסקטופ: פעולות מהירות בסרגל הראשי */
+const DESKTOP_NAV = [
+  ...NAV,
+  { href: "/quick-actions", label: "פעולות מהירות", icon: Zap },
+  ...MORE.filter((m) => m.href !== "/quick-actions"),
+]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

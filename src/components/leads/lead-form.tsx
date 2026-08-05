@@ -36,6 +36,7 @@ import {
 } from "@/lib/helpers"
 import {
   isInstructorUnassigned,
+  isOwnerInstructor,
   UNASSIGNED_INSTRUCTOR,
   UNASSIGNED_INSTRUCTOR_VALUE,
 } from "@/lib/instructor"
@@ -437,8 +438,10 @@ export function LeadForm({ existing }: Props) {
     const courseResolved = resolveCourseTypeForSave(courseTypeSelect, courseTypeOther)
     const catalog = findCourseCatalog(courseResolved.courseType, settings.courses)
     const instructor = resolveInstructor()
-    const fee = Number(instructorFee) || 0
     const unassigned = isInstructorUnassigned(instructor)
+    const fee = isOwnerInstructor(instructor)
+      ? 0
+      : Number(instructorFee) || 0
 
     setSaving(true)
     try {
@@ -1048,6 +1051,10 @@ export function LeadForm({ existing }: Props) {
                   }
                   set("instructor", next)
                   setInstructorOther("")
+                  if (isOwnerInstructor(next)) {
+                    setInstructorFee("")
+                    return
+                  }
                   const profile = instructors.find((i) => i.name === next)
                   setInstructorFee(
                     profile && profile.fee > 0 ? String(profile.fee) : "",
@@ -1098,7 +1105,12 @@ export function LeadForm({ existing }: Props) {
                 />
               </Field>
             )}
-            {!isInstructorUnassigned(instructorSelect) && (
+            {!isInstructorUnassigned(instructorSelect) &&
+              !isOwnerInstructor(
+                instructorSelect === OTHER
+                  ? instructorOther
+                  : instructorSelect,
+              ) && (
               <Field label="תעריף מדריך חי (₪)">
                 <Input
                   type="number"

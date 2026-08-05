@@ -5,21 +5,12 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import {
   ArrowRight,
-  BookOpen,
   CalendarPlus,
   CreditCard,
-  ClipboardList,
-  Copy,
-  FileSpreadsheet,
-  FileText,
   LayoutDashboard,
   MapPin,
-  MessageCircle,
   Pencil,
   Phone,
-  Presentation,
-  Printer,
-  Send,
   UserPlus,
   Users,
   Wallet,
@@ -32,34 +23,26 @@ import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
 import { ParticipantsSection } from "@/components/leads/participants-section"
 import { TrainingSalesSection } from "@/components/leads/training-sales-section"
-import { SendBookletDialog } from "@/components/leads/send-booklet-dialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
-  courseMaterialUrl,
-  type CourseMaterialKey,
-} from "@/lib/course-materials"
-import {
-  findCourseCatalog,
   formatLeadCourseType,
 } from "@/lib/course-type"
 import {
   formatCurrency,
   formatDateWithWeekday,
   downloadLeadIcs,
-  instructorAssignmentWhatsAppMessage,
   whatsappLink,
-  whatsappSummary,
 } from "@/lib/helpers"
 import { formatActivityLogLine } from "@/lib/activity-log"
-import { isInstructorUnassigned } from "@/lib/instructor"
+import { isInstructorUnassigned, isOwnerInstructor } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { computeTrainingProfit } from "@/lib/training-profit"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type { Lead } from "@/lib/types"
 
-const DETAIL_TABS = ["home", "participants", "materials", "finance"] as const
+const DETAIL_TABS = ["home", "participants", "finance"] as const
 type DetailTab = (typeof DETAIL_TABS)[number]
 
 export function LeadDetailView({
@@ -72,7 +55,6 @@ export function LeadDetailView({
   const router = useRouter()
   const { getLead, settings } = useApp()
   const lead = getLead(leadId)
-  const [bookletOpen, setBookletOpen] = useState(false)
   const [collectOpen, setCollectOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [detailTab, setDetailTab] = useState<DetailTab>("home")
@@ -88,7 +70,6 @@ export function LeadDetailView({
     )
   }
 
-  const course = findCourseCatalog(lead.courseType, settings.courses)
   const courseLabel = formatLeadCourseType(lead, settings.courses)
 
   const addressLine = [
@@ -102,33 +83,6 @@ export function LeadDetailView({
   const wazeUrl = addressLine
     ? `https://waze.com/ul?q=${encodeURIComponent(addressLine)}&navigate=yes`
     : null
-
-  const summaryText = () => whatsappSummary(lead, course)
-
-  const copySummary = async () => {
-    try {
-      await navigator.clipboard.writeText(summaryText())
-      toast.success("סיכום השיחה הועתק")
-    } catch {
-      toast.error("לא ניתן להעתיק")
-    }
-  }
-
-  const sendFile = (label: string, url?: string) => {
-    if (!url) {
-      toast.error(`לא הוגדר ${label} לקורס זה`)
-      return
-    }
-    const text = `${label} - ${courseLabel}\n${url}`
-    window.open(whatsappLink(lead.phone, text), "_blank")
-  }
-
-  const sendStaticMaterial = (key: CourseMaterialKey, label: string) => {
-    const url = courseMaterialUrl(key)
-    const name = lead.contactName?.trim() || lead.name
-    const text = `היי ${name}, מצורף קישור להורדת ${label}:\n${url}`
-    window.open(whatsappLink(lead.phone, text), "_blank", "noopener,noreferrer")
-  }
 
   const syncCalendar = () => {
     if (!lead.date || !lead.time) {
@@ -249,7 +203,6 @@ export function LeadDetailView({
           <TabsList className="h-auto w-full justify-stretch gap-0.5 rounded-none border-b border-border bg-card p-1.5">
             <TopTab value="home" icon={LayoutDashboard} label="ראשי" />
             <TopTab value="participants" icon={Users} label="משתתפים" />
-            <TopTab value="materials" icon={BookOpen} label="חומרי הדרכה" />
             <TopTab value="finance" icon={Wallet} label="כספים ומכירות" />
           </TabsList>
         </div>
@@ -271,20 +224,6 @@ export function LeadDetailView({
             />
           </TabsContent>
 
-          <TabsContent value="materials" className="m-0 space-y-4 p-4 md:p-6">
-            <MaterialsTab
-              lead={lead}
-              courseLabel={courseLabel}
-              onBooklet={() => setBookletOpen(true)}
-              onStatic={sendStaticMaterial}
-              onPresentation={() => sendFile("מצגת", course?.presentationUrl)}
-              onCopySummary={copySummary}
-              onSendSummary={() =>
-                window.open(whatsappLink(lead.phone, summaryText()), "_blank")
-              }
-            />
-          </TabsContent>
-
           <TabsContent value="finance" className="m-0 space-y-4 p-4 md:p-6">
             <FinanceTab lead={lead} />
           </TabsContent>
@@ -300,11 +239,6 @@ export function LeadDetailView({
         lead={lead}
         open={paymentOpen}
         onOpenChange={setPaymentOpen}
-      />
-      <SendBookletDialog
-        lead={lead}
-        open={bookletOpen}
-        onOpenChange={setBookletOpen}
       />
     </div>
   )
@@ -540,74 +474,6 @@ function ParticipantsTab({
   )
 }
 
-function MaterialsTab({
-  lead,
-  courseLabel,
-  onBooklet,
-  onStatic,
-  onPresentation,
-  onCopySummary,
-  onSendSummary,
-}: {
-  lead: Lead
-  courseLabel: string
-  onBooklet: () => void
-  onStatic: (key: CourseMaterialKey, label: string) => void
-  onPresentation: () => void
-  onCopySummary: () => void
-  onSendSummary: () => void
-}) {
-  const shareWithInstructor = () => {
-    const registrationUrl =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/p/${lead.id}`
-        : `/p/${lead.id}`
-    const text = instructorAssignmentWhatsAppMessage(lead, {
-      courseLabel,
-      registrationUrl,
-    })
-    window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
-  }
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <ActionButton
-        icon={MessageCircle}
-        label="שליחה למדריך"
-        onClick={shareWithInstructor}
-      />
-      <ActionButton icon={BookOpen} label="שלח חוברת" onClick={onBooklet} />
-      <ActionButton
-        icon={Printer}
-        label="חוברת להדפסה"
-        onClick={() => onStatic("booklet44WordPrint", "חוברת להדפסה (Word)")}
-      />
-      <ActionButton
-        icon={FileText}
-        label="מבחן גרסה 1"
-        onClick={() => onStatic("exam44v1", "מבחן 44 גרסה 1")}
-      />
-      <ActionButton
-        icon={ClipboardList}
-        label="מבחן גרסה 2"
-        onClick={() => onStatic("exam44v2", "מבחן 44 גרסה 2")}
-      />
-      <ActionButton
-        icon={FileSpreadsheet}
-        label="טבלת משתתפים"
-        onClick={() => onStatic("participantsTable", "פורמט טבלת משתתפים")}
-      />
-      <ActionButton
-        icon={Presentation}
-        label="קישור מצגת"
-        onClick={onPresentation}
-      />
-      <ActionButton icon={Copy} label="העתק סיכום" onClick={onCopySummary} />
-      <ActionButton icon={Send} label="סיכום שיחה" onClick={onSendSummary} />
-    </div>
-  )
-}
-
 function FinanceTab({ lead }: { lead: Lead }) {
   const { instructors } = useApp()
   const profit = computeTrainingProfit(lead, instructors)
@@ -625,10 +491,12 @@ function FinanceTab({ lead }: { lead: Lead }) {
             label="מכירות ציוד"
             value={formatCurrency(profit.salesIncome)}
           />
-          <Info
-            label="עלות מדריך"
-            value={formatCurrency(profit.instructorFee)}
-          />
+          {!isOwnerInstructor(lead.instructor) && (
+            <Info
+              label="עלות מדריך"
+              value={formatCurrency(profit.instructorFee)}
+            />
+          )}
           <Info
             label="הוצאות אחרות"
             value={formatCurrency(profit.otherExpenses)}
@@ -671,33 +539,5 @@ function Info({
         {value}
       </p>
     </div>
-  )
-}
-
-function ActionButton({
-  icon: Icon,
-  label,
-  onClick,
-  highlight,
-}: {
-  icon: React.ElementType
-  label: string
-  onClick: () => void
-  highlight?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex flex-col items-center gap-2 rounded-2xl border p-4 text-xs font-medium active:scale-95 transition-transform",
-        highlight
-          ? "border-success bg-success/10 text-success"
-          : "border-border bg-card text-foreground shadow-sm",
-      )}
-    >
-      <Icon className="size-5 text-primary" />
-      {label}
-    </button>
   )
 }

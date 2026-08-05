@@ -7,6 +7,9 @@ export const UNASSIGNED_INSTRUCTOR = "לא שובץ מדריך עדיין"
 /** קידומת כותרת משימה אוטומטית לשיבוץ מדריך */
 export const ASSIGN_INSTRUCTOR_TASK_PREFIX = "יש לשבץ מדריך להדרכה"
 
+/** מדריך בעלים — ללא רישום עלות/תעריף */
+export const OWNER_INSTRUCTOR_NAME = "יצחק"
+
 export function isInstructorUnassigned(
   instructor?: string | null,
 ): boolean {
@@ -14,6 +17,11 @@ export function isInstructorUnassigned(
   if (!t) return true
   if (t === UNASSIGNED_INSTRUCTOR_VALUE) return true
   return t === UNASSIGNED_INSTRUCTOR
+}
+
+/** יצחק — אין תעריף מדריך */
+export function isOwnerInstructor(instructor?: string | null): boolean {
+  return instructor?.trim() === OWNER_INSTRUCTOR_NAME
 }
 
 export function assignInstructorTaskTitle(

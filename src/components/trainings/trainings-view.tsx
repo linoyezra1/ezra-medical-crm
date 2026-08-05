@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { formatDateWithWeekday, leadStatusCardClass } from "@/lib/helpers"
+import { isInstructorUnassigned } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { jerusalemLocalToUtcDate } from "@/lib/timezone"
 import type { Lead } from "@/lib/types"
@@ -165,7 +166,15 @@ export function TrainingsView() {
                         .filter(Boolean)
                         .join(" ") || "—"}
                     </td>
-                    <td className="px-3 py-2.5">{l.instructor || "—"}</td>
+                    <td className="px-3 py-2.5">
+                      {isInstructorUnassigned(l.instructor) ? (
+                        <span className="font-bold text-red-600">
+                          לא שובץ מדריך
+                        </span>
+                      ) : (
+                        l.instructor || "—"
+                      )}
+                    </td>
                     <td className="px-3 py-2.5">
                       {l.participants.length || l.participantsCount}
                     </td>
@@ -214,12 +223,14 @@ function TrainingCard({ lead: l }: { lead: Lead }) {
             <Users className="size-3" />
             {l.participants.length || l.participantsCount}
           </span>
-          {l.instructor && (
+          {isInstructorUnassigned(l.instructor) ? (
+            <span className="font-bold text-red-600">לא שובץ מדריך</span>
+          ) : l.instructor ? (
             <span className="flex items-center gap-1 font-medium text-foreground">
               <User className="size-3" />
               {l.instructor}
             </span>
-          )}
+          ) : null}
         </div>
       </div>
     </Link>
