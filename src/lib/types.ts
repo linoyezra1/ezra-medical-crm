@@ -127,7 +127,14 @@ export interface InventoryItem {
   sellingPrice: number;
   costPrice: number;
   supplierName: string;
+  /** כמות שהוכנסה למלאי */
+  totalPurchased: number;
+  /** יחידות שנמכרו (ישירות או כרכיב בתיק) */
+  totalSold: number;
+  /** מלאי נוכחי וירטואלי = totalPurchased − totalSold */
+  currentStock: number;
   isComposite: boolean;
+  /** רכיבי תיק (BOM) — מקביל ל־kitComponents */
   components: InventoryComponentRef[];
   createdAt: string;
   updatedAt: string;

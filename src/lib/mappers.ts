@@ -15,6 +15,7 @@ import type {
   ActivityLog as DbActivityLog,
 } from "@/generated/prisma/client";
 import { DEFAULT_COURSES } from "@/lib/demo-data";
+import { currentStockOf } from "@/lib/inventory-stock";
 import { parseSessionsJson } from "@/lib/payment";
 import { formatInJerusalem } from "@/lib/timezone";
 import {
@@ -340,6 +341,9 @@ type DbInventoryFull = DbInventoryItem & {
 };
 
 export function mapInventoryItem(db: DbInventoryFull): InventoryItem {
+  const isComposite = Boolean(db.isComposite);
+  const totalPurchased = Number(db.totalPurchased) || 0;
+  const totalSold = Number(db.totalSold) || 0;
   return {
     id: db.id,
     name: db.name,
@@ -347,7 +351,14 @@ export function mapInventoryItem(db: DbInventoryFull): InventoryItem {
     sellingPrice: db.sellingPrice,
     costPrice: db.costPrice,
     supplierName: db.supplierName || "",
-    isComposite: Boolean(db.isComposite),
+    totalPurchased,
+    totalSold,
+    currentStock: currentStockOf({
+      totalPurchased,
+      totalSold,
+      isComposite,
+    }),
+    isComposite,
     components: (db.components || []).map((c) => ({
       childId: c.childId,
       childName: c.child?.name || "רכיב",

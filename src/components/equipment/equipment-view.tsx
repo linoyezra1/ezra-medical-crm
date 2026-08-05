@@ -22,8 +22,10 @@ import {
   upsertInventoryItem,
 } from "@/lib/actions"
 import { formatCurrency } from "@/lib/helpers"
+import { currentStockOf } from "@/lib/inventory-stock"
 import { useApp } from "@/lib/store"
 import type { InventoryItem } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 function itemCost(item: InventoryItem): number {
   return Number(item.costPrice) || Number(item.sellingPrice) || 0
@@ -37,6 +39,7 @@ export function EquipmentView() {
   const [name, setName] = useState("")
   const [category, setCategory] = useState("")
   const [costPrice, setCostPrice] = useState("")
+  const [totalPurchased, setTotalPurchased] = useState("")
   const [supplierName, setSupplierName] = useState("")
   const [isComposite, setIsComposite] = useState(false)
   const [compRows, setCompRows] = useState<{ childId: string; quantity: string }[]>(
@@ -63,11 +66,21 @@ export function EquipmentView() {
     )
   }, [availableParts, pickerQuery])
 
+  const sortedInventory = useMemo(
+    () =>
+      [...inventory].sort((a, b) => {
+        if (a.isComposite !== b.isComposite) return a.isComposite ? 1 : -1
+        return a.name.localeCompare(b.name, "he")
+      }),
+    [inventory],
+  )
+
   const resetForm = () => {
     setEditing(null)
     setName("")
     setCategory("")
     setCostPrice("")
+    setTotalPurchased("")
     setSupplierName("")
     setIsComposite(false)
     setCompRows([])
@@ -84,6 +97,7 @@ export function EquipmentView() {
     setName(item.name)
     setCategory(item.category)
     setCostPrice(String(itemCost(item) || ""))
+    setTotalPurchased(String(item.totalPurchased || ""))
     setSupplierName(item.supplierName)
     setIsComposite(item.isComposite)
     setCompRows(
@@ -148,10 +162,10 @@ export function EquipmentView() {
       id: editing?.id,
       name,
       category: category || (isComposite ? "תיקים" : ""),
-      // מלאי בלבד — ללא מחיר מכירה; sellingPrice נשמר 0
-      sellingPrice: 0,
+      sellingPrice: editing?.sellingPrice ?? 0,
       costPrice: cost,
       supplierName,
+      totalPurchased: isComposite ? 0 : Number(totalPurchased) || 0,
       isComposite,
       components: isComposite
         ? compRows
@@ -206,60 +220,178 @@ export function EquipmentView() {
         }
       />
 
-      <div className="space-y-2 p-4">
-        {inventory.length === 0 && (
+      <div className="p-4 md:mx-auto md:max-w-6xl md:p-6">
+        {sortedInventory.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
             אין פריטים במלאי — הוסיפו רכיבים, ואז הרכיבו מהם תיק במידת הצורך
           </div>
+        ) : (
+          <>
+            {/* —— Desktop table —— */}
+            <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
+              <table className="w-full min-w-[720px] text-right text-sm">
+                <thead className="bg-secondary/50 text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2.5 font-semibold">שם הפריט</th>
+                    <th className="px-3 py-2.5 font-semibold">כמות שהוכנסה</th>
+                    <th className="px-3 py-2.5 font-semibold">כמות שנמכרה</th>
+                    <th className="px-3 py-2.5 font-semibold">כמה נשאר במלאי</th>
+                    <th className="px-3 py-2.5 font-semibold">מחיר עלות ליחידה</th>
+                    <th className="w-12 px-2 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedInventory.map((item) => {
+                    const stock = currentStockOf(item)
+                    return (
+                      <tr
+                        key={item.id}
+                        className="border-t border-border hover:bg-secondary/30"
+                      >
+                        <td className="px-3 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(item)}
+                            className="text-right font-semibold text-primary hover:underline"
+                          >
+                            {item.name}
+                          </button>
+                          {item.isComposite ? (
+                            <span className="ms-2 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-accent-foreground">
+                              תיק מורכב
+                            </span>
+                          ) : null}
+                          {item.category ? (
+                            <p className="text-[11px] text-muted-foreground">
+                              {item.category}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums">
+                          {item.isComposite ? "—" : item.totalPurchased}
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums">
+                          {item.isComposite ? "—" : item.totalSold}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {item.isComposite ? (
+                            <div className="flex flex-wrap gap-1">
+                              {item.components.length === 0 ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                item.components.map((c) => (
+                                  <span
+                                    key={c.childId}
+                                    className="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-medium"
+                                  >
+                                    {c.childName}×{c.quantity}
+                                  </span>
+                                ))
+                              )}
+                            </div>
+                          ) : (
+                            <span
+                              className={cn(
+                                "font-semibold tabular-nums",
+                                stock <= 0 && "text-red-600",
+                              )}
+                            >
+                              {stock}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums">
+                          {formatCurrency(itemCost(item))}
+                        </td>
+                        <td className="px-2 py-2.5">
+                          <button
+                            type="button"
+                            className="flex size-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
+                            aria-label="מחק"
+                            onClick={() => void requestDelete(item)}
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* —— Mobile cards —— */}
+            <div className="space-y-2 md:hidden">
+              {sortedInventory.map((item) => {
+                const stock = currentStockOf(item)
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-3 rounded-2xl border border-border bg-card p-3"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openEdit(item)}
+                      className="flex min-w-0 flex-1 items-start gap-3 text-right"
+                    >
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <Package className="size-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm font-semibold">
+                            {item.name}
+                          </p>
+                          {item.isComposite && (
+                            <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-foreground">
+                              תיק מורכב
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          עלות {formatCurrency(itemCost(item))}
+                        </p>
+                        {item.isComposite ? (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {item.components.map((c) => (
+                              <span
+                                key={c.childId}
+                                className="rounded-md bg-secondary px-1.5 py-0.5 text-[10px]"
+                              >
+                                {c.childName}×{c.quantity}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            הוכנס {item.totalPurchased} · נמכר {item.totalSold}{" "}
+                            ·{" "}
+                            <span
+                              className={cn(
+                                "font-bold",
+                                stock <= 0 ? "text-red-600" : "text-foreground",
+                              )}
+                            >
+                              נשאר {stock}
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex size-8 shrink-0 items-center justify-center rounded-lg text-destructive"
+                      aria-label="מחק"
+                      onClick={() => void requestDelete(item)}
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </>
         )}
-        {inventory.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => openEdit(item)}
-            className="flex w-full items-start gap-3 rounded-2xl border border-border bg-card p-3 text-right active:scale-[0.99] transition-transform"
-          >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Package className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold">{item.name}</p>
-                {item.isComposite && (
-                  <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-foreground">
-                    תיק מורכב
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {item.category || "ללא קטגוריה"}
-                {item.supplierName ? ` · ספק: ${item.supplierName}` : ""}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                עלות {formatCurrency(itemCost(item))}
-              </p>
-              {item.isComposite && item.components.length > 0 && (
-                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                  רכיבים:{" "}
-                  {item.components
-                    .map((c) => `${c.childName}×${c.quantity}`)
-                    .join(", ")}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-destructive"
-              aria-label="מחק"
-              onClick={(e) => {
-                e.stopPropagation()
-                void requestDelete(item)
-              }}
-            >
-              <Trash2 className="size-4" />
-            </button>
-          </button>
-        ))}
       </div>
 
       <Dialog
@@ -293,14 +425,36 @@ export function EquipmentView() {
             </Field>
 
             {!isComposite && (
-              <Field label="עלות">
-                <Input
-                  type="number"
-                  dir="ltr"
-                  value={costPrice}
-                  onChange={(e) => setCostPrice(e.target.value)}
-                />
-              </Field>
+              <>
+                <Field label="מחיר עלות ליחידה">
+                  <Input
+                    type="number"
+                    dir="ltr"
+                    value={costPrice}
+                    onChange={(e) => setCostPrice(e.target.value)}
+                  />
+                </Field>
+                <Field label="כמות שהוכנסה למלאי">
+                  <Input
+                    type="number"
+                    min={0}
+                    dir="ltr"
+                    value={totalPurchased}
+                    onChange={(e) => setTotalPurchased(e.target.value)}
+                    placeholder="0"
+                  />
+                </Field>
+                {editing && (
+                  <p className="text-[11px] text-muted-foreground">
+                    נמכר עד כה: {editing.totalSold} · נשאר במלאי:{" "}
+                    {currentStockOf({
+                      totalPurchased: Number(totalPurchased) || 0,
+                      totalSold: editing.totalSold,
+                      isComposite: false,
+                    })}
+                  </p>
+                )}
+              </>
             )}
 
             <Field label="שם ספק">
@@ -323,7 +477,7 @@ export function EquipmentView() {
               <span>
                 <span className="font-semibold">פריט מורכב / תיק</span>
                 <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                  הרכבה מרכיבים שכבר קיימים במלאי
+                  הרכבה מרכיבים שכבר קיימים במלאי — מכירה מנכה את הרכיבים
                 </span>
               </span>
             </label>

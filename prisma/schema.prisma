@@ -216,18 +216,22 @@ model Trainee {
 
 /** פריטי מלאי / ציוד למכירה */
 model InventoryItem {
-  id           String               @id @default(cuid())
-  name         String
-  category     String?
-  sellingPrice Float                @default(0)
-  costPrice    Float                @default(0)
-  supplierName String?
-  isComposite  Boolean              @default(false)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  components   InventoryComponent[] @relation("ParentItem")
-  usedIn       InventoryComponent[] @relation("ChildItem")
-  sales        TrainingSale[]
+  id             String               @id @default(cuid())
+  name           String
+  category       String?
+  sellingPrice   Float                @default(0)
+  costPrice      Float                @default(0)
+  supplierName   String?
+  /** כמות שהוכנסה למלאי (רכישה) */
+  totalPurchased Float                @default(0)
+  /** יחידות שנמכרו ישירות או כחלק מתיקים */
+  totalSold      Float                @default(0)
+  isComposite    Boolean              @default(false)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  components     InventoryComponent[] @relation("ParentItem")
+  usedIn         InventoryComponent[] @relation("ChildItem")
+  sales          TrainingSale[]
 
   @@index([category])
   @@index([name])

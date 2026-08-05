@@ -1416,29 +1416,36 @@ export async function upsertInventoryItem(data: {
   sellingPrice: number;
   costPrice: number;
   supplierName?: string;
+  totalPurchased?: number;
   isComposite?: boolean;
   components?: { childId: string; quantity: number }[];
 }): Promise<ActionResult<{ id: string }>> {
   if (!data.name.trim()) return { ok: false, error: "שם פריט הוא שדה חובה" };
 
+  const isComposite = Boolean(data.isComposite);
   const base = {
     name: data.name.trim(),
     category: data.category?.trim() || null,
     sellingPrice: Number(data.sellingPrice) || 0,
     costPrice: Number(data.costPrice) || 0,
     supplierName: data.supplierName?.trim() || null,
-    isComposite: Boolean(data.isComposite),
+    totalPurchased: isComposite
+      ? 0
+      : Math.max(0, Number(data.totalPurchased) || 0),
+    isComposite,
   };
 
   let id = data.id;
   if (id) {
     await prisma.inventoryItem.update({ where: { id }, data: base });
   } else {
-    const created = await prisma.inventoryItem.create({ data: base });
+    const created = await prisma.inventoryItem.create({
+      data: { ...base, totalSold: 0 },
+    });
     id = created.id;
   }
 
-  if (data.isComposite && data.components) {
+  if (isComposite && data.components) {
     await prisma.inventoryComponent.deleteMany({ where: { parentId: id } });
     for (const c of data.components) {
       if (!c.childId || c.childId === id) continue;
@@ -1451,6 +1458,8 @@ export async function upsertInventoryItem(data: {
       });
     }
     await recomputeCompositeCost(id);
+  } else if (!isComposite) {
+    await prisma.inventoryComponent.deleteMany({ where: { parentId: id } });
   }
 
   revalidatePath("/equipment");
@@ -1491,6 +1500,44 @@ export async function deleteInventoryItem(
   }
 }
 
+/** עדכון totalSold לרכיבים / פריט בודד (ללא חסימת מלאי שלילי במכירה) */
+async function applyInventorySaleDelta(
+  inventoryItemId: string,
+  soldQty: number,
+  direction: 1 | -1,
+) {
+  const item = await prisma.inventoryItem.findUnique({
+    where: { id: inventoryItemId },
+    include: { components: true },
+  });
+  if (!item) return;
+
+  const bumpSold = async (id: string, current: number, bump: number) => {
+    const next = Math.max(0, (Number(current) || 0) + bump);
+    await prisma.inventoryItem.update({
+      where: { id },
+      data: { totalSold: next },
+    });
+  };
+
+  if (item.isComposite) {
+    // תיק מורכב — לא מעדכנים totalSold של התיק עצמו
+    for (const c of item.components) {
+      const bump = (Number(c.quantity) || 0) * soldQty * direction;
+      if (!bump) continue;
+      const child = await prisma.inventoryItem.findUnique({
+        where: { id: c.childId },
+        select: { totalSold: true },
+      });
+      if (!child) continue;
+      await bumpSold(c.childId, child.totalSold, bump);
+    }
+    return;
+  }
+
+  await bumpSold(inventoryItemId, item.totalSold, soldQty * direction);
+}
+
 export async function addTrainingSale(
   leadId: string | null,
   inventoryItemId: string,
@@ -1512,7 +1559,7 @@ export async function addTrainingSale(
       ? Number(unitSellingPrice)
       : unitCost;
 
-  // זכירת מחיר מכירה אחרון על הפריט
+  // זכירת מחיר מכירה אחרון על הפריט (גם לתיקים — ללא ניכוי מלאי מהתיק)
   await prisma.inventoryItem.update({
     where: { id: inventoryItemId },
     data: { sellingPrice: unitSell },
@@ -1528,6 +1575,9 @@ export async function addTrainingSale(
     },
   });
 
+  // ניכוי מלאי: פריט בודד → +totalSold; תיק → +totalSold לרכיבים
+  await applyInventorySaleDelta(inventoryItemId, qty, 1);
+
   if (leadId) revalidatePath(`/leads/${leadId}`);
   revalidatePath("/dashboard");
   revalidatePath("/");
@@ -1539,9 +1589,20 @@ export async function deleteTrainingSale(
   id: string,
   leadId: string,
 ): Promise<ActionResult<{ id: string }>> {
+  const existing = await prisma.trainingSale.findUnique({ where: { id } });
+  if (!existing) return { ok: false, error: "המכירה לא נמצאה" };
+
+  await applyInventorySaleDelta(
+    existing.inventoryItemId,
+    existing.quantity,
+    -1,
+  );
   await prisma.trainingSale.delete({ where: { id } });
+
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/dashboard");
+  revalidatePath("/equipment");
+  revalidatePath("/");
   return { ok: true, data: { id } };
 }
 
