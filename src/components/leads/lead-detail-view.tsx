@@ -200,7 +200,10 @@ export function LeadDetailView({
           </header>
 
           {/* —— Tab bar (click/tap only — no swipe) —— */}
-          <TabsList className="h-auto w-full justify-stretch gap-0.5 rounded-none border-b border-border bg-card p-1.5">
+          <TabsList
+            variant="line"
+            className="h-auto min-h-[48px] w-full justify-stretch gap-0 rounded-none border-b border-slate-200 bg-card p-0"
+          >
             <TopTab value="home" icon={LayoutDashboard} label="ראשי" />
             <TopTab value="participants" icon={Users} label="משתתפים" />
             <TopTab value="finance" icon={Wallet} label="כספים ומכירות" />
@@ -256,7 +259,14 @@ function TopTab({
   return (
     <TabsTrigger
       value={value}
-      className="flex flex-1 flex-col gap-0.5 rounded-xl px-1 py-2 text-[10px] leading-tight data-active:bg-card data-active:shadow-sm sm:text-[11px]"
+      className={cn(
+        "flex min-h-[48px] flex-1 flex-col gap-0.5 rounded-none border-0 border-b-2 border-transparent",
+        "bg-transparent px-3 py-3.5 text-[10px] font-medium leading-tight text-slate-500",
+        "shadow-none transition-colors hover:bg-slate-50 hover:text-slate-700",
+        "data-active:bg-blue-50/70 data-active:font-semibold data-active:text-blue-900",
+        "data-active:border-b-2 data-active:border-blue-600 data-active:shadow-none",
+        "after:hidden sm:text-[11px]",
+      )}
     >
       <Icon className="size-4 shrink-0" />
       <span className="line-clamp-2 text-center">{label}</span>
@@ -335,10 +345,6 @@ function HomeTab({
             }
           />
           <Info
-            label="משתתפים משוער"
-            value={String(lead.participantsCount || "—")}
-          />
-          <Info
             label="מפגשים"
             value={String(
               lead.sessionsCount ||
@@ -384,11 +390,11 @@ function HomeTab({
           )}
         </div>
 
-        {lead.notes && (
-          <p className="rounded-2xl bg-amber-50/80 px-3 py-2.5 text-xs text-muted-foreground">
+        {lead.notes ? (
+          <p className="rounded-2xl bg-secondary/50 px-3 py-2.5 text-xs text-muted-foreground">
             {lead.notes}
           </p>
-        )}
+        ) : null}
       </Card>
 
       <LifecycleControls lead={lead} hideParticipantsManage />
