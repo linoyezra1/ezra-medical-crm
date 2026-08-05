@@ -11,11 +11,13 @@ import {
   Presentation,
   Printer,
   Send,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { SendBookletDialog } from "@/components/leads/send-booklet-dialog"
+import { BankAccountPickerDialog } from "@/components/quick-actions/bank-account-picker-dialog"
 import { TrainingPickerDialog } from "@/components/quick-actions/training-picker-dialog"
 import {
   courseMaterialUrl,
@@ -25,6 +27,11 @@ import {
   findCourseCatalog,
   formatLeadCourseType,
 } from "@/lib/course-type"
+import {
+  BANK_ACCOUNTS,
+  bankAccountWhatsAppMessage,
+  type BankAccountKey,
+} from "@/lib/bank-accounts"
 import {
   instructorAssignmentWhatsAppMessage,
   whatsappLink,
@@ -44,6 +51,7 @@ type QuickActionId =
   | "presentation"
   | "copy_summary"
   | "send_summary"
+  | "send_bank_details"
 
 type QuickActionDef = {
   id: QuickActionId
@@ -53,6 +61,12 @@ type QuickActionDef = {
 }
 
 const ACTIONS: QuickActionDef[] = [
+  {
+    id: "send_bank_details",
+    label: "📲 שליחת פרטי חשבון",
+    description: "חשבון לינוי / יצחק בוואטסאפ לנמען",
+    icon: Smartphone,
+  },
   {
     id: "share_instructor",
     label: "שליחה למדריך",
@@ -114,9 +128,27 @@ export function QuickActionsView() {
   const [pendingAction, setPendingAction] = useState<QuickActionDef | null>(
     null,
   )
+  const [bankAccountOpen, setBankAccountOpen] = useState(false)
+  const [selectedBankAccount, setSelectedBankAccount] =
+    useState<BankAccountKey | null>(null)
   const [bookletLead, setBookletLead] = useState<Lead | null>(null)
 
-  const runAction = async (action: QuickActionDef, lead: Lead) => {
+  const bankAction = ACTIONS.find((a) => a.id === "send_bank_details")!
+
+  const startAction = (action: QuickActionDef) => {
+    if (action.id === "send_bank_details") {
+      setSelectedBankAccount(null)
+      setBankAccountOpen(true)
+      return
+    }
+    setPendingAction(action)
+  }
+
+  const runAction = async (
+    action: QuickActionDef,
+    lead: Lead,
+    bankKey?: BankAccountKey | null,
+  ) => {
     const course = findCourseCatalog(lead.courseType, settings.courses)
     const courseLabel = formatLeadCourseType(lead, settings.courses)
     const contact = lead.contactName?.trim() || lead.name
@@ -128,6 +160,23 @@ export function QuickActionsView() {
     }
 
     switch (action.id) {
+      case "send_bank_details": {
+        if (!bankKey) {
+          toast.error("יש לבחור חשבון בנק")
+          return
+        }
+        if (!lead.phone?.trim()) {
+          toast.error("חסר טלפון להדרכה שנבחרה")
+          return
+        }
+        const text = bankAccountWhatsAppMessage(bankKey)
+        window.open(
+          whatsappLink(lead.phone, text),
+          "_blank",
+          "noopener,noreferrer",
+        )
+        break
+      }
       case "share_instructor": {
         const registrationUrl =
           typeof window !== "undefined"
@@ -185,6 +234,12 @@ export function QuickActionsView() {
     }
   }
 
+  const trainingPickerOpen =
+    Boolean(pendingAction) || Boolean(selectedBankAccount)
+  const trainingPickerLabel = selectedBankAccount
+    ? `${bankAction.label} · ${BANK_ACCOUNTS[selectedBankAccount].label}`
+    : pendingAction?.label
+
   return (
     <div>
       <PageHeader
@@ -205,7 +260,7 @@ export function QuickActionsView() {
               <button
                 key={action.id}
                 type="button"
-                onClick={() => setPendingAction(action)}
+                onClick={() => startAction(action)}
                 className={cn(
                   "flex flex-col items-center gap-2 rounded-2xl border border-border bg-card p-4 text-center shadow-sm",
                   "active:scale-95 transition-transform hover:border-primary/40 hover:bg-primary/5",
@@ -224,14 +279,31 @@ export function QuickActionsView() {
         </div>
       </div>
 
+      <BankAccountPickerDialog
+        open={bankAccountOpen}
+        onOpenChange={setBankAccountOpen}
+        onSelect={(account) => {
+          setSelectedBankAccount(account)
+        }}
+      />
+
       <TrainingPickerDialog
-        open={Boolean(pendingAction)}
+        open={trainingPickerOpen}
         onOpenChange={(open) => {
-          if (!open) setPendingAction(null)
+          if (!open) {
+            setPendingAction(null)
+            setSelectedBankAccount(null)
+          }
         }}
         leads={leads}
-        actionLabel={pendingAction?.label}
+        actionLabel={trainingPickerLabel}
         onSelect={(lead) => {
+          if (selectedBankAccount) {
+            const account = selectedBankAccount
+            setSelectedBankAccount(null)
+            void runAction(bankAction, lead, account)
+            return
+          }
           const action = pendingAction
           setPendingAction(null)
           if (action) void runAction(action, lead)
