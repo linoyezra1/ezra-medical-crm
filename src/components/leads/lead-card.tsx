@@ -2,6 +2,10 @@
 
 import { useRouter } from "next/navigation"
 import { Layers, MapPin, MessageCircle, Phone } from "lucide-react"
+import {
+  LeadItemActionsUi,
+  useLeadItemActions,
+} from "@/components/leads/lead-item-actions"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
 import {
@@ -24,6 +28,7 @@ import { cn } from "@/lib/utils"
 export function LeadCard({ lead }: { lead: Lead }) {
   const router = useRouter()
   const { settings } = useApp()
+  const actions = useLeadItemActions(lead)
   const course = findCourseCatalog(lead.courseType, settings.courses)
   const courseLabel = formatLeadCourseType(lead, settings.courses)
   const sessions = leadCalendarSessions(lead)
@@ -38,14 +43,18 @@ export function LeadCard({ lead }: { lead: Lead }) {
     <div
       role="link"
       tabIndex={0}
-      onClick={go}
+      {...actions.bind}
+      onClick={() => {
+        if (actions.consumeLongPress()) return
+        go()
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
           go()
         }
       }}
-      className="block cursor-pointer"
+      className="block cursor-pointer select-none"
     >
       <Card
         className={cn(
@@ -72,7 +81,10 @@ export function LeadCard({ lead }: { lead: Lead }) {
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <LeadStatusBadge status={lead.status} />
+            <div className="flex items-start gap-1">
+              <LeadItemActionsUi lead={lead} state={actions} />
+              <LeadStatusBadge status={lead.status} />
+            </div>
             {sessionsCount > 0 ? (
               <span
                 className="inline-flex items-center gap-1 rounded-lg bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"

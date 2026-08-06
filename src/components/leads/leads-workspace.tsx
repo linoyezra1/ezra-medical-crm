@@ -6,6 +6,10 @@ import { LayoutGrid, LayoutList, Plus, Search } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import { LeadCard } from "@/components/leads/lead-card"
 import { LeadDetailView } from "@/components/leads/lead-detail-view"
+import {
+  LeadItemActionsUi,
+  useLeadItemActions,
+} from "@/components/leads/lead-item-actions"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -233,8 +237,6 @@ function EmptyList() {
 }
 
 function DesktopLeadsTable({ leads }: { leads: Lead[] }) {
-  const { settings } = useApp()
-
   if (leads.length === 0) {
     return <EmptyList />
   }
@@ -244,65 +246,75 @@ function DesktopLeadsTable({ leads }: { leads: Lead[] }) {
       <table className="w-full table-fixed text-right text-xs">
         <thead className="bg-secondary/50 text-[11px] text-muted-foreground">
           <tr>
-            <th className="w-[16%] px-2 py-2 font-semibold">שם</th>
-            <th className="w-[14%] px-2 py-2 font-semibold">סטטוס</th>
-            <th className="w-[18%] px-2 py-2 font-semibold">קורס</th>
-            <th className="w-[10%] px-2 py-2 font-semibold">עיר</th>
-            <th className="w-[14%] px-2 py-2 font-semibold">תאריך</th>
+            <th className="w-[5%] px-1 py-2" />
+            <th className="w-[15%] px-2 py-2 font-semibold">שם</th>
+            <th className="w-[13%] px-2 py-2 font-semibold">סטטוס</th>
+            <th className="w-[16%] px-2 py-2 font-semibold">קורס</th>
+            <th className="w-[9%] px-2 py-2 font-semibold">עיר</th>
+            <th className="w-[13%] px-2 py-2 font-semibold">תאריך</th>
             <th className="w-[10%] px-2 py-2 font-semibold">מדריך</th>
             <th className="w-[10%] px-2 py-2 font-semibold">טלפון</th>
-            <th className="w-[8%] px-2 py-2 font-semibold">מחיר</th>
+            <th className="w-[9%] px-2 py-2 font-semibold">מחיר</th>
           </tr>
         </thead>
         <tbody>
           {leads.map((lead) => (
-            <tr
-              key={lead.id}
-              className="border-t border-border transition-colors hover:bg-secondary/30"
-            >
-              <td className="max-w-0 truncate px-2 py-2">
-                <Link
-                  href={`/leads/${lead.id}`}
-                  className="font-semibold text-primary hover:underline"
-                >
-                  {lead.name}
-                </Link>
-              </td>
-              <td className="px-2 py-2">
-                <div className="max-w-full overflow-hidden">
-                  <LeadStatusBadge status={lead.status} />
-                </div>
-              </td>
-              <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
-                {formatLeadCourseType(lead, settings.courses)}
-              </td>
-              <td className="max-w-0 truncate px-2 py-2">
-                {lead.address.city || "—"}
-              </td>
-              <td className="max-w-0 truncate px-2 py-2 whitespace-nowrap">
-                {lead.date ? formatDateWithWeekday(lead.date) : "—"}
-                {lead.time ? ` ${lead.time}` : ""}
-              </td>
-              <td className="max-w-0 truncate px-2 py-2">
-                {isInstructorUnassigned(lead.instructor) ? (
-                  <span className="font-bold text-red-600">לא שובץ מדריך</span>
-                ) : (
-                  lead.instructor || "—"
-                )}
-              </td>
-              <td
-                className="max-w-0 truncate px-2 py-2 dir-ltr text-left"
-                dir="ltr"
-              >
-                {lead.phone}
-              </td>
-              <td className="max-w-0 truncate px-2 py-2 font-medium">
-                {formatCurrency(lead.totalPrice)}
-              </td>
-            </tr>
+            <DesktopLeadRow key={lead.id} lead={lead} />
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+function DesktopLeadRow({ lead }: { lead: Lead }) {
+  const { settings } = useApp()
+  const actions = useLeadItemActions(lead)
+
+  return (
+    <tr className="border-t border-border transition-colors hover:bg-secondary/30">
+      <td className="px-1 py-2">
+        <LeadItemActionsUi lead={lead} state={actions} kebabDesktopOnly={false} />
+      </td>
+      <td className="max-w-0 truncate px-2 py-2">
+        <Link
+          href={`/leads/${lead.id}`}
+          className="font-semibold text-primary hover:underline"
+        >
+          {lead.name}
+        </Link>
+      </td>
+      <td className="px-2 py-2">
+        <div className="max-w-full overflow-hidden">
+          <LeadStatusBadge status={lead.status} />
+        </div>
+      </td>
+      <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
+        {formatLeadCourseType(lead, settings.courses)}
+      </td>
+      <td className="max-w-0 truncate px-2 py-2">
+        {lead.address.city || "—"}
+      </td>
+      <td className="max-w-0 truncate px-2 py-2 whitespace-nowrap">
+        {lead.date ? formatDateWithWeekday(lead.date) : "—"}
+        {lead.time ? ` ${lead.time}` : ""}
+      </td>
+      <td className="max-w-0 truncate px-2 py-2">
+        {isInstructorUnassigned(lead.instructor) ? (
+          <span className="font-bold text-red-600">לא שובץ מדריך</span>
+        ) : (
+          lead.instructor || "—"
+        )}
+      </td>
+      <td
+        className="max-w-0 truncate px-2 py-2 dir-ltr text-left"
+        dir="ltr"
+      >
+        {lead.phone}
+      </td>
+      <td className="max-w-0 truncate px-2 py-2 font-medium">
+        {formatCurrency(lead.totalPrice)}
+      </td>
+    </tr>
   )
 }

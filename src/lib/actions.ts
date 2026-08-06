@@ -28,6 +28,11 @@ import {
   tryAutoCompleteTrainingIfReady,
 } from "@/lib/google-sheets/certificates";
 import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client";
+import {
+  dbStatusToUi,
+  previousLeadStatus,
+  uiStatusToDb,
+} from "@/lib/types";
 
 export type ActionResult<T = unknown> =
   | { ok: true; data: T }
@@ -691,6 +696,133 @@ export async function updateLead(
   revalidatePath(`/p/${leadId}`);
   revalidatePath("/dashboard");
   return { ok: true, data: { id: leadId } };
+}
+
+/** שכפול הדרכה/ליד — עותק עם מזהה חדש (ללא משתתפים/מכירות/הוצאות) */
+export async function duplicateLead(
+  leadId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const src = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!src) return { ok: false, error: "ליד לא נמצא" };
+
+  const actor = await getActiveCrmUser();
+  const baseName = src.fullName.trim() || "ללא שם";
+  const fullName = / \(עותק\)$/.test(baseName)
+    ? baseName
+    : `${baseName} (עותק)`;
+
+  const {
+    id: _id,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    googleCalendarEventId: _gcal,
+    ...rest
+  } = src;
+
+  const clone = await prisma.lead.create({
+    data: {
+      ...rest,
+      fullName,
+      googleCalendarEventId: null,
+      conflictBypassed: false,
+      createdBy: actor,
+      lastUpdatedBy: actor,
+    },
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      leadId: clone.id,
+      performedBy: actor,
+      previousStatus: null,
+      newStatus: clone.courseStatus,
+    },
+  });
+
+  const after = await prisma.lead.findUnique({
+    where: { id: clone.id },
+    select: {
+      id: true,
+      fullName: true,
+      instructor: true,
+      courseType: true,
+      courseTypeOther: true,
+      scheduledStart: true,
+      paymentStatus: true,
+    },
+  });
+  if (after) {
+    await syncUnassignedInstructorTask(after);
+    await syncUnpaidPaymentTask(after);
+  }
+
+  revalidatePath("/");
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  return { ok: true, data: { id: clone.id } };
+}
+
+/** החזרת סטטוס שלב אחד אחורה בציר הזמן הקבוע */
+export async function rollbackLeadStatus(
+  leadId: string,
+): Promise<ActionResult<{ id: string; status: string }>> {
+  const existing = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!existing) return { ok: false, error: "ליד לא נמצא" };
+
+  const ui = dbStatusToUi(existing.courseStatus);
+  const prevUi = previousLeadStatus(ui);
+  if (!prevUi) {
+    return {
+      ok: false,
+      error: "לא ניתן להחזיר סטטוס אחורה ממצב זה",
+      code: "rollback_unavailable",
+    };
+  }
+
+  const nextDb = uiStatusToDb(prevUi);
+  const actor = await getActiveCrmUser();
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      courseStatus: nextDb,
+      lastUpdatedBy: actor,
+    },
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      leadId,
+      performedBy: actor,
+      previousStatus: existing.courseStatus,
+      newStatus: nextDb,
+    },
+  });
+
+  const after = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      fullName: true,
+      instructor: true,
+      courseType: true,
+      courseTypeOther: true,
+      scheduledStart: true,
+      paymentStatus: true,
+    },
+  });
+  if (after) {
+    await syncUnassignedInstructorTask(after);
+    await syncUnpaidPaymentTask(after);
+  }
+
+  revalidatePath("/");
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  return { ok: true, data: { id: leadId, status: nextDb } };
 }
 
 /** רישום תשלום מהיר להדרכה */

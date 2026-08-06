@@ -23,6 +23,17 @@ export const LEAD_STATUS_ORDER: LeadStatus[] = [
   "completed",
 ];
 
+/** סטטוס אחד אחורה בציר הזמן; null אם כבר בראשון / מחוץ לציר */
+export function previousLeadStatus(status: LeadStatus): LeadStatus | null {
+  const idx = LEAD_STATUS_ORDER.indexOf(status);
+  if (idx <= 0) return null;
+  return LEAD_STATUS_ORDER[idx - 1] ?? null;
+}
+
+export function canRollbackLeadStatus(status: LeadStatus): boolean {
+  return previousLeadStatus(status) !== null;
+}
+
 /** DB courseStatus -> UI LeadStatus */
 export function dbStatusToUi(status: string): LeadStatus {
   switch (status) {
