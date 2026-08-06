@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { formatCourseTypeLabel } from "@/lib/course-type"
 import { PAID_PAYMENT_STATUS } from "@/lib/payment"
 import {
   getSheetTabName,
@@ -6,33 +7,50 @@ import {
   getSpreadsheetId,
   isGoogleSheetsConfigured,
 } from "@/lib/google-sheets/client"
+import { formatInJerusalem } from "@/lib/timezone"
 
-/** כותרות עמודות בגיליון — סדר קבוע */
+/**
+ * כותרות עמודות בגיליון «תעודות» — 13 עמודות בסדר קבוע (A–M)
+ * G–H ריקים למילוי ידני בגיליון
+ */
 export const CERTIFICATE_SHEET_HEADERS = [
-  "שם מלא",
-  "תעודת זהות",
-  "טלפון",
-  "אימייל",
-  "שם מארגן הקורס",
-  "תאריך הדרכה",
-  "חותמת זמן",
-  "CRM_PARTICIPANT_ID",
-  "נשלחה תעודה במייל",
-  "הודפס כרטיס תעודה",
+  "שם מלא", // A
+  "תעודת זהות", // B
+  "תאריך הדרכה", // C
+  "אימייל", // D
+  "טלפון", // E
+  "היקף שעות", // F
+  "", // G — שדה ריק למילוי
+  "", // H — שדה ריק למילוי
+  "הודפס כרטיס", // I
+  "נשלח במייל", // J
+  "שם מזמין", // K
+  "תאריך ייצוא", // L
+  "מזהה משתתף", // M — CRM_PARTICIPANT_ID
 ] as const
 
+/** אינדקסים 0-based לפי מבנה הגיליון */
 const COL = {
-  fullName: 0,
-  idNumber: 1,
-  phone: 2,
-  email: 3,
-  organizer: 4,
-  courseDate: 5,
-  timestamp: 6,
-  crmId: 7,
-  emailSent: 8,
-  cardPrinted: 9,
+  fullName: 0, // A
+  idNumber: 1, // B
+  courseDate: 2, // C
+  email: 3, // D
+  phone: 4, // E
+  hours: 5, // F
+  blankG: 6, // G
+  blankH: 7, // H
+  cardPrinted: 8, // I — הודפס כרטיס
+  emailSent: 9, // J — נשלח במייל
+  organizer: 10, // K
+  exportTimestamp: 11, // L
+  crmId: 12, // M — CRM_PARTICIPANT_ID
 } as const
+
+const SHEET_RANGE_HEADER = "A1:M1"
+const SHEET_RANGE_DATA = "A2:M"
+const SHEET_RANGE_APPEND = "A:M"
+/** עמודת מזהה משתתף למניעת כפילויות */
+const SHEET_RANGE_CRM_IDS = "M:M"
 
 function truthyCell(value: unknown): boolean {
   if (value === true || value === 1) return true
@@ -54,12 +72,13 @@ async function ensureHeaderRow() {
   const sheets = await getSheetsClient()
   const spreadsheetId = getSpreadsheetId()
   const tab = getSheetTabName()
-  const range = `${tab}!A1:J1`
+  const range = `${tab}!${SHEET_RANGE_HEADER}`
   const existing = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range,
   })
   const row = existing.data.values?.[0]
+  // אם יש כבר שורת כותרת עם לפחות 13 תאים — לא דורסים (הגיליון עשוי להיות מוגדר ידנית)
   if (row && row.length >= CERTIFICATE_SHEET_HEADERS.length) return
 
   await sheets.spreadsheets.values.update({
@@ -70,6 +89,17 @@ async function ensureHeaderRow() {
   })
 }
 
+function trainingDateLabel(
+  courseDate: string | null | undefined,
+  scheduledStart: Date | null | undefined,
+): string {
+  if (courseDate?.trim()) return courseDate.trim()
+  if (scheduledStart) {
+    return formatInJerusalem(scheduledStart).date || ""
+  }
+  return ""
+}
+
 function participantRow(p: {
   id: string
   fullName: string
@@ -78,7 +108,6 @@ function participantRow(p: {
   email: string | null
   organizerName: string | null
   courseDate: string | null
-  createdAt: Date
   trainee?: {
     certificateEmailSent: boolean
     certificateCardPrinted: boolean
@@ -86,28 +115,35 @@ function participantRow(p: {
   lead?: {
     fullName: string
     scheduledStart: Date | null
+    courseType: string | null
+    courseTypeOther: string | null
   } | null
 }): (string | boolean)[] {
-  const courseDate =
-    p.courseDate ||
-    (p.lead?.scheduledStart
-      ? p.lead.scheduledStart.toISOString().slice(0, 10)
-      : "")
+  const courseDate = trainingDateLabel(p.courseDate, p.lead?.scheduledStart)
+  const hoursScope = formatCourseTypeLabel(p.lead?.courseType, {
+    other: p.lead?.courseTypeOther,
+  })
+  const exportTimestamp = new Date().toISOString()
+
+  // I/J מתחילים ריקים — ממולאים בגיליון; סנכרון קורא משם חזרה ל-CRM
   return [
-    p.fullName || "",
-    p.idNumber || "",
-    p.phone || "",
-    p.email || "",
-    p.organizerName || p.lead?.fullName || "",
-    courseDate,
-    p.createdAt.toISOString(),
-    p.id,
-    Boolean(p.trainee?.certificateEmailSent),
-    Boolean(p.trainee?.certificateCardPrinted),
+    p.fullName || "", // A
+    p.idNumber || "", // B
+    courseDate, // C
+    p.email || "", // D
+    p.phone || "", // E
+    hoursScope || "", // F
+    "", // G
+    "", // H
+    "", // I — הודפס כרטיס (מילוי בגיליון)
+    "", // J — נשלח במייל (מילוי בגיליון)
+    p.organizerName || p.lead?.fullName || "", // K
+    exportTimestamp, // L
+    p.id, // M — CRM_PARTICIPANT_ID
   ]
 }
 
-/** ייצוא משתתפי הדרכה לגיליון (append בלבד, ללא כפילויות לפי CRM_PARTICIPANT_ID) */
+/** ייצוא משתתפי הדרכה לגיליון (append בלבד, ללא כפילויות לפי CRM_PARTICIPANT_ID בעמודה M) */
 export async function exportLeadParticipantsToSheets(
   leadId: string,
 ): Promise<{ ok: true; exported: number } | { ok: false; error: string }> {
@@ -133,23 +169,35 @@ export async function exportLeadParticipantsToSheets(
             certificateCardPrinted: true,
           },
         },
-        lead: { select: { fullName: true, scheduledStart: true } },
+        lead: {
+          select: {
+            fullName: true,
+            scheduledStart: true,
+            courseType: true,
+            courseTypeOther: true,
+          },
+        },
       },
       orderBy: { createdAt: "asc" },
     })
 
     if (!participants.length) return { ok: true, exported: 0 }
 
-    // מזהים שכבר בגיליון
+    // מזהים שכבר בגיליון — עמודה M
     const existing = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${tab}!H:H`,
+      range: `${tab}!${SHEET_RANGE_CRM_IDS}`,
     })
     const existingIds = new Set(
       (existing.data.values || [])
         .flat()
         .map((v) => String(v || "").trim())
-        .filter((v) => v && v !== "CRM_PARTICIPANT_ID"),
+        .filter(
+          (v) =>
+            v &&
+            v !== "מזהה משתתף" &&
+            v !== "CRM_PARTICIPANT_ID",
+        ),
     )
 
     const toExport = participants.filter(
@@ -160,7 +208,7 @@ export async function exportLeadParticipantsToSheets(
     const values = toExport.map((p) => participantRow(p))
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${tab}!A:J`,
+      range: `${tab}!${SHEET_RANGE_APPEND}`,
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values },
@@ -203,19 +251,21 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${tab}!A2:J`,
+      range: `${tab}!${SHEET_RANGE_DATA}`,
     })
     const rows = res.data.values || []
     let updated = 0
     const touchedLeadIds = new Set<string>()
 
     for (const row of rows) {
+      // M (index 12) — מזהה משתתף
       const participantId = String(row[COL.crmId] || "").trim()
       if (!participantId) continue
 
-      const emailSent = truthyCell(row[COL.emailSent])
+      // I (index 8) — הודפס כרטיס · J (index 9) — נשלח במייל
       const cardPrinted = truthyCell(row[COL.cardPrinted])
-      // קידום חד־כיווני: סימון בגיליון → true ב-CRM (לא מבטלים סימון קיים)
+      const emailSent = truthyCell(row[COL.emailSent])
+      // קידום חד־כיווני: סימון בגיליון → true ב-CRM
       if (!emailSent && !cardPrinted) continue
 
       const participant = await prisma.participant.findUnique({
@@ -234,7 +284,6 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
 
       let traineeId = participant.traineeId
       if (!traineeId) {
-        // יצירת/קישור מודרך אם חסר — כדי לשמור דגלי תעודות
         const idNumber =
           participant.idNumber?.trim() || `sheet-${participant.id}`
         const trainee = await prisma.trainee.upsert({
