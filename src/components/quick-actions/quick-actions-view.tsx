@@ -28,7 +28,6 @@ import {
   formatLeadCourseType,
 } from "@/lib/course-type"
 import {
-  BANK_ACCOUNTS,
   bankAccountWhatsAppMessage,
   type BankAccountKey,
 } from "@/lib/bank-accounts"
@@ -64,7 +63,7 @@ const ACTIONS: QuickActionDef[] = [
   {
     id: "send_bank_details",
     label: "📲 שליחת פרטי חשבון",
-    description: "חשבון לינוי / יצחק בוואטסאפ לנמען",
+    description: "לינוי / יצחק — פתיחת WhatsApp לבחירת איש קשר",
     icon: Smartphone,
   },
   {
@@ -129,26 +128,23 @@ export function QuickActionsView() {
     null,
   )
   const [bankAccountOpen, setBankAccountOpen] = useState(false)
-  const [selectedBankAccount, setSelectedBankAccount] =
-    useState<BankAccountKey | null>(null)
   const [bookletLead, setBookletLead] = useState<Lead | null>(null)
-
-  const bankAction = ACTIONS.find((a) => a.id === "send_bank_details")!
 
   const startAction = (action: QuickActionDef) => {
     if (action.id === "send_bank_details") {
-      setSelectedBankAccount(null)
       setBankAccountOpen(true)
       return
     }
     setPendingAction(action)
   }
 
-  const runAction = async (
-    action: QuickActionDef,
-    lead: Lead,
-    bankKey?: BankAccountKey | null,
-  ) => {
+  const openBankWhatsApp = (bankKey: BankAccountKey) => {
+    const text = bankAccountWhatsAppMessage(bankKey)
+    // ללא מספר יעד — בחירת איש קשר ידנית ב‑WhatsApp
+    window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
+  }
+
+  const runAction = async (action: QuickActionDef, lead: Lead) => {
     const course = findCourseCatalog(lead.courseType, settings.courses)
     const courseLabel = formatLeadCourseType(lead, settings.courses)
     const contact = lead.contactName?.trim() || lead.name
@@ -160,23 +156,9 @@ export function QuickActionsView() {
     }
 
     switch (action.id) {
-      case "send_bank_details": {
-        if (!bankKey) {
-          toast.error("יש לבחור חשבון בנק")
-          return
-        }
-        if (!lead.phone?.trim()) {
-          toast.error("חסר טלפון להדרכה שנבחרה")
-          return
-        }
-        const text = bankAccountWhatsAppMessage(bankKey)
-        window.open(
-          whatsappLink(lead.phone, text),
-          "_blank",
-          "noopener,noreferrer",
-        )
+      case "send_bank_details":
+        // מטופל בנפרד — ללא בחירת הדרכה
         break
-      }
       case "share_instructor": {
         const registrationUrl =
           typeof window !== "undefined"
@@ -234,23 +216,17 @@ export function QuickActionsView() {
     }
   }
 
-  const trainingPickerOpen =
-    Boolean(pendingAction) || Boolean(selectedBankAccount)
-  const trainingPickerLabel = selectedBankAccount
-    ? `${bankAction.label} · ${BANK_ACCOUNTS[selectedBankAccount].label}`
-    : pendingAction?.label
-
   return (
     <div>
       <PageHeader
         title="פעולות מהירות"
-        subtitle="בחרו פעולה ואז הדרכה לביצוע"
+        subtitle="פעולות לפי הדרכה או פתיחה ישירה ל-WhatsApp"
       />
 
       <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
         <p className="text-sm text-muted-foreground">
-          כל פעולה תפתח בחירת הדרכה, ואז תשתמש בפרטי אותה הדרכה (תאריך, כתובת,
-          מדריך, מודרכים ומגע).
+          רוב הפעולות יפתחו בחירת הדרכה. שליחת פרטי חשבון פותחת ישירות את
+          WhatsApp לבחירת איש קשר.
         </p>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -283,27 +259,18 @@ export function QuickActionsView() {
         open={bankAccountOpen}
         onOpenChange={setBankAccountOpen}
         onSelect={(account) => {
-          setSelectedBankAccount(account)
+          openBankWhatsApp(account)
         }}
       />
 
       <TrainingPickerDialog
-        open={trainingPickerOpen}
+        open={Boolean(pendingAction)}
         onOpenChange={(open) => {
-          if (!open) {
-            setPendingAction(null)
-            setSelectedBankAccount(null)
-          }
+          if (!open) setPendingAction(null)
         }}
         leads={leads}
-        actionLabel={trainingPickerLabel}
+        actionLabel={pendingAction?.label}
         onSelect={(lead) => {
-          if (selectedBankAccount) {
-            const account = selectedBankAccount
-            setSelectedBankAccount(null)
-            void runAction(bankAction, lead, account)
-            return
-          }
           const action = pendingAction
           setPendingAction(null)
           if (action) void runAction(action, lead)
