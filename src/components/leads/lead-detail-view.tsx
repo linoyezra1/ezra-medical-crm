@@ -7,6 +7,7 @@ import {
   ArrowRight,
   CalendarPlus,
   CreditCard,
+  FileSpreadsheet,
   LayoutDashboard,
   MapPin,
   Pencil,
@@ -28,6 +29,7 @@ import { Card } from "@/components/ui/card"
 import {
   formatLeadCourseType,
 } from "@/lib/course-type"
+import { exportLeadCertificatesToSheetsAction } from "@/lib/actions"
 import {
   formatCurrency,
   formatDateWithWeekday,
@@ -459,6 +461,23 @@ function ParticipantsTab({
   lead: Lead
   onCollect: () => void
 }) {
+  const [exporting, setExporting] = useState(false)
+
+  const exportToSheets = async () => {
+    setExporting(true)
+    const res = await exportLeadCertificatesToSheetsAction(lead.id)
+    setExporting(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(
+      res.data.exported > 0
+        ? `יוצאו ${res.data.exported} משתתפים ל-Google Sheets`
+        : "אין משתתפים חדשים לייצוא",
+    )
+  }
+
   return (
     <>
       <Card className="gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
@@ -473,6 +492,20 @@ function ParticipantsTab({
           <UserPlus className="size-5" />
           פתח אפשרויות רישום
         </Button>
+        {(lead.status === "pending_certificates" ||
+          lead.status === "done" ||
+          lead.status === "completed") && (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 w-full gap-2 rounded-2xl"
+            disabled={exporting}
+            onClick={() => void exportToSheets()}
+          >
+            <FileSpreadsheet className="size-4" />
+            {exporting ? "מייצא…" : "ייצוא תעודות ל-Google Sheets"}
+          </Button>
+        )}
       </Card>
 
       <ParticipantsSection lead={lead} />

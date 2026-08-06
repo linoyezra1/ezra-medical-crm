@@ -33,6 +33,11 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Google service-account credentials (never commit)
+ezra-crm-sync-*.json
+*service-account*.json
+credentials/*.json
+
 # databases
 *.db
 *.db-journal

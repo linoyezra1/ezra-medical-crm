@@ -9,7 +9,9 @@ import {
   Link2,
   MessageCircle,
   Pencil,
+  Phone,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   UserPlus,
@@ -25,7 +27,11 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { deleteTrainee, updateTrainee } from "@/lib/actions"
+import {
+  deleteTrainee,
+  syncCertificatesFromSheetsAction,
+  updateTrainee,
+} from "@/lib/actions"
 import { formatPhone, whatsappLink } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Trainee } from "@/lib/types"
@@ -51,6 +57,7 @@ export function TraineesPanel() {
   const [editTrainee, setEditTrainee] = useState<Trainee | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Trainee | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [syncingSheets, setSyncingSheets] = useState(false)
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -133,11 +140,26 @@ export function TraineesPanel() {
   const patch = async (t: Trainee, data: Partial<Trainee>) => {
     updateTraineeLocal(t.id, data)
     const res = await updateTrainee(t.id, {
-      certificateEmailSent: data.certificateEmailSent,
-      certificateCardPrinted: data.certificateCardPrinted,
       notes: data.notes,
     })
     if (!res.ok) toast.error(res.error)
+  }
+
+  const syncFromSheets = async () => {
+    setSyncingSheets(true)
+    const res = await syncCertificatesFromSheetsAction()
+    setSyncingSheets(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(
+      `סנכרון הושלם: עודכנו ${res.data.updated} מודרכים` +
+        (res.data.autoCompleted
+          ? ` · ${res.data.autoCompleted} הדרכות הושלמו אוטומטית`
+          : ""),
+    )
+    refresh()
   }
 
   const confirmDelete = async () => {
@@ -166,6 +188,20 @@ export function TraineesPanel() {
           {selectedIds.size} נבחרו
         </span>
       ) : null}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-10 gap-2 rounded-xl sm:h-9"
+        disabled={syncingSheets}
+        onClick={() => void syncFromSheets()}
+        title="סנכרון סימוני תעודות מ-Google Sheets"
+      >
+        <RefreshCw
+          className={cn("size-4", syncingSheets && "animate-spin")}
+        />
+        סנכרון מ-Sheets
+      </Button>
       <Button
         type="button"
         variant="outline"
@@ -244,16 +280,26 @@ export function TraineesPanel() {
         </button>
       )}
       {t.phone && (
-        <a
-          href={whatsappLink(t.phone)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex size-8 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
-          aria-label="וואטסאפ"
-          title="וואטסאפ"
-        >
-          <MessageCircle className="size-3.5" />
-        </a>
+        <>
+          <a
+            href={`tel:${t.phone}`}
+            className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+            aria-label="חיוג"
+            title="חיוג"
+          >
+            <Phone className="size-3.5" />
+          </a>
+          <a
+            href={whatsappLink(t.phone)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex size-8 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
+            aria-label="וואטסאפ"
+            title="וואטסאפ"
+          >
+            <MessageCircle className="size-3.5" />
+          </a>
+        </>
       )}
       {t.trainings[0]?.leadId && (
         <Link
@@ -393,12 +439,9 @@ export function TraineesPanel() {
                           <div className="flex justify-center">
                             <Checkbox
                               checked={t.certificateEmailSent}
-                              onCheckedChange={(v) =>
-                                void patch(t, {
-                                  certificateEmailSent: Boolean(v),
-                                })
-                              }
-                              aria-label="נשלחה תעודה במייל"
+                              disabled
+                              aria-label="נשלחה תעודה במייל (מ-Sheets)"
+                              title="מתעדכן מ-Google Sheets בלבד"
                             />
                           </div>
                         </td>
@@ -406,12 +449,9 @@ export function TraineesPanel() {
                           <div className="flex justify-center">
                             <Checkbox
                               checked={t.certificateCardPrinted}
-                              onCheckedChange={(v) =>
-                                void patch(t, {
-                                  certificateCardPrinted: Boolean(v),
-                                })
-                              }
-                              aria-label="הודפס כרטיס תעודה"
+                              disabled
+                              aria-label="הודפס כרטיס תעודה (מ-Sheets)"
+                              title="מתעדכן מ-Google Sheets בלבד"
                             />
                           </div>
                         </td>
@@ -495,27 +535,19 @@ export function TraineesPanel() {
 
                   {open && (
                     <div className="mt-3 space-y-2 border-t border-border pt-3">
-                      <label className="flex items-center gap-2 text-xs">
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Checkbox
                           checked={t.certificateEmailSent}
-                          onCheckedChange={(v) =>
-                            void patch(t, {
-                              certificateEmailSent: Boolean(v),
-                            })
-                          }
+                          disabled
                         />
-                        נשלחה תעודה במייל
+                        נשלחה תעודה במייל (Sheets)
                       </label>
-                      <label className="flex items-center gap-2 text-xs">
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Checkbox
                           checked={t.certificateCardPrinted}
-                          onCheckedChange={(v) =>
-                            void patch(t, {
-                              certificateCardPrinted: Boolean(v),
-                            })
-                          }
+                          disabled
                         />
-                        הודפס כרטיס תעודה
+                        הודפס כרטיס תעודה (Sheets)
                       </label>
                       <Textarea
                         value={t.notes || ""}

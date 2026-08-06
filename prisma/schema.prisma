@@ -189,6 +189,8 @@ model Participant {
   attended        Boolean  @default(false)
   /** נוצר משתמש LMS למודרך */
   hasLmsAccess    Boolean  @default(false)
+  /** יוצא ל-Google Sheets (מניעת כפילויות) */
+  sheetsExportedAt DateTime?
   createdAt       DateTime @default(now())
 
   @@index([leadId])

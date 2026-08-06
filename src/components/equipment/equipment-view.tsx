@@ -28,7 +28,15 @@ import type { InventoryItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 function itemCost(item: InventoryItem): number {
-  return Number(item.costPrice) || Number(item.sellingPrice) || 0
+  return Number(item.costPrice) || 0
+}
+
+function itemSell(item: InventoryItem): number {
+  return Number(item.sellingPrice) || 0
+}
+
+function unitProfit(item: InventoryItem): number {
+  return itemSell(item) - itemCost(item)
 }
 
 export function EquipmentView() {
@@ -39,6 +47,7 @@ export function EquipmentView() {
   const [name, setName] = useState("")
   const [category, setCategory] = useState("")
   const [costPrice, setCostPrice] = useState("")
+  const [sellingPrice, setSellingPrice] = useState("")
   const [totalPurchased, setTotalPurchased] = useState("")
   const [supplierName, setSupplierName] = useState("")
   const [isComposite, setIsComposite] = useState(false)
@@ -80,6 +89,7 @@ export function EquipmentView() {
     setName("")
     setCategory("")
     setCostPrice("")
+    setSellingPrice("")
     setTotalPurchased("")
     setSupplierName("")
     setIsComposite(false)
@@ -96,7 +106,8 @@ export function EquipmentView() {
     setEditing(item)
     setName(item.name)
     setCategory(item.category)
-    setCostPrice(String(itemCost(item) || ""))
+    setCostPrice(String(item.costPrice || ""))
+    setSellingPrice(String(item.sellingPrice || ""))
     setTotalPurchased(String(item.totalPurchased || ""))
     setSupplierName(item.supplierName)
     setIsComposite(item.isComposite)
@@ -162,7 +173,7 @@ export function EquipmentView() {
       id: editing?.id,
       name,
       category: category || (isComposite ? "תיקים" : ""),
-      sellingPrice: editing?.sellingPrice ?? 0,
+      sellingPrice: Number(sellingPrice) || 0,
       costPrice: cost,
       supplierName,
       totalPurchased: isComposite ? 0 : Number(totalPurchased) || 0,
@@ -229,20 +240,23 @@ export function EquipmentView() {
           <>
             {/* —— Desktop table —— */}
             <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
-              <table className="w-full min-w-[720px] text-right text-sm">
+              <table className="w-full min-w-[920px] text-right text-sm">
                 <thead className="bg-secondary/50 text-xs text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2.5 font-semibold">שם הפריט</th>
                     <th className="px-3 py-2.5 font-semibold">כמות שהוכנסה</th>
                     <th className="px-3 py-2.5 font-semibold">כמות שנמכרה</th>
                     <th className="px-3 py-2.5 font-semibold">כמה נשאר במלאי</th>
-                    <th className="px-3 py-2.5 font-semibold">מחיר עלות ליחידה</th>
+                    <th className="px-3 py-2.5 font-semibold">עלות</th>
+                    <th className="px-3 py-2.5 font-semibold">מחיר מכירה</th>
+                    <th className="px-3 py-2.5 font-semibold">רווח ליחידה</th>
                     <th className="w-12 px-2 py-2.5" />
                   </tr>
                 </thead>
                 <tbody>
                   {sortedInventory.map((item) => {
                     const stock = currentStockOf(item)
+                    const profit = unitProfit(item)
                     return (
                       <tr
                         key={item.id}
@@ -303,6 +317,18 @@ export function EquipmentView() {
                         <td className="px-3 py-2.5 tabular-nums">
                           {formatCurrency(itemCost(item))}
                         </td>
+                        <td className="px-3 py-2.5 tabular-nums">
+                          {formatCurrency(itemSell(item))}
+                        </td>
+                        <td
+                          className={cn(
+                            "px-3 py-2.5 tabular-nums font-semibold",
+                            profit < 0 && "text-red-600",
+                            profit > 0 && "text-emerald-700",
+                          )}
+                        >
+                          {formatCurrency(profit)}
+                        </td>
                         <td className="px-2 py-2.5">
                           <button
                             type="button"
@@ -349,7 +375,17 @@ export function EquipmentView() {
                           )}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          עלות {formatCurrency(itemCost(item))}
+                          עלות {formatCurrency(itemCost(item))} · מכירה{" "}
+                          {formatCurrency(itemSell(item))} · רווח{" "}
+                          <span
+                            className={cn(
+                              "font-semibold",
+                              unitProfit(item) < 0 && "text-red-600",
+                              unitProfit(item) > 0 && "text-emerald-700",
+                            )}
+                          >
+                            {formatCurrency(unitProfit(item))}
+                          </span>
                         </p>
                         {item.isComposite ? (
                           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -434,6 +470,14 @@ export function EquipmentView() {
                     onChange={(e) => setCostPrice(e.target.value)}
                   />
                 </Field>
+                <Field label="מחיר מכירה ליחידה">
+                  <Input
+                    type="number"
+                    dir="ltr"
+                    value={sellingPrice}
+                    onChange={(e) => setSellingPrice(e.target.value)}
+                  />
+                </Field>
                 <Field label="כמות שהוכנסה למלאי">
                   <Input
                     type="number"
@@ -455,6 +499,18 @@ export function EquipmentView() {
                   </p>
                 )}
               </>
+            )}
+
+            {isComposite && (
+              <Field label="מחיר מכירה לתיק">
+                <Input
+                  type="number"
+                  dir="ltr"
+                  value={sellingPrice}
+                  onChange={(e) => setSellingPrice(e.target.value)}
+                  placeholder="מחיר מכירה ללקוח"
+                />
+              </Field>
             )}
 
             <Field label="שם ספק">

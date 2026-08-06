@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/db";
@@ -21,6 +22,12 @@ import {
 import { sanitizePhone } from "@/lib/utils";
 import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
+import {
+  exportLeadParticipantsToSheets,
+  syncCertificateFlagsFromSheets,
+  tryAutoCompleteTrainingIfReady,
+} from "@/lib/google-sheets/certificates";
+import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client";
 
 export type ActionResult<T = unknown> =
   | { ok: true; data: T }
@@ -655,6 +662,21 @@ export async function updateLead(
     await syncUnpaidPaymentTask(after);
   }
 
+  // ייצוא ל-Google Sheets בעת מעבר ל״ממתין לתעודות״
+  if (
+    nextStatus === "certificates_pending" &&
+    existing.courseStatus !== "certificates_pending" &&
+    isGoogleSheetsConfigured()
+  ) {
+    const exportRes = await exportLeadParticipantsToSheets(leadId);
+    if (!exportRes.ok) {
+      console.error("[sheets export]", exportRes.error);
+    }
+  }
+
+  // בדיקת השלמה אוטומטית (תשלום + תעודות)
+  await tryAutoCompleteTrainingIfReady(leadId);
+
   // Returning account classification when closing won
   if (nextStatus === "closed_won" && existing.accountId) {
     await prisma.account.update({
@@ -717,6 +739,8 @@ export async function recordLeadPayment(
   });
   if (after) await syncUnpaidPaymentTask(after);
 
+  await tryAutoCompleteTrainingIfReady(leadId);
+
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
   revalidatePath("/dashboard");
@@ -730,8 +754,12 @@ async function upsertTraineeFromParticipant(data: {
   email?: string | null;
   phone?: string | null;
 }) {
-  const idNumber = data.idNumber.trim();
-  const fullName = data.fullName.trim();
+  const fullName = data.fullName.trim() || "ללא שם";
+  let idNumber = data.idNumber.trim().replace(/[-\s]/g, "");
+  // ת״ז ריקה — מזהה זמני ייחודי (אילוץ @@unique על Trainee)
+  if (!idNumber) {
+    idNumber = `temp-${randomUUID()}`;
+  }
   return prisma.trainee.upsert({
     where: { idNumber },
     create: {
@@ -748,26 +776,48 @@ async function upsertTraineeFromParticipant(data: {
   });
 }
 
-export async function addParticipant(leadId: string, fullName: string, idNumber: string) {
-  if (!fullName.trim() || !idNumber.trim()) {
-    return { ok: false as const, error: "שם מלא ות.ז. הם שדות חובה" };
+/** הוספת משתתף פנימית — מספיק שדה אחד (שם / ת״ז / טלפון / אימייל) */
+export async function addParticipant(
+  leadId: string,
+  fullName: string,
+  idNumber: string,
+  extras?: { phone?: string | null; email?: string | null },
+) {
+  const name = fullName.trim();
+  const id = idNumber.trim().replace(/[-\s]/g, "");
+  const phone = extras?.phone?.trim() || "";
+  const email = extras?.email?.trim() || "";
+  if (!name && !id && !phone && !email) {
+    return {
+      ok: false as const,
+      error: "יש למלא לפחות שדה אחד (שם, ת״ז, טלפון או אימייל)",
+    };
   }
   // מודרך גלובלי נוצר רק לאחר אישור נוכחות
   await prisma.participant.create({
     data: {
       leadId,
-      fullName: fullName.trim(),
-      idNumber: idNumber.trim(),
+      fullName: name,
+      idNumber: id,
+      phone: phone || null,
+      email: email || null,
     },
   });
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-  if (lead?.courseStatus === "completed") {
+  let status = lead?.courseStatus;
+  if (status === "completed") {
     await prisma.lead.update({
       where: { id: leadId },
       data: { courseStatus: "certificates_pending" },
     });
+    status = "certificates_pending";
   }
   revalidatePath(`/leads/${leadId}`);
+
+  if (status === "certificates_pending" && isGoogleSheetsConfigured()) {
+    await exportLeadParticipantsToSheets(leadId);
+  }
+
   return { ok: true as const };
 }
 
@@ -946,6 +996,7 @@ export async function updateTrainee(
     idNumber?: string;
     phone?: string | null;
     email?: string | null;
+    /** נחסם — מתעדכן רק מסנכרון Google Sheets */
     certificateEmailSent?: boolean;
     certificateCardPrinted?: boolean;
     notes?: string;
@@ -954,16 +1005,26 @@ export async function updateTrainee(
   const existing = await prisma.trainee.findUnique({ where: { id } });
   if (!existing) return { ok: false, error: "המודרך לא נמצא" };
 
+  if (
+    data.certificateEmailSent !== undefined ||
+    data.certificateCardPrinted !== undefined
+  ) {
+    return {
+      ok: false,
+      error:
+        "סימון תעודה במייל / כרטיס מודפס מתעדכן אוטומטית מ-Google Sheets בלבד",
+      code: "sheets_readonly",
+    };
+  }
+
   const nextIdNumber =
     data.idNumber !== undefined
-      ? data.idNumber.trim().replace(/[-\s]/g, "")
+      ? data.idNumber.trim().replace(/[-\s]/g, "") || existing.idNumber
       : existing.idNumber;
   const nextFullName =
-    data.fullName !== undefined ? data.fullName.trim() : existing.fullName;
-
-  if (!nextFullName || !nextIdNumber) {
-    return { ok: false, error: "שם מלא ות״ז הם שדות חובה" };
-  }
+    data.fullName !== undefined
+      ? data.fullName.trim() || existing.fullName || "ללא שם"
+      : existing.fullName;
 
   if (nextIdNumber !== existing.idNumber) {
     const clash = await prisma.trainee.findUnique({
@@ -992,8 +1053,6 @@ export async function updateTrainee(
         idNumber: nextIdNumber,
         phone: nextPhone,
         email: nextEmail,
-        certificateEmailSent: data.certificateEmailSent,
-        certificateCardPrinted: data.certificateCardPrinted,
         notes:
           data.notes === undefined ? undefined : data.notes.trim() || null,
       },
@@ -1019,6 +1078,33 @@ export async function updateTrainee(
   revalidatePath("/clients");
   revalidatePath("/leads");
   return { ok: true, data: { id } };
+}
+
+/** סנכרון ידני של דגלי תעודות מ-Google Sheets → CRM */
+export async function syncCertificatesFromSheetsAction(): Promise<
+  ActionResult<{ updated: number; autoCompleted: number }>
+> {
+  const res = await syncCertificateFlagsFromSheets();
+  if (!res.ok) return { ok: false, error: res.error };
+  revalidatePath("/clients");
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  return {
+    ok: true,
+    data: { updated: res.updated, autoCompleted: res.autoCompleted },
+  };
+}
+
+/** ייצוא ידני של משתתפי הדרכה ל-Google Sheets */
+export async function exportLeadCertificatesToSheetsAction(
+  leadId: string,
+): Promise<ActionResult<{ exported: number }>> {
+  const res = await exportLeadParticipantsToSheets(leadId);
+  if (!res.ok) return { ok: false, error: res.error };
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/clients");
+  return { ok: true, data: { exported: res.exported } };
 }
 
 /** מחיקה לצמיתות של מודרך + כל רשומות המשתתף בהדרכות המשויכות */
@@ -1135,7 +1221,7 @@ async function findAssignableLeadId(opts: {
   return byName[0]?.id ?? null;
 }
 
-/** יצירת מודרך ידנית (+ שיוך להדרכה אופציונלי) */
+/** יצירת מודרך ידנית (+ שיוך להדרכה אופציונלי) — שדות אופציונליים, מספיק שדה אחד */
 export async function createTraineeManual(data: {
   fullName: string;
   idNumber: string;
@@ -1144,16 +1230,23 @@ export async function createTraineeManual(data: {
   notes?: string;
   leadId?: string;
 }): Promise<ActionResult<{ traineeId: string; participantId?: string }>> {
-  if (!data.fullName.trim() || !data.idNumber.trim()) {
-    return { ok: false, error: "שם מלא ות״ז הם שדות חובה" };
+  const fullName = data.fullName.trim();
+  const idNumberRaw = data.idNumber.trim().replace(/[-\s]/g, "");
+  const phone = data.phone?.trim() || "";
+  const email = data.email?.trim() || "";
+
+  if (!fullName && !idNumberRaw && !phone && !email) {
+    return {
+      ok: false,
+      error: "יש למלא לפחות שדה אחד (שם, ת״ז, טלפון או אימייל)",
+    };
   }
 
-  const idNumber = data.idNumber.trim().replace(/[-\s]/g, "");
   const trainee = await upsertTraineeFromParticipant({
-    fullName: data.fullName,
-    idNumber,
-    phone: data.phone,
-    email: data.email,
+    fullName: fullName || (phone ? phone : "ללא שם"),
+    idNumber: idNumberRaw,
+    phone: phone || undefined,
+    email: email || undefined,
   });
 
   if (data.notes?.trim()) {
@@ -1173,17 +1266,20 @@ export async function createTraineeManual(data: {
       };
     }
 
-    const existing = await prisma.participant.findFirst({
-      where: { leadId, idNumber },
-    });
+    const idNumber = trainee.idNumber;
+    const existing = idNumberRaw
+      ? await prisma.participant.findFirst({
+          where: { leadId, idNumber: idNumberRaw },
+        })
+      : null;
     if (existing) {
       await prisma.participant.update({
         where: { id: existing.id },
         data: {
           traineeId: trainee.id,
-          fullName: data.fullName.trim(),
-          phone: data.phone?.trim() || existing.phone,
-          email: data.email?.trim() || existing.email,
+          fullName: trainee.fullName,
+          phone: phone || existing.phone,
+          email: email || existing.email,
           attended: true,
         },
       });
@@ -1193,10 +1289,10 @@ export async function createTraineeManual(data: {
         data: {
           leadId,
           traineeId: trainee.id,
-          fullName: data.fullName.trim(),
+          fullName: trainee.fullName,
           idNumber,
-          phone: data.phone?.trim() || null,
-          email: data.email?.trim() || null,
+          phone: phone || null,
+          email: email || null,
           attended: true,
         },
       });
