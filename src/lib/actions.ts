@@ -670,12 +670,27 @@ export async function updateLead(
   // ייצוא ל-Google Sheets בעת מעבר ל״ממתין לתעודות״
   if (
     nextStatus === "certificates_pending" &&
-    existing.courseStatus !== "certificates_pending" &&
-    isGoogleSheetsConfigured()
+    existing.courseStatus !== "certificates_pending"
   ) {
-    const exportRes = await exportLeadParticipantsToSheets(leadId);
-    if (!exportRes.ok) {
-      console.error("[sheets export]", exportRes.error);
+    if (!isGoogleSheetsConfigured()) {
+      console.error(
+        "[sheets export] דילוג — Google Sheets לא מוגדר (בדקו GOOGLE_CREDENTIALS / GOOGLE_SHEETS_SPREADSHEET_ID)",
+      )
+    } else {
+      const exportRes = await exportLeadParticipantsToSheets(leadId)
+      if (!exportRes.ok) {
+        console.error("[sheets export]", exportRes.error)
+      } else if (exportRes.exported === 0) {
+        console.warn(
+          "[sheets export] אין משתתפים חדשים לייצוא (או שכבר יוצאו)",
+          { leadId },
+        )
+      } else {
+        console.info("[sheets export] יוצאו משתתפים", {
+          leadId,
+          exported: exportRes.exported,
+        })
+      }
     }
   }
 

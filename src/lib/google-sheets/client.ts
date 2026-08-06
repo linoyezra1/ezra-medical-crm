@@ -6,15 +6,47 @@ export type GoogleServiceAccount = {
   private_key: string
 }
 
+function tryParseServiceAccountJson(
+  raw: string,
+  source: string,
+): GoogleServiceAccount | null {
+  let text = raw.trim()
+  // Railway לפעמים עוטף במירכאות כפולות מיותרות
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    text = text.slice(1, -1)
+  }
+  try {
+    const parsed = JSON.parse(text) as GoogleServiceAccount
+    if (parsed.client_email && parsed.private_key) return parsed
+    console.error(
+      `[google-sheets] ${source}: חסרים client_email או private_key`,
+    )
+  } catch {
+    console.error(`[google-sheets] ${source} אינו JSON תקין`)
+  }
+  return null
+}
+
+/**
+ * תומך ב:
+ * - GOOGLE_CREDENTIALS (Railway)
+ * - GOOGLE_SERVICE_ACCOUNT_JSON
+ * - GOOGLE_APPLICATION_CREDENTIALS / GOOGLE_SERVICE_ACCOUNT_PATH (נתיב לקובץ)
+ */
 function loadServiceAccount(): GoogleServiceAccount | null {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as GoogleServiceAccount
-      if (parsed.client_email && parsed.private_key) return parsed
-    } catch {
-      console.error("[google-sheets] GOOGLE_SERVICE_ACCOUNT_JSON אינו JSON תקין")
-    }
+  const jsonEnvKeys = [
+    "GOOGLE_CREDENTIALS",
+    "GOOGLE_SERVICE_ACCOUNT_JSON",
+  ] as const
+
+  for (const key of jsonEnvKeys) {
+    const raw = process.env[key]?.trim()
+    if (!raw) continue
+    const parsed = tryParseServiceAccountJson(raw, key)
+    if (parsed) return parsed
   }
 
   const path =
@@ -22,8 +54,13 @@ function loadServiceAccount(): GoogleServiceAccount | null {
     process.env.GOOGLE_SERVICE_ACCOUNT_PATH?.trim()
   if (path && existsSync(path)) {
     try {
-      const parsed = JSON.parse(readFileSync(path, "utf8")) as GoogleServiceAccount
+      const parsed = JSON.parse(
+        readFileSync(path, "utf8"),
+      ) as GoogleServiceAccount
       if (parsed.client_email && parsed.private_key) return parsed
+      console.error(
+        "[google-sheets] קובץ credentials חסר client_email או private_key",
+      )
     } catch (err) {
       console.error("[google-sheets] כשל בקריאת קובץ credentials", err)
     }
@@ -52,7 +89,7 @@ export async function getSheetsClient(): Promise<sheets_v4.Sheets> {
   const sa = loadServiceAccount()
   if (!sa) {
     throw new Error(
-      "חסרים פרטי Google Service Account (GOOGLE_SERVICE_ACCOUNT_JSON או GOOGLE_APPLICATION_CREDENTIALS)",
+      "חסרים פרטי Google Service Account (GOOGLE_CREDENTIALS / GOOGLE_SERVICE_ACCOUNT_JSON / קובץ credentials)",
     )
   }
   const auth = new google.auth.JWT({

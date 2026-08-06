@@ -26,7 +26,7 @@ export const CERTIFICATE_SHEET_HEADERS = [
   "נשלח במייל", // J
   "שם מזמין", // K
   "תאריך ייצוא", // L
-  "מזהה משתתף", // M — CRM_PARTICIPANT_ID
+  "מזהה משתתף (ID)", // M — CRM_PARTICIPANT_ID
 ] as const
 
 /** אינדקסים 0-based לפי מבנה הגיליון */
@@ -195,7 +195,7 @@ export async function exportLeadParticipantsToSheets(
         .filter(
           (v) =>
             v &&
-            v !== "מזהה משתתף" &&
+            !v.includes("מזהה משתתף") &&
             v !== "CRM_PARTICIPANT_ID",
         ),
     )
