@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import {
   BadgeCheck,
   CheckCheck,
+  FileCheck,
   GraduationCap,
   MessageCircle,
   Pencil,
@@ -514,6 +515,18 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                             >
                               <MessageCircle className="size-3.5" />
                             </button>
+                            {p.certificateUrl?.trim() ? (
+                              <a
+                                href={p.certificateUrl.trim()}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+                                aria-label="תעודת PDF"
+                                title="פתח תעודה"
+                              >
+                                <FileCheck className="size-3.5" />
+                              </a>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() =>
@@ -616,6 +629,19 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                     >
                       <MessageCircle className="size-3.5" />
                     </button>
+
+                    {p.certificateUrl?.trim() ? (
+                      <a
+                        href={p.certificateUrl.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex size-8 items-center justify-center rounded-lg text-primary"
+                        aria-label="תעודת PDF"
+                        title="פתח תעודה"
+                      >
+                        <FileCheck className="size-3.5" />
+                      </a>
+                    ) : null}
 
                     <button
                       type="button"

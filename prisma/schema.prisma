@@ -191,6 +191,8 @@ model Participant {
   hasLmsAccess    Boolean  @default(false)
   /** יוצא ל-Google Sheets (מניעת כפילויות) */
   sheetsExportedAt DateTime?
+  /** קישור PDF לתעודה מ-Google Drive (עמודה N בגיליון) */
+  certificateUrl  String?
   createdAt       DateTime @default(now())
 
   @@index([leadId])
@@ -206,6 +208,8 @@ model Trainee {
   email                  String?
   certificateEmailSent   Boolean       @default(false)
   certificateCardPrinted Boolean       @default(false)
+  /** קישור PDF לתעודה (למודרכים שיוצאו ללא שיוך להדרכה) */
+  certificateUrl         String?
   notes                  String?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt

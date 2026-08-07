@@ -26,6 +26,7 @@ import {
   exportLeadParticipantsToSheets,
   syncCertificateFlagsFromSheets,
   tryAutoCompleteTrainingIfReady,
+  exportTraineesToCertificateSheet,
 } from "@/lib/google-sheets/certificates";
 import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client";
 import {
@@ -1133,6 +1134,7 @@ export async function fetchLeadParticipants(leadId: string) {
     attended: Boolean(p.attended),
     hasLmsAccess: Boolean(p.hasLmsAccess),
     traineeId: p.traineeId || undefined,
+    certificateUrl: p.certificateUrl || undefined,
   }));
 }
 
@@ -1257,9 +1259,10 @@ export async function exportLeadCertificatesToSheetsAction(
 /**
  * הפעלת הנפקת תעודות מרחוק דרך Google Apps Script Web App.
  * מאמת PIN בשרת, מוודא ייצוא לגיליון, ושולח webhook.
+ * leadId אופציונלי — אם חסר, מזוהה לפי רשומות המשתתפים שנבחרו.
  */
 export async function triggerRemoteCertificates(input: {
-  leadId: string;
+  leadId?: string;
   participantIds: string[];
   templateType: string;
   pin: string;
@@ -1289,28 +1292,67 @@ export async function triggerRemoteCertificates(input: {
     return { ok: false, error: "סוג תעודה לא תקין" };
   }
 
-  const leadId = String(input.leadId || "").trim();
-  if (!leadId) return { ok: false, error: "חסר מזהה הדרכה" };
+  const leadIdFilter = String(input.leadId || "").trim() || undefined;
 
-  // ודא שהמשתתפים שייכים להדרכה
-  const owned = await prisma.participant.findMany({
-    where: { leadId, id: { in: ids } },
-    select: { id: true },
+  // משתתפי הדרכה (participant.id) ו/או מודרכים ללא שיוך (trainee.id)
+  const ownedParticipants = await prisma.participant.findMany({
+    where: {
+      id: { in: ids },
+      ...(leadIdFilter ? { leadId: leadIdFilter } : {}),
+    },
+    select: { id: true, leadId: true },
   });
-  const ownedIds = owned.map((p) => p.id);
-  if (!ownedIds.length) {
-    return { ok: false, error: "לא נמצאו משתתפים תואמים בהדרכה זו" };
+  const foundParticipantIds = new Set(ownedParticipants.map((p) => p.id));
+  const remainingIds = ids.filter((id) => !foundParticipantIds.has(id));
+
+  const ownedTrainees =
+    remainingIds.length && !leadIdFilter
+      ? await prisma.trainee.findMany({
+          where: { id: { in: remainingIds } },
+          select: { id: true },
+        })
+      : [];
+
+  const webhookIds = [
+    ...ownedParticipants.map((p) => p.id),
+    ...ownedTrainees.map((t) => t.id),
+  ];
+  if (!webhookIds.length) {
+    return {
+      ok: false,
+      error: leadIdFilter
+        ? "לא נמצאו משתתפים תואמים בהדרכה זו"
+        : "לא נמצאו מודרכים/משתתפים תואמים לבחירה",
+    };
   }
 
-  // ייצוא חסרים לגיליון לפני ההנפקה (לפי עמודה M)
+  // ייצוא חסרים לגיליון לפני ההנפקה
   if (isGoogleSheetsConfigured()) {
-    const exportRes = await exportLeadParticipantsToSheets(leadId);
-    if (!exportRes.ok) {
-      console.error("[triggerRemoteCertificates] export", exportRes.error);
-      return {
-        ok: false,
-        error: `לא ניתן לייצא לגיליון לפני הנפקה: ${exportRes.error}`,
-      };
+    const leadIds = [...new Set(ownedParticipants.map((p) => p.leadId))];
+    for (const lid of leadIds) {
+      const exportRes = await exportLeadParticipantsToSheets(lid);
+      if (!exportRes.ok) {
+        console.error("[triggerRemoteCertificates] export", exportRes.error);
+        return {
+          ok: false,
+          error: `לא ניתן לייצא לגיליון לפני הנפקה: ${exportRes.error}`,
+        };
+      }
+    }
+    if (ownedTrainees.length) {
+      const exportRes = await exportTraineesToCertificateSheet(
+        ownedTrainees.map((t) => t.id),
+      );
+      if (!exportRes.ok) {
+        console.error(
+          "[triggerRemoteCertificates] trainee export",
+          exportRes.error,
+        );
+        return {
+          ok: false,
+          error: `לא ניתן לייצא מודרכים לגיליון לפני הנפקה: ${exportRes.error}`,
+        };
+      }
     }
   }
 
@@ -1329,10 +1371,10 @@ export async function triggerRemoteCertificates(input: {
   const payload = {
     action: "generateCertificates",
     templateType,
-    participantIds: ownedIds,
+    participantIds: webhookIds,
     authPin: pin,
     pin,
-    leadId,
+    leadId: leadIdFilter || ownedParticipants[0]?.leadId || null,
   };
 
   try {
@@ -1382,10 +1424,10 @@ export async function triggerRemoteCertificates(input: {
     return {
       ok: true,
       data: {
-        dispatched: ownedIds.length,
+        dispatched: webhookIds.length,
         message:
           scriptMessage ||
-          `הבקשה נשלחה ל-Google Sheets! התעודות מופקות ונשלחות במייל ברקע (${ownedIds.length}).`,
+          `הבקשה נשלחה ל-Google Sheets! התעודות מופקות ונשלחות במייל ברקע (${webhookIds.length}).`,
       },
     };
   } catch (err) {

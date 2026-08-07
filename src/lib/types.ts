@@ -112,6 +112,8 @@ export interface Participant {
   /** נוצר משתמש LMS למודרך */
   hasLmsAccess?: boolean;
   traineeId?: string;
+  /** קישור PDF לתעודה מ-Google Sheets (עמודה N) */
+  certificateUrl?: string;
 }
 
 export interface TrainingSale {
@@ -168,6 +170,7 @@ export interface Trainee {
   email?: string;
   certificateEmailSent: boolean;
   certificateCardPrinted: boolean;
+  certificateUrl?: string;
   notes?: string;
   trainings: TraineeTrainingRef[];
   createdAt: string;

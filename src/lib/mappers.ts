@@ -131,6 +131,7 @@ export function mapLead(db: DbLeadFull): Lead {
       attended: Boolean(p.attended),
       hasLmsAccess: Boolean(p.hasLmsAccess),
       traineeId: p.traineeId || undefined,
+      certificateUrl: p.certificateUrl || undefined,
     })),
     expenses: (db.expenses || []).map((e) => ({
       id: e.id,
@@ -320,6 +321,7 @@ export function mapTrainee(db: DbTraineeFull): Trainee {
     email: db.email || undefined,
     certificateEmailSent: Boolean(db.certificateEmailSent),
     certificateCardPrinted: Boolean(db.certificateCardPrinted),
+    certificateUrl: db.certificateUrl || undefined,
     notes: db.notes || undefined,
     trainings: (db.participants || []).map((p) => ({
       participantId: p.id,

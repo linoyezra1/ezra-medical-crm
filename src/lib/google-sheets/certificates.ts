@@ -10,8 +10,8 @@ import {
 import { formatInJerusalem } from "@/lib/timezone"
 
 /**
- * כותרות עמודות בגיליון «תעודות» — 13 עמודות בסדר קבוע (A–M)
- * G–H ריקים למילוי ידני בגיליון
+ * כותרות עמודות בגיליון «תעודות» — 14 עמודות בסדר קבוע (A–N)
+ * G–H / N ממולאים בגיליון או ע״י Apps Script
  */
 export const CERTIFICATE_SHEET_HEADERS = [
   "שם מלא", // A
@@ -20,13 +20,14 @@ export const CERTIFICATE_SHEET_HEADERS = [
   "אימייל", // D
   "טלפון", // E
   "היקף שעות", // F
-  "", // G — שדה ריק למילוי
-  "", // H — שדה ריק למילוי
+  "מספר תעודה", // G — מילוי בגיליון
+  "תוקף תעודה", // H — מילוי בגיליון
   "הודפס כרטיס", // I
   "נשלח במייל", // J
   "שם מזמין", // K
   "תאריך ייצוא", // L
   "מזהה משתתף (ID)", // M — CRM_PARTICIPANT_ID
+  "קישור PDF לתעודה", // N — certificateUrl
 ] as const
 
 /** אינדקסים 0-based לפי מבנה הגיליון */
@@ -37,18 +38,19 @@ const COL = {
   email: 3, // D
   phone: 4, // E
   hours: 5, // F
-  blankG: 6, // G
-  blankH: 7, // H
+  certificateNumber: 6, // G — מספר תעודה
+  certificateExpiry: 7, // H — תוקף תעודה
   cardPrinted: 8, // I — הודפס כרטיס
   emailSent: 9, // J — נשלח במייל
   organizer: 10, // K
   exportTimestamp: 11, // L
   crmId: 12, // M — CRM_PARTICIPANT_ID
+  pdfUrl: 13, // N — קישור PDF
 } as const
 
-const SHEET_RANGE_HEADER = "A1:M1"
-const SHEET_RANGE_DATA = "A2:M"
-const SHEET_RANGE_APPEND = "A:M"
+const SHEET_RANGE_HEADER = "A1:N1"
+const SHEET_RANGE_DATA = "A2:N"
+const SHEET_RANGE_APPEND = "A:N"
 /** עמודת מזהה משתתף למניעת כפילויות */
 const SHEET_RANGE_CRM_IDS = "M:M"
 
@@ -93,14 +95,11 @@ function trainingDateLabel(
   courseDate: string | null | undefined,
   scheduledStart: Date | null | undefined,
 ): string {
-  const raw =
-    courseDate?.trim() ||
-    (scheduledStart ? formatInJerusalem(scheduledStart).date || "" : "")
-  if (!raw) return ""
-  // YYYY-MM-DD → MM-DD-YYYY (למשל 2026-08-09 → 08-09-2026)
-  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (m) return `${m[2]}-${m[3]}-${m[1]}`
-  return raw
+  if (courseDate?.trim()) return courseDate.trim()
+  if (scheduledStart) {
+    return formatInJerusalem(scheduledStart).date || ""
+  }
+  return ""
 }
 
 /** היקף שעות לגיליון — מספר בלבד (למשל "22") בלי המילה «שעות» ובלי רווחים */
@@ -155,13 +154,14 @@ function participantRow(p: {
     p.email || "", // D
     p.phone || "", // E
     hoursScope, // F — למשל "22" ולא "22 שעות"
-    "", // G
-    "", // H
+    "", // G — מספר תעודה (מילוי בגיליון)
+    "", // H — תוקף תעודה (מילוי בגיליון)
     "", // I — הודפס כרטיס (מילוי בגיליון)
     "", // J — נשלח במייל (מילוי בגיליון)
     p.organizerName || p.lead?.fullName || "", // K
     exportTimestamp, // L
     p.id, // M — CRM_PARTICIPANT_ID
+    "", // N — קישור PDF (מילוי בגיליון / Apps Script)
   ]
 }
 
@@ -253,6 +253,115 @@ export async function exportLeadParticipantsToSheets(
   }
 }
 
+async function fetchExistingCrmIdsInSheet(): Promise<Set<string>> {
+  const sheets = await getSheetsClient()
+  const spreadsheetId = getSpreadsheetId()
+  const tab = getSheetTabName()
+  const existing = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${tab}!${SHEET_RANGE_CRM_IDS}`,
+  })
+  return new Set(
+    (existing.data.values || [])
+      .flat()
+      .map((v) => String(v || "").trim())
+      .filter(
+        (v) =>
+          v &&
+          !v.includes("מזהה משתתף") &&
+          v !== "CRM_PARTICIPANT_ID",
+      ),
+  )
+}
+
+/**
+ * ייצוא מודרכים לגיליון תעודות — גם ללא שיוך להדרכה.
+ * בעמודה M נשמר מזהה המודרך (trainee.id) כמפתח לחיפוש בסקריפט.
+ */
+export async function exportTraineesToCertificateSheet(
+  traineeIds: string[],
+): Promise<{ ok: true; exported: number } | { ok: false; error: string }> {
+  if (!isGoogleSheetsConfigured()) {
+    return {
+      ok: false,
+      error: "Google Sheets לא מוגדר (חסרים משתני סביבה)",
+    }
+  }
+
+  const ids = [...new Set(traineeIds.map((id) => id.trim()).filter(Boolean))]
+  if (!ids.length) return { ok: true, exported: 0 }
+
+  try {
+    await ensureHeaderRow()
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+
+    const trainees = await prisma.trainee.findMany({
+      where: { id: { in: ids } },
+      include: {
+        participants: {
+          take: 1,
+          orderBy: { createdAt: "desc" },
+          include: {
+            lead: {
+              select: {
+                fullName: true,
+                scheduledStart: true,
+                courseType: true,
+                courseTypeOther: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!trainees.length) return { ok: true, exported: 0 }
+
+    const existingIds = await fetchExistingCrmIdsInSheet()
+    const toExport = trainees.filter((t) => !existingIds.has(t.id))
+    if (!toExport.length) return { ok: true, exported: 0 }
+
+    const values = toExport.map((t) => {
+      const p = t.participants[0]
+      const lead = p?.lead
+      return [
+        t.fullName || "",
+        t.idNumber || "",
+        trainingDateLabel(p?.courseDate, lead?.scheduledStart),
+        t.email || "",
+        t.phone || "",
+        hoursScopeForSheet(lead?.courseType, lead?.courseTypeOther),
+        "",
+        "",
+        "",
+        "",
+        p?.organizerName || lead?.fullName || "",
+        new Date().toISOString(),
+        t.id, // M — מזהה מודרך (גם ללא שיוך להדרכה)
+        "", // N — קישור PDF
+      ]
+    })
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `${tab}!${SHEET_RANGE_APPEND}`,
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values },
+    })
+
+    return { ok: true, exported: toExport.length }
+  } catch (err) {
+    console.error("[exportTraineesToCertificateSheet]", err)
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "שגיאה בייצוא מודרכים ל-Google Sheets",
+    }
+  }
+}
+
 /** סנכרון דגלים מגיליון → CRM (מייל / כרטיס) */
 export async function syncCertificateFlagsFromSheets(): Promise<{
   ok: true
@@ -281,18 +390,19 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
     const touchedLeadIds = new Set<string>()
 
     for (const row of rows) {
-      // M (index 12) — מזהה משתתף
-      const participantId = String(row[COL.crmId] || "").trim()
-      if (!participantId) continue
+      // M (index 12) — מזהה משתתף / מודרך
+      const crmId = String(row[COL.crmId] || "").trim()
+      if (!crmId) continue
 
-      // I (index 8) — הודפס כרטיס · J (index 9) — נשלח במייל
+      // I / J — דגלי תעודה · N — קישור PDF
       const cardPrinted = truthyCell(row[COL.cardPrinted])
       const emailSent = truthyCell(row[COL.emailSent])
-      // קידום חד־כיווני: סימון בגיליון → true ב-CRM
-      if (!emailSent && !cardPrinted) continue
+      const pdfUrl = String(row[COL.pdfUrl] || "").trim()
+
+      if (!emailSent && !cardPrinted && !pdfUrl) continue
 
       const participant = await prisma.participant.findUnique({
-        where: { id: participantId },
+        where: { id: crmId },
         select: {
           id: true,
           leadId: true,
@@ -301,12 +411,66 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
           idNumber: true,
           phone: true,
           email: true,
+          certificateUrl: true,
         },
       })
-      if (!participant) continue
+
+      // מזהה מודרך ללא רשומת משתתף (ייצוא ממסך מודרכים)
+      if (!participant) {
+        const trainee = await prisma.trainee.findUnique({
+          where: { id: crmId },
+          select: {
+            id: true,
+            certificateEmailSent: true,
+            certificateCardPrinted: true,
+            certificateUrl: true,
+          },
+        })
+        if (!trainee) continue
+
+        const traineePatch: {
+          certificateEmailSent?: boolean
+          certificateCardPrinted?: boolean
+          certificateUrl?: string
+        } = {}
+        if (emailSent && !trainee.certificateEmailSent) {
+          traineePatch.certificateEmailSent = true
+        }
+        if (cardPrinted && !trainee.certificateCardPrinted) {
+          traineePatch.certificateCardPrinted = true
+        }
+        if (pdfUrl && pdfUrl !== (trainee.certificateUrl || "")) {
+          traineePatch.certificateUrl = pdfUrl
+        }
+        if (!Object.keys(traineePatch).length) continue
+
+        await prisma.trainee.update({
+          where: { id: trainee.id },
+          data: traineePatch,
+        })
+        // סנכרון URL גם למשתתפים מקושרים אם יש
+        if (traineePatch.certificateUrl) {
+          await prisma.participant.updateMany({
+            where: { traineeId: trainee.id },
+            data: { certificateUrl: traineePatch.certificateUrl },
+          })
+        }
+        updated++
+        continue
+      }
+
+      let didUpdate = false
+
+      if (pdfUrl && pdfUrl !== (participant.certificateUrl || "")) {
+        await prisma.participant.update({
+          where: { id: participant.id },
+          data: { certificateUrl: pdfUrl },
+        })
+        didUpdate = true
+      }
 
       let traineeId = participant.traineeId
-      if (!traineeId) {
+      if (!traineeId && (emailSent || cardPrinted)) {
         const idNumber =
           participant.idNumber?.trim() || `sheet-${participant.id}`
         const trainee = await prisma.trainee.upsert({
@@ -318,49 +482,65 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
             email: participant.email,
             certificateEmailSent: emailSent,
             certificateCardPrinted: cardPrinted,
+            certificateUrl: pdfUrl || null,
           },
           update: {
             ...(emailSent ? { certificateEmailSent: true } : {}),
             ...(cardPrinted ? { certificateCardPrinted: true } : {}),
+            ...(pdfUrl ? { certificateUrl: pdfUrl } : {}),
           },
         })
         traineeId = trainee.id
         await prisma.participant.update({
           where: { id: participant.id },
-          data: { traineeId },
+          data: {
+            traineeId,
+            ...(pdfUrl ? { certificateUrl: pdfUrl } : {}),
+          },
         })
         updated++
         touchedLeadIds.add(participant.leadId)
         continue
       }
 
-      const trainee = await prisma.trainee.findUnique({
-        where: { id: traineeId },
-        select: {
-          certificateEmailSent: true,
-          certificateCardPrinted: true,
-        },
-      })
-      if (!trainee) continue
-
-      const patch: {
-        certificateEmailSent?: boolean
-        certificateCardPrinted?: boolean
-      } = {}
-      if (emailSent && !trainee.certificateEmailSent) {
-        patch.certificateEmailSent = true
+      if (traineeId && (emailSent || cardPrinted || pdfUrl)) {
+        const trainee = await prisma.trainee.findUnique({
+          where: { id: traineeId },
+          select: {
+            certificateEmailSent: true,
+            certificateCardPrinted: true,
+            certificateUrl: true,
+          },
+        })
+        if (trainee) {
+          const patch: {
+            certificateEmailSent?: boolean
+            certificateCardPrinted?: boolean
+            certificateUrl?: string
+          } = {}
+          if (emailSent && !trainee.certificateEmailSent) {
+            patch.certificateEmailSent = true
+          }
+          if (cardPrinted && !trainee.certificateCardPrinted) {
+            patch.certificateCardPrinted = true
+          }
+          if (pdfUrl && pdfUrl !== (trainee.certificateUrl || "")) {
+            patch.certificateUrl = pdfUrl
+          }
+          if (Object.keys(patch).length) {
+            await prisma.trainee.update({
+              where: { id: traineeId },
+              data: patch,
+            })
+            didUpdate = true
+          }
+        }
       }
-      if (cardPrinted && !trainee.certificateCardPrinted) {
-        patch.certificateCardPrinted = true
-      }
-      if (!Object.keys(patch).length) continue
 
-      await prisma.trainee.update({
-        where: { id: traineeId },
-        data: patch,
-      })
-      updated++
-      touchedLeadIds.add(participant.leadId)
+      if (didUpdate) {
+        updated++
+        touchedLeadIds.add(participant.leadId)
+      }
     }
 
     let autoCompleted = 0
