@@ -222,9 +222,9 @@ export async function exportLeadParticipantsToSheets(
         ),
     )
 
-    const toExport = participants.filter(
-      (p) => !p.sheetsExportedAt && !existingIds.has(p.id),
-    )
+    // כפילויות רק לפי עמודה M בגיליון — לא לפי sheetsExportedAt ב-DB
+    // (מחיקה מהגיליון מאפשרת ייצוא מחדש אוטומטית)
+    const toExport = participants.filter((p) => !existingIds.has(p.id))
     if (!toExport.length) return { ok: true, exported: 0 }
 
     const values = toExport.map((p) => participantRow(p))
@@ -236,6 +236,7 @@ export async function exportLeadParticipantsToSheets(
       requestBody: { values },
     })
 
+    // חותמת אופציונלית לביקורת בלבד — לא משמשת לחסימת ייצוא
     const now = new Date()
     await prisma.participant.updateMany({
       where: { id: { in: toExport.map((p) => p.id) } },
