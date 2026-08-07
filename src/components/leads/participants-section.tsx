@@ -520,7 +520,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                                 href={p.certificateUrl.trim()}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+                                className="flex size-8 items-center justify-center rounded-lg text-amber-500 hover:bg-amber-50 hover:text-amber-600"
                                 aria-label="תעודת PDF"
                                 title="פתח תעודה"
                               >
@@ -635,7 +635,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                         href={p.certificateUrl.trim()}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex size-8 items-center justify-center rounded-lg text-primary"
+                        className="flex size-8 items-center justify-center rounded-lg text-amber-500 hover:bg-amber-50 hover:text-amber-600"
                         aria-label="תעודת PDF"
                         title="פתח תעודה"
                       >
