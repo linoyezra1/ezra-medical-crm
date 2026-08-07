@@ -7,12 +7,15 @@ import {
   GraduationCap,
   MessageCircle,
   Pencil,
+  Phone,
   RefreshCw,
+  ScrollText,
   Search,
   Trash2,
   UserPlus,
 } from "lucide-react"
 import { toast } from "sonner"
+import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -82,6 +85,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
     email: "",
     feedback: "",
   })
+  const [issueOpen, setIssueOpen] = useState(false)
 
   const participants = lead.participants || []
   const attendedCount = participants.filter((p) => p.attended).length
@@ -344,6 +348,31 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
               : `פתח משתמש LMS לנבחרים (${selectedPendingLms.length})`}
           </Button>
         )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2 rounded-xl md:w-auto"
+          disabled={selectedIds.size === 0}
+          onClick={() => {
+            if (selectedIds.size === 0) {
+              toast.error("יש לסמן משתתפים להפקת תעודות")
+              return
+            }
+            setIssueOpen(true)
+          }}
+        >
+          <ScrollText className="size-4" />
+          📜 הפק תעודות מרחוק
+          {selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+        </Button>
+        <label className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold md:hidden">
+          <Checkbox
+            checked={allFilteredSelected}
+            onCheckedChange={(v) => toggleSelectAllFiltered(Boolean(v))}
+          />
+          סמן הכל
+        </label>
       </div>
     </div>
   )
@@ -466,6 +495,16 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-end gap-0.5">
+                            {p.phone?.trim() ? (
+                              <a
+                                href={`tel:${p.phone}`}
+                                className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+                                aria-label="חיוג"
+                                title="חיוג"
+                              >
+                                <Phone className="size-3.5" />
+                              </a>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => openWhatsApp(p)}
@@ -529,9 +568,11 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                 >
                   <div className="flex items-center gap-1.5 p-2.5">
                     <Checkbox
-                      checked={Boolean(p.attended)}
-                      onCheckedChange={(v) => toggleAttended(p, Boolean(v))}
-                      aria-label={`נוכחות ${p.name}`}
+                      checked={selectedIds.has(p.id)}
+                      onCheckedChange={(v) =>
+                        toggleSelected(p.id, Boolean(v))
+                      }
+                      aria-label={`בחירה ${p.name}`}
                     />
                     <button
                       type="button"
@@ -539,6 +580,12 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       onClick={() => setExpandedId(open ? null : p.id)}
                     >
                       <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                        {p.attended && (
+                          <span
+                            className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+                            title="נוכח"
+                          />
+                        )}
                         {p.hasLmsAccess && (
                           <BadgeCheck
                             className="size-3.5 shrink-0 text-emerald-600"
@@ -551,6 +598,16 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       </p>
                     </button>
 
+                    {p.phone?.trim() ? (
+                      <a
+                        href={`tel:${p.phone}`}
+                        className="flex size-8 items-center justify-center rounded-lg text-primary"
+                        aria-label="חיוג"
+                        title="חיוג"
+                      >
+                        <Phone className="size-3.5" />
+                      </a>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => openWhatsApp(p)}
@@ -558,6 +615,21 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       aria-label="וואטסאפ"
                     >
                       <MessageCircle className="size-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void toggleAttended(p, !p.attended)}
+                      className={cn(
+                        "flex size-8 items-center justify-center rounded-lg",
+                        p.attended
+                          ? "text-emerald-700"
+                          : "text-muted-foreground",
+                      )}
+                      aria-label="נוכחות"
+                      title="סימון נוכחות"
+                    >
+                      <CheckCheck className="size-3.5" />
                     </button>
 
                     {!p.hasLmsAccess && (
@@ -670,6 +742,13 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <IssueCertificatesDialog
+        open={issueOpen}
+        onOpenChange={setIssueOpen}
+        leadId={lead.id}
+        participantIds={[...selectedIds]}
+      />
     </CollapsibleSection>
   )
 }

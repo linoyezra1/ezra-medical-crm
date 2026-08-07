@@ -1254,6 +1254,152 @@ export async function exportLeadCertificatesToSheetsAction(
   return { ok: true, data: { exported: res.exported } };
 }
 
+/**
+ * הפעלת הנפקת תעודות מרחוק דרך Google Apps Script Web App.
+ * מאמת PIN בשרת, מוודא ייצוא לגיליון, ושולח webhook.
+ */
+export async function triggerRemoteCertificates(input: {
+  leadId: string;
+  participantIds: string[];
+  templateType: string;
+  pin: string;
+}): Promise<ActionResult<{ message: string; dispatched: number }>> {
+  const pin = String(input.pin || "").trim();
+  const expected = (
+    process.env.CERTIFICATE_ISSUANCE_PIN?.trim() ||
+    "214215444"
+  ).trim();
+  if (!pin || pin !== expected) {
+    return { ok: false, error: "קוד אבטחה שגוי", code: "invalid_pin" };
+  }
+
+  const ids = [
+    ...new Set(
+      (input.participantIds || [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!ids.length) {
+    return { ok: false, error: "יש לבחור לפחות משתתף אחד" };
+  }
+
+  const templateType = String(input.templateType || "REGULAR").toUpperCase();
+  if (!["REGULAR", "REFRESH", "SKIPPERS"].includes(templateType)) {
+    return { ok: false, error: "סוג תעודה לא תקין" };
+  }
+
+  const leadId = String(input.leadId || "").trim();
+  if (!leadId) return { ok: false, error: "חסר מזהה הדרכה" };
+
+  // ודא שהמשתתפים שייכים להדרכה
+  const owned = await prisma.participant.findMany({
+    where: { leadId, id: { in: ids } },
+    select: { id: true },
+  });
+  const ownedIds = owned.map((p) => p.id);
+  if (!ownedIds.length) {
+    return { ok: false, error: "לא נמצאו משתתפים תואמים בהדרכה זו" };
+  }
+
+  // ייצוא חסרים לגיליון לפני ההנפקה (לפי עמודה M)
+  if (isGoogleSheetsConfigured()) {
+    const exportRes = await exportLeadParticipantsToSheets(leadId);
+    if (!exportRes.ok) {
+      console.error("[triggerRemoteCertificates] export", exportRes.error);
+      return {
+        ok: false,
+        error: `לא ניתן לייצא לגיליון לפני הנפקה: ${exportRes.error}`,
+      };
+    }
+  }
+
+  const webhookUrl =
+    process.env.GOOGLE_APPS_SCRIPT_WEBHOOK_URL?.trim() ||
+    process.env.NEXT_PUBLIC_GOOGLE_APPS_SCRIPT_URL?.trim();
+  if (!webhookUrl) {
+    return {
+      ok: false,
+      error:
+        "חסר כתובת Webhook של Google Apps Script (GOOGLE_APPS_SCRIPT_WEBHOOK_URL)",
+      code: "webhook_missing",
+    };
+  }
+
+  const payload = {
+    action: "generateCertificates",
+    templateType,
+    participantIds: ownedIds,
+    authPin: pin,
+    pin,
+    leadId,
+  };
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      redirect: "follow",
+    });
+    const text = await res.text();
+    let scriptMessage = "";
+    try {
+      const json = JSON.parse(text) as {
+        ok?: boolean;
+        success?: boolean;
+        message?: string;
+        error?: string;
+      };
+      if (json.error) {
+        return { ok: false, error: json.error };
+      }
+      scriptMessage = json.message || "";
+      if (json.ok === false || json.success === false) {
+        return {
+          ok: false,
+          error: scriptMessage || "הסקריפט ב-Sheets החזיר כישלון",
+        };
+      }
+    } catch {
+      // Apps Script לעיתים מחזיר טקסט פשוט
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: text || `שגיאת Webhook (${res.status})`,
+        };
+      }
+      scriptMessage = text.trim();
+    }
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: scriptMessage || `שגיאת Webhook (${res.status})`,
+      };
+    }
+
+    return {
+      ok: true,
+      data: {
+        dispatched: ownedIds.length,
+        message:
+          scriptMessage ||
+          `הבקשה נשלחה ל-Google Sheets! התעודות מופקות ונשלחות במייל ברקע (${ownedIds.length}).`,
+      },
+    };
+  } catch (err) {
+    console.error("[triggerRemoteCertificates]", err);
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "שגיאת רשת בשליחה ל-Google Apps Script",
+    };
+  }
+}
+
 /** מחיקה לצמיתות של מודרך + כל רשומות המשתתף בהדרכות המשויכות */
 export async function deleteTrainee(
   id: string,
