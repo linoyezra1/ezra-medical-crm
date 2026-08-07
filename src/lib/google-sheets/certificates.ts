@@ -93,10 +93,31 @@ function trainingDateLabel(
   courseDate: string | null | undefined,
   scheduledStart: Date | null | undefined,
 ): string {
-  if (courseDate?.trim()) return courseDate.trim()
-  if (scheduledStart) {
-    return formatInJerusalem(scheduledStart).date || ""
-  }
+  const raw =
+    courseDate?.trim() ||
+    (scheduledStart ? formatInJerusalem(scheduledStart).date || "" : "")
+  if (!raw) return ""
+  // YYYY-MM-DD → MM-DD-YYYY (למשל 2026-08-09 → 08-09-2026)
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return `${m[2]}-${m[3]}-${m[1]}`
+  return raw
+}
+
+/** היקף שעות לגיליון — מספר בלבד (למשל "22") בלי המילה «שעות» ובלי רווחים */
+function hoursScopeForSheet(
+  courseType?: string | null,
+  courseTypeOther?: string | null,
+): string {
+  const label = formatCourseTypeLabel(courseType, { other: courseTypeOther })
+  const fromLabel = label.match(/([\d.]+)\s*שעות/)
+  if (fromLabel?.[1]) return fromLabel[1]
+
+  const raw = (courseType || "").trim()
+  const fromSlug =
+    raw.match(/(\d+(?:\.\d+)?)\s*[_-]?hours?/i) ||
+    raw.match(/hours[_-]?(\d+(?:\.\d+)?)/i)
+  if (fromSlug?.[1]) return fromSlug[1]
+
   return ""
 }
 
@@ -120,9 +141,10 @@ function participantRow(p: {
   } | null
 }): (string | boolean)[] {
   const courseDate = trainingDateLabel(p.courseDate, p.lead?.scheduledStart)
-  const hoursScope = formatCourseTypeLabel(p.lead?.courseType, {
-    other: p.lead?.courseTypeOther,
-  })
+  const hoursScope = hoursScopeForSheet(
+    p.lead?.courseType,
+    p.lead?.courseTypeOther,
+  )
   const exportTimestamp = new Date().toISOString()
 
   // I/J מתחילים ריקים — ממולאים בגיליון; סנכרון קורא משם חזרה ל-CRM
@@ -132,7 +154,7 @@ function participantRow(p: {
     courseDate, // C
     p.email || "", // D
     p.phone || "", // E
-    hoursScope || "", // F
+    hoursScope, // F — למשל "22" ולא "22 שעות"
     "", // G
     "", // H
     "", // I — הודפס כרטיס (מילוי בגיליון)
