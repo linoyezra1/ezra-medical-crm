@@ -23,7 +23,8 @@ import { cn } from "@/lib/utils"
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  leadId: string
+  /** אופציונלי — ממסך הדרכה; ממסך מודרכים אפשר להשאיר ריק */
+  leadId?: string
   participantIds: string[]
 }
 
@@ -45,7 +46,7 @@ export function IssueCertificatesDialog({
     }
     setBusy(true)
     const res = await triggerRemoteCertificates({
-      leadId,
+      leadId: leadId || undefined,
       participantIds,
       templateType,
       pin,
