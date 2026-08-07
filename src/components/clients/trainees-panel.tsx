@@ -5,6 +5,7 @@ import Link from "next/link"
 import {
   Download,
   ExternalLink,
+  FileCheck,
   FileSpreadsheet,
   Link2,
   MessageCircle,
@@ -12,6 +13,7 @@ import {
   Phone,
   Plus,
   RefreshCw,
+  ScrollText,
   Search,
   Trash2,
   UserPlus,
@@ -22,6 +24,7 @@ import { TraineeAddDialog } from "@/components/clients/trainee-add-dialog"
 import { TraineeAssignDialog } from "@/components/clients/trainee-assign-dialog"
 import { TraineeEditDialog } from "@/components/clients/trainee-edit-dialog"
 import { TraineeImportDialog } from "@/components/clients/trainee-import-dialog"
+import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
@@ -58,6 +61,8 @@ export function TraineesPanel() {
   const [deleteTarget, setDeleteTarget] = useState<Trainee | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [syncingSheets, setSyncingSheets] = useState(false)
+  const [issueOpen, setIssueOpen] = useState(false)
+  const [issueParticipantIds, setIssueParticipantIds] = useState<string[]>([])
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -181,6 +186,22 @@ export function TraineesPanel() {
     refresh()
   }
 
+  const openIssueCertificates = () => {
+    const selected = trainees.filter((t) => selectedIds.has(t.id))
+    if (!selected.length) {
+      toast.error("יש לסמן מודרכים להפקת תעודות")
+      return
+    }
+    // משויכים: participantId · לא משויכים: trainee.id (מיוצא לשיטס כמזהה)
+    const sheetIds = [
+      ...new Set(
+        selected.map((t) => t.trainings[0]?.participantId || t.id),
+      ),
+    ]
+    setIssueParticipantIds(sheetIds)
+    setIssueOpen(true)
+  }
+
   const toolbar = (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       {selectedIds.size > 0 ? (
@@ -214,6 +235,17 @@ export function TraineesPanel() {
       </Button>
       <Button
         type="button"
+        size="sm"
+        className="h-10 gap-2 rounded-xl font-bold sm:h-9"
+        disabled={selectedIds.size === 0}
+        onClick={openIssueCertificates}
+      >
+        <ScrollText className="size-4" />
+        📜 הפק תעודות מרחוק
+        {selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+      </Button>
+      <Button
+        type="button"
         variant="outline"
         size="sm"
         className="h-10 gap-2 rounded-xl sm:h-9"
@@ -236,6 +268,7 @@ export function TraineesPanel() {
       </Button>
       <Button
         type="button"
+        variant="outline"
         size="sm"
         className="h-10 gap-2 rounded-xl sm:h-9"
         disabled={selectedIds.size === 0}
@@ -301,6 +334,19 @@ export function TraineesPanel() {
           </a>
         </>
       )}
+      {t.certificateUrl?.trim() ? (
+        <a
+          href={t.certificateUrl.trim()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+          aria-label="תעודת PDF"
+          title="פתח תעודה"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <FileCheck className="size-3.5" />
+        </a>
+      ) : null}
       {t.trainings[0]?.leadId && (
         <Link
           href={`/leads/${t.trainings[0].leadId}`}
@@ -603,6 +649,11 @@ export function TraineesPanel() {
         cancelLabel="ביטול"
         confirming={deleting}
         onConfirm={confirmDelete}
+      />
+      <IssueCertificatesDialog
+        open={issueOpen}
+        onOpenChange={setIssueOpen}
+        participantIds={issueParticipantIds}
       />
     </div>
   )
