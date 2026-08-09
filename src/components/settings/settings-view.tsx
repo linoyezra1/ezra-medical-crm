@@ -1,14 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, ChevronDown, ChevronUp, Eye, Save } from "lucide-react";
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Loader2,
+  Save,
+  Sheet,
+} from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { upsertCourseAsset } from "@/lib/actions";
+import { backupSalesToSheets, upsertCourseAsset } from "@/lib/actions";
 import {
   buildStructuredSummary,
   buildSummaryVars,
@@ -21,6 +29,7 @@ export function SettingsView() {
   const [openType, setOpenType] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, CourseCatalogItem>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [backingUpSales, setBackingUpSales] = useState(false);
 
   const courses = settings.courses;
 
@@ -91,6 +100,24 @@ export function SettingsView() {
     toast.success("תכני הקורס נשמרו");
   };
 
+  const runSalesBackup = async () => {
+    setBackingUpSales(true);
+    try {
+      const res = await backupSalesToSheets();
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(res.data.message || "גיבוי המכירות הושלם בהצלחה!");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "שגיאה בגיבוי המכירות",
+      );
+    } finally {
+      setBackingUpSales(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader title="הגדרות עסק" subtitle={settings.businessName} />
@@ -130,6 +157,29 @@ export function SettingsView() {
               />
             </div>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-border bg-card p-4">
+          <h2 className="mb-1 text-sm font-bold text-foreground">גיבויים</h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            גיבוי נתונים ל-Google Sheets. בהמשך יתווספו כאן גיבויים נוספים.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 w-full gap-2 rounded-xl"
+            disabled={backingUpSales}
+            onClick={() => void runSalesBackup()}
+          >
+            {backingUpSales ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sheet className="size-4" />
+            )}
+            {backingUpSales
+              ? "מגבה מכירות…"
+              : "📊 גיבוי מכירות ל-Google Sheets"}
+          </Button>
         </section>
 
         <section className="rounded-2xl border border-border bg-card p-4">

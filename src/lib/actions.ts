@@ -2328,3 +2328,40 @@ export async function getOrCreateAccountForLead(leadId: string, accountName: str
   revalidatePath(`/accounts/${account.id}`);
   return { ok: true as const, data: { accountId: account.id } };
 }
+
+/** גיבוי מלא של כל מכירות הציוד ל-Google Sheets (Apps Script) */
+export async function backupSalesToSheets(): Promise<
+  ActionResult<{ count: number; message: string }>
+> {
+  try {
+    const {
+      buildSalesBackupPayload,
+      postSalesBackupToSheets,
+    } = await import("@/lib/google-sheets/sales-backup");
+
+    const sales = await buildSalesBackupPayload();
+    if (!sales.length) {
+      return { ok: false, error: "אין מכירות לגיבוי" };
+    }
+
+    const result = await postSalesBackupToSheets(sales);
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+
+    return {
+      ok: true,
+      data: {
+        count: sales.length,
+        message: result.message || "גיבוי המכירות הושלם בהצלחה!",
+      },
+    };
+  } catch (err) {
+    console.error("[backupSalesToSheets]", err);
+    return {
+      ok: false,
+      error:
+        err instanceof Error ? err.message : "שגיאה בגיבוי המכירות ל-Google Sheets",
+    };
+  }
+}
