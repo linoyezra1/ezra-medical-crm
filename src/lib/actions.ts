@@ -14,6 +14,9 @@ import {
 import { formatInJerusalem, jerusalemLocalToUtcDate } from "@/lib/timezone";
 import {
   PAID_PAYMENT_STATUS,
+  TRAINING_SALE_PAID,
+  TRAINING_SALE_PENDING_PAYMENT,
+  TRAINING_SALE_UNPAID_TASK_TITLE,
   UNPAID_PAYMENT_TASK_PREFIX,
   isLeadPaid,
   unpaidPaymentTaskTitle,
@@ -1974,9 +1977,26 @@ export async function addTrainingSale(
   inventoryItemId: string,
   quantity: number,
   unitSellingPrice?: number,
+  opts?: {
+    paymentMethod?: string | null
+    unpaid?: boolean
+  },
 ): Promise<ActionResult<{ id: string }>> {
   const qty = Math.max(1, Math.floor(Number(quantity) || 0));
   if (!qty) return { ok: false, error: "כמות חייבת להיות לפחות 1" };
+
+  const unpaid = Boolean(opts?.unpaid);
+  const paymentMethod = opts?.paymentMethod?.trim() || null;
+  if (!unpaid && !paymentMethod) {
+    return { ok: false, error: "יש לבחור איך שולם" };
+  }
+  if (
+    unitSellingPrice == null ||
+    Number.isNaN(Number(unitSellingPrice)) ||
+    Number(unitSellingPrice) < 0
+  ) {
+    return { ok: false, error: "יש להזין סכום / עלות" };
+  }
 
   const item = await prisma.inventoryItem.findUnique({
     where: { id: inventoryItemId },
@@ -1985,10 +2005,7 @@ export async function addTrainingSale(
 
   const unitCost =
     Number(item.costPrice) || Number(item.sellingPrice) || 0;
-  const unitSell =
-    unitSellingPrice != null && !Number.isNaN(Number(unitSellingPrice))
-      ? Number(unitSellingPrice)
-      : unitCost;
+  const unitSell = Number(unitSellingPrice);
 
   // זכירת מחיר מכירה אחרון על הפריט (גם לתיקים — ללא ניכוי מלאי מהתיק)
   await prisma.inventoryItem.update({
@@ -2003,11 +2020,27 @@ export async function addTrainingSale(
       quantity: qty,
       unitSellingPrice: unitSell,
       unitCostPrice: unitCost,
+      paymentMethod: unpaid ? null : paymentMethod,
+      paymentStatus: unpaid
+        ? TRAINING_SALE_PENDING_PAYMENT
+        : TRAINING_SALE_PAID,
     },
   });
 
   // ניכוי מלאי: פריט בודד → +totalSold; תיק → +totalSold לרכיבים
   await applyInventorySaleDelta(inventoryItemId, qty, 1);
+
+  if (unpaid && leadId) {
+    await prisma.followUpTask.create({
+      data: {
+        leadId,
+        title: TRAINING_SALE_UNPAID_TASK_TITLE,
+        assignee: "מכירות",
+        notes: `מכירת ציוד #${created.id} — ממתין לתשלום`,
+      },
+    });
+    revalidatePath("/calendar");
+  }
 
   if (leadId) revalidatePath(`/leads/${leadId}`);
   revalidatePath("/dashboard");

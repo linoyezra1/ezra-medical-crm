@@ -200,7 +200,10 @@ export function AppProvider({
         );
         try {
           for (const p of added) {
-            const res = await addParticipant(id, p.name, p.idNumber);
+            const res = await addParticipant(id, p.name, p.idNumber, {
+              phone: p.phone,
+              email: p.email,
+            });
             if (!res.ok) toast.error(res.error);
           }
           for (const p of removed) {

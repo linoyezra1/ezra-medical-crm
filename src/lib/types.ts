@@ -123,6 +123,8 @@ export interface TrainingSale {
   quantity: number;
   unitSellingPrice: number;
   unitCostPrice: number;
+  paymentMethod?: string;
+  paymentStatus?: string;
   createdAt: string;
 }
 

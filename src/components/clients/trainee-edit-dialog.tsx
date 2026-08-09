@@ -80,18 +80,16 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-3">
-          <Field label="שם מלא">
+          <Field label="שם מלא (אופציונלי)">
             <Input
-              required
               value={form.fullName}
               onChange={(e) =>
                 setForm((f) => ({ ...f, fullName: e.target.value }))
               }
             />
           </Field>
-          <Field label='ת"ז'>
+          <Field label='ת"ז (אופציונלי)'>
             <Input
-              required
               value={form.idNumber}
               onChange={(e) =>
                 setForm((f) => ({ ...f, idNumber: e.target.value }))

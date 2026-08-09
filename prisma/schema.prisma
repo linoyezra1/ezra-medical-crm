@@ -265,6 +265,10 @@ model TrainingSale {
   quantity         Int           @default(1)
   unitSellingPrice Float
   unitCostPrice    Float
+  /// bit | bank_transfer | cash | paybox | check | other — null כשלא שולם
+  paymentMethod    String?
+  /// paid | PENDING_PAYMENT
+  paymentStatus    String        @default("paid")
   createdAt        DateTime      @default(now())
 
   @@index([leadId])

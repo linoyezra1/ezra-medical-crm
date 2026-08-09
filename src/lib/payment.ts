@@ -9,10 +9,18 @@ export const PAYMENT_METHODS = [
   { value: "bank_transfer", label: "העברה בנקאית" },
   { value: "cash", label: "מזומן" },
   { value: "paybox", label: "פייבוקס" },
+  { value: "check", label: "צ'ק" },
   { value: "other", label: "אחר" },
 ] as const
 
 export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number]["value"]
+
+/** מכירת ציוד בהדרכה — שולם / ממתין לתשלום */
+export const TRAINING_SALE_PAID = "paid"
+export const TRAINING_SALE_PENDING_PAYMENT = "PENDING_PAYMENT"
+
+export const TRAINING_SALE_UNPAID_TASK_TITLE =
+  "מעקב גביית תשלום עבור מכירה בהדרכה"
 
 export const PAYMENT_RECEIVERS = ["יצחק", "לינוי"] as const
 

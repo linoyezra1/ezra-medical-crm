@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db"
-import { formatCourseTypeLabel } from "@/lib/course-type"
+import { extractCourseHoursDigits } from "@/lib/course-type"
 import { PAID_PAYMENT_STATUS } from "@/lib/payment"
 import {
   getSheetTabName,
@@ -102,22 +102,12 @@ function trainingDateLabel(
   return ""
 }
 
-/** היקף שעות לגיליון — מספר בלבד (למשל "22") בלי המילה «שעות» ובלי רווחים */
+/** היקף שעות לגיליון — ספרות בלבד (למשל «רענון 22» → «22»), ללא ברירת מחדל 44 */
 function hoursScopeForSheet(
   courseType?: string | null,
   courseTypeOther?: string | null,
 ): string {
-  const label = formatCourseTypeLabel(courseType, { other: courseTypeOther })
-  const fromLabel = label.match(/([\d.]+)\s*שעות/)
-  if (fromLabel?.[1]) return fromLabel[1]
-
-  const raw = (courseType || "").trim()
-  const fromSlug =
-    raw.match(/(\d+(?:\.\d+)?)\s*[_-]?hours?/i) ||
-    raw.match(/hours[_-]?(\d+(?:\.\d+)?)/i)
-  if (fromSlug?.[1]) return fromSlug[1]
-
-  return ""
+  return extractCourseHoursDigits(courseType, courseTypeOther)
 }
 
 function participantRow(p: {

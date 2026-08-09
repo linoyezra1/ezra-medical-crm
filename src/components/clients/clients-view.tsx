@@ -11,7 +11,7 @@ export function ClientsView() {
     <div className="w-full max-w-full overflow-x-hidden">
       <PageHeader
         title="ניהול מודרכים"
-        subtitle={`${trainees.length} מודרכים במערכת`}
+        subtitle={`${trainees.length} מודרכים במערכת · סמנו שורות להפקת תעודות מרחוק`}
       />
       <div className="w-full max-w-full overflow-x-hidden p-4 md:p-5">
         <TraineesPanel />

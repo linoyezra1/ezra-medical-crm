@@ -47,6 +47,15 @@ export function TraineeAddDialog({ open, onOpenChange }: Props) {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (
+      !form.fullName.trim() &&
+      !form.idNumber.trim() &&
+      !form.phone.trim() &&
+      !form.email.trim()
+    ) {
+      toast.error("יש למלא לפחות שדה אחד")
+      return
+    }
     setSaving(true)
     const res = await createTraineeManual({
       fullName: form.fullName,
@@ -85,9 +94,11 @@ export function TraineeAddDialog({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-3">
-          <Field label="שם מלא">
+          <p className="text-[11px] text-muted-foreground">
+            כל השדות אופציונליים — מספיק למלא שדה אחד
+          </p>
+          <Field label="שם מלא (אופציונלי)">
             <Input
-              required
               value={form.fullName}
               onChange={(e) =>
                 setForm((f) => ({ ...f, fullName: e.target.value }))
@@ -95,9 +106,8 @@ export function TraineeAddDialog({ open, onOpenChange }: Props) {
               placeholder="שם מלא"
             />
           </Field>
-          <Field label='ת"ז'>
+          <Field label='ת"ז (אופציונלי)'>
             <Input
-              required
               value={form.idNumber}
               onChange={(e) =>
                 setForm((f) => ({ ...f, idNumber: e.target.value }))
@@ -108,7 +118,7 @@ export function TraineeAddDialog({ open, onOpenChange }: Props) {
               className="text-right"
             />
           </Field>
-          <Field label="טלפון">
+          <Field label="טלפון (אופציונלי)">
             <Input
               value={form.phone}
               onChange={(e) =>
@@ -120,7 +130,7 @@ export function TraineeAddDialog({ open, onOpenChange }: Props) {
               className="text-right"
             />
           </Field>
-          <Field label="אימייל">
+          <Field label="אימייל (אופציונלי)">
             <Input
               value={form.email}
               onChange={(e) =>
@@ -132,20 +142,20 @@ export function TraineeAddDialog({ open, onOpenChange }: Props) {
               className="text-right"
             />
           </Field>
-          <Field label="שיוך להדרכה">
+          <Field label="שיוך להדרכה (אופציונלי)">
             <TrainingSelect
               value={form.leadId}
               onChange={(leadId) => setForm((f) => ({ ...f, leadId }))}
               optional
             />
           </Field>
-          <Field label="הערות">
+          <Field label="הערות (אופציונלי)">
             <Textarea
               value={form.notes}
               onChange={(e) =>
                 setForm((f) => ({ ...f, notes: e.target.value }))
               }
-              placeholder="הערות (אופציונלי)"
+              placeholder="הערות"
               rows={2}
             />
           </Field>

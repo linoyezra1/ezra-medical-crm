@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -23,11 +24,20 @@ import {
 } from "@/components/ui/select"
 import { addTrainingSale, deleteTrainingSale } from "@/lib/actions"
 import { formatCurrency } from "@/lib/helpers"
+import {
+  PAYMENT_METHODS,
+  TRAINING_SALE_PENDING_PAYMENT,
+} from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 
 function costOf(item: { costPrice: number; sellingPrice: number }) {
   return Number(item.costPrice) || Number(item.sellingPrice) || 0
+}
+
+function paymentMethodLabel(value?: string) {
+  if (!value) return "—"
+  return PAYMENT_METHODS.find((m) => m.value === value)?.label || value
 }
 
 export function TrainingSalesSection({
@@ -44,6 +54,8 @@ export function TrainingSalesSection({
   const [salePrice, setSalePrice] = useState("")
   const [itemId, setItemId] = useState<string>("")
   const [qty, setQty] = useState("1")
+  const [paymentMethod, setPaymentMethod] = useState<string>("bit")
+  const [unpaid, setUnpaid] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteSaleId, setDeleteSaleId] = useState<string | null>(null)
   const [deletingSale, setDeletingSale] = useState(false)
@@ -55,6 +67,11 @@ export function TrainingSalesSection({
         label: i.name?.trim() || "פריט ללא שם",
       })),
     [inventory],
+  )
+
+  const paymentItems = useMemo(
+    () => PAYMENT_METHODS.map((m) => ({ value: m.value, label: m.label })),
+    [],
   )
 
   const selected = inventory.find((i) => i.id === itemId)
@@ -81,6 +98,8 @@ export function TrainingSalesSection({
     setItemId("")
     setQty("1")
     setSalePrice("")
+    setPaymentMethod("bit")
+    setUnpaid(false)
   }
 
   const openModal = () => {
@@ -99,17 +118,26 @@ export function TrainingSalesSection({
     }
     const price = Number(salePrice)
     if (!salePrice.trim() || Number.isNaN(price) || price < 0) {
-      toast.error("יש להזין מחיר יחידה")
+      toast.error("יש להזין עלות / סכום")
+      return
+    }
+    if (!unpaid && !paymentMethod) {
+      toast.error("יש לבחור איך שולם")
       return
     }
     setSaving(true)
-    const res = await addTrainingSale(lead.id, itemId, qtyNum, price)
+    const res = await addTrainingSale(lead.id, itemId, qtyNum, price, {
+      unpaid,
+      paymentMethod: unpaid ? null : paymentMethod,
+    })
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
-    toast.success("המכירה נוספה")
+    toast.success(
+      unpaid ? "המכירה נוספה — נוצרה משימת מעקב גבייה" : "המכירה נוספה",
+    )
     setModalOpen(false)
     resetForm()
     refresh()
@@ -171,6 +199,7 @@ export function TrainingSalesSection({
                   <th className="px-3 py-2 font-semibold">פריט</th>
                   <th className="px-3 py-2 font-semibold">כמות</th>
                   <th className="px-3 py-2 font-semibold">מחיר יח׳</th>
+                  <th className="px-3 py-2 font-semibold">תשלום</th>
                   <th className="px-3 py-2 font-semibold">סה״כ</th>
                   <th className="w-10 px-2 py-2" />
                 </tr>
@@ -178,6 +207,8 @@ export function TrainingSalesSection({
               <tbody>
                 {sales.map((s) => {
                   const sale = s.unitSellingPrice * s.quantity
+                  const pending =
+                    s.paymentStatus === TRAINING_SALE_PENDING_PAYMENT
                   return (
                     <tr key={s.id} className="border-t border-border">
                       <td className="px-3 py-2.5 font-medium">
@@ -188,6 +219,15 @@ export function TrainingSalesSection({
                       </td>
                       <td className="px-3 py-2.5" dir="ltr">
                         {formatCurrency(s.unitSellingPrice)}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs">
+                        {pending ? (
+                          <span className="font-semibold text-amber-700">
+                            לא שולם
+                          </span>
+                        ) : (
+                          paymentMethodLabel(s.paymentMethod)
+                        )}
                       </td>
                       <td className="px-3 py-2.5 font-semibold" dir="ltr">
                         {formatCurrency(sale)}
@@ -276,7 +316,7 @@ export function TrainingSalesSection({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>מחיר יחידה (₪)</Label>
+                <Label>עלות / סכום (₪ ליחידה)</Label>
                 <Input
                   type="number"
                   min={0}
@@ -285,9 +325,44 @@ export function TrainingSalesSection({
                   placeholder="מחיר אחרון / ידני"
                   dir="ltr"
                   className="h-11 font-semibold"
+                  required
                 />
               </div>
             </div>
+
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
+              <Checkbox
+                checked={unpaid}
+                onCheckedChange={(v) => setUnpaid(Boolean(v))}
+              />
+              <span className="text-sm font-semibold">לא שולם</span>
+            </label>
+
+            {!unpaid ? (
+              <div className="space-y-1.5">
+                <Label>איך שולם</Label>
+                <Select
+                  items={paymentItems}
+                  value={paymentMethod || null}
+                  onValueChange={(v) => setPaymentMethod(v ?? "")}
+                >
+                  <SelectTrigger className="h-11 w-full">
+                    <SelectValue placeholder="בחרו אמצעי תשלום" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentItems.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                הסטטוס יסומן כממתין לתשלום וייווצר מעקב גבייה אוטומטי.
+              </p>
+            )}
 
             <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
               <p className="text-xs text-muted-foreground">סה״כ לתשלום</p>

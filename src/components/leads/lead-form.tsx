@@ -25,6 +25,7 @@ import {
   collectCourseTypeOptions,
   findCourseCatalog,
   formatLeadCourseType,
+  isAllowedCourseTypeValue,
   resolveCourseTypeForSave,
 } from "@/lib/course-type"
 import { ensureInstructor } from "@/lib/actions"
@@ -121,10 +122,10 @@ export function LeadForm({ existing }: Props) {
 
   const initialCourseLabel = existing
     ? formatLeadCourseType(existing, settings.courses)
-    : "44 שעות"
+    : "44"
   const initialCourseSelect =
     !existing
-      ? "44 שעות"
+      ? "44"
       : existing.courseType === "other" ||
           existing.courseType === COURSE_TYPE_OTHER ||
           !courseTypeOptions.includes(initialCourseLabel)
@@ -146,7 +147,7 @@ export function LeadForm({ existing }: Props) {
       email: "",
       status: "new",
       customerType: "new",
-      courseType: "44_hours",
+      courseType: "44",
       courseHours: settings.courses.find((c) => c.type === "44_hours")?.hours ?? 44,
       category: OTHER,
       pricingType: "global",
@@ -385,8 +386,18 @@ export function LeadForm({ existing }: Props) {
     const e: Record<string, boolean> = {}
     if (!form.name.trim()) e.name = true
     if (!form.phone.trim()) e.phone = true
-    if (courseTypeSelect === COURSE_TYPE_OTHER && !courseTypeOther.trim()) {
+    if (courseTypeSelect === COURSE_TYPE_OTHER) {
+      if (!courseTypeOther.trim()) {
+        e.courseTypeOther = true
+      } else if (!isAllowedCourseTypeValue(courseTypeOther)) {
+        e.courseTypeOther = true
+        toast.error(
+          "סוג קורס לא תקין — מספר, «רענון N», «התנהלות בטוחה» או «רענון עזרה ראשונה +התנהלות בטוחה»",
+        )
+      }
+    } else if (!isAllowedCourseTypeValue(courseTypeSelect)) {
       e.courseTypeOther = true
+      toast.error("סוג קורס לא תקין")
     }
     if (instructorSelect === OTHER && !instructorOther.trim()) {
       e.instructorOther = true
@@ -711,7 +722,7 @@ export function LeadForm({ existing }: Props) {
                     setCourseTypeOther(e.target.value)
                     set("courseTypeOther", e.target.value)
                   }}
-                  placeholder='לדוגמה: קורס מגישי עזרה ראשונה 15 שעות'
+                  placeholder='לדוגמה: 22, רענון 8, התנהלות בטוחה'
                 />
               </Field>
             )}

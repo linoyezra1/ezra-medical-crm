@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   BadgeCheck,
   CheckCheck,
   FileCheck,
   GraduationCap,
   MessageCircle,
+  MoreVertical,
   Pencil,
   Phone,
   RefreshCw,
@@ -66,6 +67,156 @@ type LmsCredentialMeta = {
   username: string
   password: string
   loginUrl?: string
+}
+
+/** תפריט פעולות בשורת משתתף — מובייל בלבד; נסגר בלחיצה על פעולה / מחוץ לתפריט */
+function ParticipantMobileKebab({
+  p,
+  lmsBusy,
+  onWhatsApp,
+  onToggleAttended,
+  onCreateLms,
+  onEdit,
+  onRemove,
+}: {
+  p: Participant
+  lmsBusy: string | null
+  onWhatsApp: () => void
+  onToggleAttended: () => void
+  onCreateLms: () => void
+  onEdit: () => void
+  onRemove: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const busy = lmsBusy === p.id
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  const run = (fn: () => void) => {
+    setOpen(false)
+    fn()
+  }
+
+  const itemClass =
+    "flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-right text-sm hover:bg-secondary disabled:opacity-50"
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label="פעולות משתתף"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setOpen((v) => !v)
+        }}
+      >
+        <MoreVertical className="size-5" />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute end-0 top-full z-40 mt-1 min-w-[220px] overflow-hidden rounded-xl border border-border bg-popover py-1 shadow-lg"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {p.phone?.trim() ? (
+            <a
+              role="menuitem"
+              href={`tel:${p.phone}`}
+              className={itemClass}
+              onClick={() => setOpen(false)}
+            >
+              <Phone className="size-4 shrink-0 text-primary" />
+              חיוג
+            </a>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass}
+            onClick={() => run(onWhatsApp)}
+          >
+            <MessageCircle className="size-4 shrink-0 text-emerald-700" />
+            וואטסאפ
+          </button>
+          {p.certificateUrl?.trim() ? (
+            <a
+              role="menuitem"
+              href={p.certificateUrl.trim()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={itemClass}
+              onClick={() => setOpen(false)}
+            >
+              <FileCheck className="size-4 shrink-0 text-amber-500" />
+              תעודה
+            </a>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass}
+            onClick={() => run(onToggleAttended)}
+          >
+            <CheckCheck
+              className={cn(
+                "size-4 shrink-0",
+                p.attended ? "text-emerald-700" : "text-muted-foreground",
+              )}
+            />
+            {p.attended ? "בטל נוכחות" : "סמן נוכחות"}
+          </button>
+          {!p.hasLmsAccess ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={Boolean(lmsBusy)}
+              className={itemClass}
+              onClick={() => run(onCreateLms)}
+            >
+              {busy ? (
+                <RefreshCw className="size-4 shrink-0 animate-spin" />
+              ) : (
+                <GraduationCap className="size-4 shrink-0 text-primary" />
+              )}
+              פתח משתמש LMS
+            </button>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass}
+            onClick={() => run(onEdit)}
+          >
+            <Pencil className="size-4 shrink-0 text-muted-foreground" />
+            עריכה
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={cn(itemClass, "text-destructive")}
+            onClick={() => run(onRemove)}
+          >
+            <Trash2 className="size-4 shrink-0" />
+            מחיקה
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 export function ParticipantsSection({ lead }: { lead: Lead }) {
@@ -573,7 +724,6 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
           <ul className="space-y-2 md:hidden">
             {filtered.map((p) => {
               const open = expandedId === p.id
-              const busy = lmsBusy === p.id
               return (
                 <li
                   key={p.id}
@@ -611,85 +761,17 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       </p>
                     </button>
 
-                    {p.phone?.trim() ? (
-                      <a
-                        href={`tel:${p.phone}`}
-                        className="flex size-8 items-center justify-center rounded-lg text-primary"
-                        aria-label="חיוג"
-                        title="חיוג"
-                      >
-                        <Phone className="size-3.5" />
-                      </a>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => openWhatsApp(p)}
-                      className="flex size-8 items-center justify-center rounded-lg text-emerald-700"
-                      aria-label="וואטסאפ"
-                    >
-                      <MessageCircle className="size-3.5" />
-                    </button>
-
-                    {p.certificateUrl?.trim() ? (
-                      <a
-                        href={p.certificateUrl.trim()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex size-8 items-center justify-center rounded-lg text-amber-500 hover:bg-amber-50 hover:text-amber-600"
-                        aria-label="תעודת PDF"
-                        title="פתח תעודה"
-                      >
-                        <FileCheck className="size-3.5" />
-                      </a>
-                    ) : null}
-
-                    <button
-                      type="button"
-                      onClick={() => void toggleAttended(p, !p.attended)}
-                      className={cn(
-                        "flex size-8 items-center justify-center rounded-lg",
-                        p.attended
-                          ? "text-emerald-700"
-                          : "text-muted-foreground",
-                      )}
-                      aria-label="נוכחות"
-                      title="סימון נוכחות"
-                    >
-                      <CheckCheck className="size-3.5" />
-                    </button>
-
-                    {!p.hasLmsAccess && (
-                      <button
-                        type="button"
-                        disabled={Boolean(lmsBusy)}
-                        onClick={() => void createLmsUsers([p.id])}
-                        className="flex size-8 items-center justify-center rounded-lg text-primary disabled:opacity-50"
-                        aria-label="פתח משתמש LMS"
-                      >
-                        {busy ? (
-                          <RefreshCw className="size-3.5 animate-spin" />
-                        ) : (
-                          <GraduationCap className="size-3.5" />
-                        )}
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => openEdit(p)}
-                      className="flex size-8 items-center justify-center rounded-lg text-muted-foreground"
-                      aria-label="עריכה"
-                    >
-                      <Pencil className="size-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void remove(p)}
-                      className="flex size-8 items-center justify-center rounded-lg text-destructive"
-                      aria-label="מחק"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
+                    <ParticipantMobileKebab
+                      p={p}
+                      lmsBusy={lmsBusy}
+                      onWhatsApp={() => openWhatsApp(p)}
+                      onToggleAttended={() =>
+                        void toggleAttended(p, !p.attended)
+                      }
+                      onCreateLms={() => void createLmsUsers([p.id])}
+                      onEdit={() => openEdit(p)}
+                      onRemove={() => void remove(p)}
+                    />
                   </div>
                   {open && (
                     <div className="space-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">

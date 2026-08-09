@@ -28,20 +28,34 @@ export function ParticipantsDialog({
   const { updateLead } = useApp()
   const [name, setName] = useState("")
   const [idNumber, setIdNumber] = useState("")
+  const [phone, setPhone] = useState("")
+  const [email, setEmail] = useState("")
 
   const add = () => {
-    if (!name.trim() || !idNumber.trim()) {
-      toast.error("יש להזין שם ותעודת זהות")
+    const n = name.trim()
+    const id = idNumber.trim()
+    const ph = phone.trim()
+    const em = email.trim()
+    if (!n && !id && !ph && !em) {
+      toast.error("יש למלא לפחות שדה אחד")
       return
     }
     updateLead(lead.id, {
       participants: [
         ...lead.participants,
-        { id: uid("p"), name: name.trim(), idNumber: idNumber.trim() },
+        {
+          id: uid("p"),
+          name: n,
+          idNumber: id,
+          phone: ph || undefined,
+          email: em || undefined,
+        },
       ],
     })
     setName("")
     setIdNumber("")
+    setPhone("")
+    setEmail("")
   }
 
   const remove = (id: string) => {
@@ -66,9 +80,12 @@ export function ParticipantsDialog({
               className="flex items-center justify-between gap-2 rounded-xl border border-border bg-secondary/40 p-2.5"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{p.name}</p>
+                <p className="truncate text-sm font-medium">
+                  {p.name || p.phone || p.idNumber || "ללא פרטים"}
+                </p>
                 <p className="text-xs text-muted-foreground" dir="ltr">
-                  {p.idNumber}
+                  {[p.idNumber, p.phone, p.email].filter(Boolean).join(" · ") ||
+                    "—"}
                 </p>
               </div>
               <button
@@ -88,28 +105,64 @@ export function ParticipantsDialog({
           )}
         </div>
 
-        <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 border-t border-border pt-3">
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">שם</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="שם מלא"
-            />
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-[11px] text-muted-foreground">
+            כל השדות אופציונליים — מספיק למלא שדה אחד
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                שם (אופציונלי)
+              </label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="שם מלא"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                ת״ז (אופציונלי)
+              </label>
+              <Input
+                value={idNumber}
+                onChange={(e) => setIdNumber(e.target.value)}
+                placeholder="000000000"
+                inputMode="numeric"
+                dir="ltr"
+                className="text-right"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                טלפון (אופציונלי)
+              </label>
+              <Input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="050-0000000"
+                type="tel"
+                dir="ltr"
+                className="text-right"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                אימייל (אופציונלי)
+              </label>
+              <Input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                type="email"
+                dir="ltr"
+                className="text-right"
+              />
+            </div>
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">ת״ז</label>
-            <Input
-              value={idNumber}
-              onChange={(e) => setIdNumber(e.target.value)}
-              placeholder="000000000"
-              inputMode="numeric"
-              dir="ltr"
-              className="text-right"
-            />
-          </div>
-          <Button size="icon" onClick={add} aria-label="הוסף משתתף">
-            <Plus className="size-5" />
+          <Button className="w-full gap-2" onClick={add}>
+            <Plus className="size-4" />
+            הוסף משתתף
           </Button>
         </div>
 

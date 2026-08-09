@@ -660,12 +660,12 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
             }}
           >
             <div className="field">
-              <label>שם מלא</label>
-              <input value={partName} onChange={(e) => setPartName(e.target.value)} required />
+              <label>שם מלא (אופציונלי)</label>
+              <input value={partName} onChange={(e) => setPartName(e.target.value)} />
             </div>
             <div className="field">
-              <label>ת.ז.</label>
-              <input value={partId} onChange={(e) => setPartId(e.target.value)} required dir="ltr" />
+              <label>ת.ז. (אופציונלי)</label>
+              <input value={partId} onChange={(e) => setPartId(e.target.value)} dir="ltr" />
             </div>
             <button type="submit" className="btn btn-primary self-end" disabled={pending}>
               הוסף

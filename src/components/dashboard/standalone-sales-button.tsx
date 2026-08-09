@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ShoppingBag } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { addTrainingSale } from "@/lib/actions"
 import { formatCurrency } from "@/lib/helpers"
+import { PAYMENT_METHODS } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 
 /** מכירה עצמאית מהדשבורד — ללא קישור להדרכה */
@@ -30,6 +32,8 @@ export function StandaloneSalesButton() {
   const [itemId, setItemId] = useState("")
   const [qty, setQty] = useState("1")
   const [salePrice, setSalePrice] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState("bit")
+  const [unpaid, setUnpaid] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const selectItems = useMemo(
@@ -39,6 +43,11 @@ export function StandaloneSalesButton() {
         label: i.name?.trim() || "פריט ללא שם",
       })),
     [inventory],
+  )
+
+  const paymentItems = useMemo(
+    () => PAYMENT_METHODS.map((m) => ({ value: m.value, label: m.label })),
+    [],
   )
 
   const selected = inventory.find((i) => i.id === itemId)
@@ -56,6 +65,14 @@ export function StandaloneSalesButton() {
     ? Number(selected.costPrice) || Number(selected.sellingPrice) || 0
     : 0
 
+  const reset = () => {
+    setItemId("")
+    setQty("1")
+    setSalePrice("")
+    setPaymentMethod("bit")
+    setUnpaid(false)
+  }
+
   const add = async () => {
     if (!itemId) {
       toast.error("יש לבחור פריט")
@@ -63,11 +80,18 @@ export function StandaloneSalesButton() {
     }
     const price = Number(salePrice)
     if (!salePrice.trim() || Number.isNaN(price) || price < 0) {
-      toast.error("יש להזין מחיר מכירה")
+      toast.error("יש להזין עלות / סכום")
+      return
+    }
+    if (!unpaid && !paymentMethod) {
+      toast.error("יש לבחור איך שולם")
       return
     }
     setSaving(true)
-    const res = await addTrainingSale(null, itemId, qtyNum, price)
+    const res = await addTrainingSale(null, itemId, qtyNum, price, {
+      unpaid,
+      paymentMethod: unpaid ? null : paymentMethod,
+    })
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
@@ -75,9 +99,7 @@ export function StandaloneSalesButton() {
     }
     toast.success("המכירה נרשמה")
     setOpen(false)
-    setItemId("")
-    setQty("1")
-    setSalePrice("")
+    reset()
     refresh()
   }
 
@@ -92,7 +114,13 @@ export function StandaloneSalesButton() {
         מכירות
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o)
+          if (!o) reset()
+        }}
+      >
         <DialogContent className="max-w-[calc(100%-2rem)] gap-5 rounded-2xl p-5 sm:max-w-md">
           <DialogHeader className="text-right">
             <DialogTitle>מכירת ציוד</DialogTitle>
@@ -130,7 +158,7 @@ export function StandaloneSalesButton() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>מחיר יחידה</Label>
+                <Label>עלות / סכום</Label>
                 <Input
                   type="number"
                   min={0}
@@ -138,6 +166,7 @@ export function StandaloneSalesButton() {
                   onChange={(e) => setSalePrice(e.target.value)}
                   dir="ltr"
                   className="h-11"
+                  required
                 />
               </div>
             </div>
@@ -146,6 +175,37 @@ export function StandaloneSalesButton() {
                 עלות מלאי: {formatCurrency(cost)} ליחידה
               </p>
             )}
+
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
+              <Checkbox
+                checked={unpaid}
+                onCheckedChange={(v) => setUnpaid(Boolean(v))}
+              />
+              <span className="text-sm font-semibold">לא שולם</span>
+            </label>
+
+            {!unpaid ? (
+              <div className="space-y-1.5">
+                <Label>איך שולם</Label>
+                <Select
+                  items={paymentItems}
+                  value={paymentMethod || null}
+                  onValueChange={(v) => setPaymentMethod(v ?? "")}
+                >
+                  <SelectTrigger className="h-11 w-full">
+                    <SelectValue placeholder="בחרו אמצעי תשלום" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentItems.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
             <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
               <p className="text-xs text-muted-foreground">סה״כ לתשלום</p>
               <p className="text-xl font-bold text-primary">

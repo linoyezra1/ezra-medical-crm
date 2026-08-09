@@ -27,6 +27,10 @@ const SLUG_TO_LABEL: Record<string, string> = {
 
 /** תווית קצרה → מפתח קנוני (לקישור חוברות/נכסים) */
 const LABEL_TO_SLUG: Record<string, string> = {
+  "8": "8_hours",
+  "22": "22_hours",
+  "44": "44_hours",
+  "60": "60_hours",
   "44 שעות": "44_hours",
   "22 שעות": "22_hours",
   "60 שעות": "60_hours",
@@ -38,13 +42,78 @@ const LABEL_TO_SLUG: Record<string, string> = {
 
 /** תוויות ברירת מחדל שתמיד יופיעו ברשימה */
 export const DEFAULT_COURSE_TYPE_LABELS = [
+  "8",
+  "22",
+  "44",
+  "60",
+  "רענון 8",
+  "רענון 22",
+  "רענון 44",
+  "התנהלות בטוחה",
+  "רענון עזרה ראשונה +התנהלות בטוחה",
+  // תאימות לאחור לתצוגה / קטלוג קיים
   "22 שעות",
   "44 שעות",
   "60 שעות",
-  "חובשים",
-  "החייאת תינוקות",
-  "החייאת תינוקות (גן)",
 ] as const
+
+/**
+ * אימות סוג קורס — רק:
+ * מספר (22 / 44 / 8), «רענון N», «התנהלות בטוחה»,
+ * או «רענון עזרה ראשונה +התנהלות בטוחה» (+ פורמטי שעות/סלג קיימים).
+ */
+export function isAllowedCourseTypeValue(raw: string): boolean {
+  const v = raw.trim().replace(/\s+/g, " ")
+  if (!v) return false
+  if (/^\d+(\.\d+)?$/.test(v)) return true
+  if (/^\d+(\.\d+)?\s*שעות$/.test(v)) return true
+  if (/^\d+_hours$/i.test(v)) return true
+  if (/^hours[_-]?\d+(\.\d+)?$/i.test(v)) return true
+  if (/^רענון\s+\d+(\.\d+)?$/.test(v)) return true
+  if (v === "התנהלות בטוחה") return true
+  if (/^רענון עזרה ראשונה\s*\+\s*התנהלות בטוחה$/.test(v)) return true
+  return false
+}
+
+/**
+ * חילוץ ספרות היקף שעות בלבד מתוך סוג קורס (למשל «רענון 22» → «22»).
+ * ללא ברירת מחדל קשיחה (לא 44).
+ */
+export function extractCourseHoursDigits(
+  courseType?: string | null,
+  courseTypeOther?: string | null,
+): string {
+  const label = formatCourseTypeLabel(courseType, { other: courseTypeOther })
+  const sources = [label, (courseTypeOther || "").trim(), (courseType || "").trim()]
+
+  for (const s of sources) {
+    if (!s) continue
+    const normalized = s.replace(/\s+/g, " ").trim()
+
+    if (
+      normalized === "התנהלות בטוחה" ||
+      /^רענון עזרה ראשונה\s*\+\s*התנהלות בטוחה$/.test(normalized)
+    ) {
+      continue
+    }
+
+    const refresh = normalized.match(/רענון\s+(\d+(?:\.\d+)?)/)
+    if (refresh?.[1]) return refresh[1]
+
+    const hoursWord = normalized.match(/(\d+(?:\.\d+)?)\s*שעות/)
+    if (hoursWord?.[1]) return hoursWord[1]
+
+    if (/^\d+(\.\d+)?$/.test(normalized)) return normalized
+
+    const slug =
+      normalized.match(/(\d+(?:\.\d+)?)\s*[_-]?hours?/i) ||
+      normalized.match(/hours[_-]?(\d+(?:\.\d+)?)/i)
+    if (slug?.[1]) return slug[1]
+  }
+
+  const anyDigits = label.match(/(\d+(?:\.\d+)?)/)
+  return anyDigits?.[1] || ""
+}
 
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, "_")

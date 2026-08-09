@@ -148,6 +148,8 @@ export function mapLead(db: DbLeadFull): Lead {
         quantity: s.quantity,
         unitSellingPrice: s.unitSellingPrice,
         unitCostPrice: s.unitCostPrice,
+        paymentMethod: s.paymentMethod || undefined,
+        paymentStatus: s.paymentStatus || undefined,
         createdAt: s.createdAt.toISOString(),
       }),
     ),
@@ -308,11 +310,15 @@ export function mapSettings(
 
 type DbTraineeFull = DbTrainee & {
   participants?: (Participant & {
+    certificateUrl?: string | null
     lead?: Pick<DbLead, "id" | "fullName" | "courseType" | "courseTypeOther"> | null;
   })[];
 };
 
 export function mapTrainee(db: DbTraineeFull): Trainee {
+  const fromParticipant = (db.participants || []).find(
+    (p) => p.certificateUrl?.trim(),
+  )?.certificateUrl
   return {
     id: db.id,
     fullName: db.fullName,
@@ -321,7 +327,7 @@ export function mapTrainee(db: DbTraineeFull): Trainee {
     email: db.email || undefined,
     certificateEmailSent: Boolean(db.certificateEmailSent),
     certificateCardPrinted: Boolean(db.certificateCardPrinted),
-    certificateUrl: db.certificateUrl || undefined,
+    certificateUrl: db.certificateUrl || fromParticipant || undefined,
     notes: db.notes || undefined,
     trainings: (db.participants || []).map((p) => ({
       participantId: p.id,
