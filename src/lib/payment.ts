@@ -19,8 +19,36 @@ export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number]["value"]
 export const TRAINING_SALE_PAID = "paid"
 export const TRAINING_SALE_PENDING_PAYMENT = "PENDING_PAYMENT"
 
+/** כותרת בסיס (תאימות לאחור) */
 export const TRAINING_SALE_UNPAID_TASK_TITLE =
   "מעקב גביית תשלום עבור מכירה בהדרכה"
+
+export function unpaidTrainingSaleTaskTitle(
+  productName: string,
+  totalAmount: number,
+): string {
+  const name = productName.trim() || "פריט"
+  const amount = Number.isFinite(totalAmount) ? totalAmount : 0
+  return `מעקב גביית תשלום - ${name} (${amount} ₪)`
+}
+
+export function unpaidTrainingSaleTaskNotes(opts: {
+  productName: string
+  totalAmount: number
+  trainingName: string
+  clientName: string
+}): string {
+  const product = opts.productName.trim() || "פריט"
+  const amount = Number.isFinite(opts.totalAmount) ? opts.totalAmount : 0
+  const training = opts.trainingName.trim() || "—"
+  const client = opts.clientName.trim() || "—"
+  return [
+    `מה נמכר (Product/Item): ${product}`,
+    `סכום לתשלום (Amount Pending): ${amount} ₪`,
+    `שם ההדרכה (Training/Course Name): ${training}`,
+    `שם הלקוח (Client/Lead Name): ${client}`,
+  ].join("\n")
+}
 
 export const PAYMENT_RECEIVERS = ["יצחק", "לינוי"] as const
 

@@ -16,7 +16,8 @@ import {
   PAID_PAYMENT_STATUS,
   TRAINING_SALE_PAID,
   TRAINING_SALE_PENDING_PAYMENT,
-  TRAINING_SALE_UNPAID_TASK_TITLE,
+  unpaidTrainingSaleTaskNotes,
+  unpaidTrainingSaleTaskTitle,
   UNPAID_PAYMENT_TASK_PREFIX,
   isLeadPaid,
   unpaidPaymentTaskTitle,
@@ -2031,12 +2032,32 @@ export async function addTrainingSale(
   await applyInventorySaleDelta(inventoryItemId, qty, 1);
 
   if (unpaid && leadId) {
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: {
+        fullName: true,
+        courseType: true,
+        courseTypeOther: true,
+      },
+    });
+    const productName = item.name?.trim() || "פריט";
+    const totalAmount = unitSell * qty;
+    const trainingName = formatCourseTypeLabel(lead?.courseType, {
+      other: lead?.courseTypeOther,
+    });
+    const clientName = lead?.fullName?.trim() || "";
+
     await prisma.followUpTask.create({
       data: {
         leadId,
-        title: TRAINING_SALE_UNPAID_TASK_TITLE,
+        title: unpaidTrainingSaleTaskTitle(productName, totalAmount),
         assignee: "מכירות",
-        notes: `מכירת ציוד #${created.id} — ממתין לתשלום`,
+        notes: unpaidTrainingSaleTaskNotes({
+          productName,
+          totalAmount,
+          trainingName,
+          clientName,
+        }),
       },
     });
     revalidatePath("/calendar");

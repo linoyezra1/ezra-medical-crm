@@ -62,6 +62,9 @@ export const DEFAULT_COURSE_TYPE_LABELS = [
  * מספר (22 / 44 / 8), «רענון N», «התנהלות בטוחה»,
  * או «רענון עזרה ראשונה +התנהלות בטוחה» (+ פורמטי שעות/סלג קיימים).
  */
+export const COURSE_TYPE_FORMAT_ERROR =
+  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים הבאים: מספר בלבד (למשל: 22), 'רענון' + מספר (למשל: רענון 22), 'התנהלות בטוחה', או 'רענון עזרה ראשונה +התנהלות בטוחה'."
+
 export function isAllowedCourseTypeValue(raw: string): boolean {
   const v = raw.trim().replace(/\s+/g, " ")
   if (!v) return false

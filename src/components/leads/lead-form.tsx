@@ -21,6 +21,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  COURSE_TYPE_FORMAT_ERROR,
   COURSE_TYPE_OTHER,
   collectCourseTypeOptions,
   findCourseCatalog,
@@ -391,13 +392,11 @@ export function LeadForm({ existing }: Props) {
         e.courseTypeOther = true
       } else if (!isAllowedCourseTypeValue(courseTypeOther)) {
         e.courseTypeOther = true
-        toast.error(
-          "סוג קורס לא תקין — מספר, «רענון N», «התנהלות בטוחה» או «רענון עזרה ראשונה +התנהלות בטוחה»",
-        )
+        toast.error(COURSE_TYPE_FORMAT_ERROR)
       }
     } else if (!isAllowedCourseTypeValue(courseTypeSelect)) {
       e.courseTypeOther = true
-      toast.error("סוג קורס לא תקין")
+      toast.error(COURSE_TYPE_FORMAT_ERROR)
     }
     if (instructorSelect === OTHER && !instructorOther.trim()) {
       e.instructorOther = true
@@ -678,7 +677,16 @@ export function LeadForm({ existing }: Props) {
               sectionRefs.current.course = el
             }}
             className="mt-8 scroll-mt-28 space-y-4 overflow-visible border-t border-border pt-6"
-          >            <Field label="סוג קורס" error={errors.courseTypeOther}>
+          >            <Field
+              label="סוג קורס"
+              error={errors.courseTypeOther}
+              errorMessage={
+                errors.courseTypeOther &&
+                courseTypeSelect !== COURSE_TYPE_OTHER
+                  ? COURSE_TYPE_FORMAT_ERROR
+                  : undefined
+              }
+            >
               <Select
                 value={courseTypeSelect}
                 onValueChange={(v) => {
@@ -715,7 +723,18 @@ export function LeadForm({ existing }: Props) {
               </Select>
             </Field>
             {courseTypeSelect === COURSE_TYPE_OTHER && (
-              <Field label="סוג קורס חדש" required error={errors.courseTypeOther}>
+              <Field
+                label="סוג קורס חדש"
+                required
+                error={errors.courseTypeOther}
+                errorMessage={
+                  errors.courseTypeOther && courseTypeOther.trim()
+                    ? COURSE_TYPE_FORMAT_ERROR
+                    : errors.courseTypeOther
+                      ? "שדה חובה"
+                      : undefined
+                }
+              >
                 <Input
                   value={courseTypeOther}
                   onChange={(e) => {
@@ -1269,12 +1288,14 @@ function Field({
   label,
   children,
   error,
+  errorMessage,
   required,
   className,
 }: {
   label: string
   children: React.ReactNode
   error?: boolean
+  errorMessage?: string
   required?: boolean
   className?: string
 }) {
@@ -1287,6 +1308,11 @@ function Field({
       <div className={error ? "[&_input]:border-destructive [&_input]:ring-destructive/20" : ""}>
         {children}
       </div>
+      {error && errorMessage ? (
+        <p className="mt-1.5 text-xs leading-relaxed text-destructive">
+          {errorMessage}
+        </p>
+      ) : null}
     </div>
   )
 }

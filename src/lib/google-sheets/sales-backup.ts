@@ -130,10 +130,15 @@ export async function postSalesBackupToSheets(
   }
 
   try {
+    const pin =
+      process.env.CERTIFICATE_ISSUANCE_PIN?.trim() ||
+      process.env.SALES_BACKUP_PIN?.trim() ||
+      "214215444"
+
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sales }),
+      body: JSON.stringify({ pin, sales }),
       redirect: "follow",
     })
     const text = await res.text()

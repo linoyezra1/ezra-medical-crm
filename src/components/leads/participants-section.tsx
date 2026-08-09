@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   BadgeCheck,
   CheckCheck,
@@ -29,6 +29,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import {
   fetchLeadParticipants,
   removeParticipant,
@@ -69,7 +75,7 @@ type LmsCredentialMeta = {
   loginUrl?: string
 }
 
-/** תפריט פעולות בשורת משתתף — מובייל בלבד; נסגר בלחיצה על פעולה / מחוץ לתפריט */
+/** תפריט פעולות בשורת משתתף — מובייל: Bottom Sheet כדי שלא ייחתך מהמסך */
 function ParticipantMobileKebab({
   p,
   lmsBusy,
@@ -88,134 +94,120 @@ function ParticipantMobileKebab({
   onRemove: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   const busy = lmsBusy === p.id
-
-  useEffect(() => {
-    if (!open) return
-    const onDoc = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", onDoc)
-    return () => document.removeEventListener("mousedown", onDoc)
-  }, [open])
 
   const run = (fn: () => void) => {
     setOpen(false)
-    fn()
+    // defer so sheet closes before dialogs / navigation
+    window.setTimeout(fn, 0)
   }
 
-  const itemClass =
-    "flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-right text-sm hover:bg-secondary disabled:opacity-50"
-
   return (
-    <div ref={menuRef} className="relative shrink-0">
+    <>
       <button
         type="button"
         aria-label="פעולות משתתף"
         aria-expanded={open}
-        aria-haspopup="menu"
-        className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+        aria-haspopup="dialog"
+        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
         onClick={(e) => {
           e.preventDefault()
           e.stopPropagation()
-          setOpen((v) => !v)
+          setOpen(true)
         }}
       >
         <MoreVertical className="size-5" />
       </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute end-0 top-full z-40 mt-1 min-w-[220px] overflow-hidden rounded-xl border border-border bg-popover py-1 shadow-lg"
-          onClick={(e) => e.stopPropagation()}
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent
+          side="bottom"
+          className="max-h-[min(85dvh,560px)] gap-0 rounded-t-3xl p-0 md:hidden"
         >
-          {p.phone?.trim() ? (
-            <a
-              role="menuitem"
-              href={`tel:${p.phone}`}
-              className={itemClass}
-              onClick={() => setOpen(false)}
-            >
-              <Phone className="size-4 shrink-0 text-primary" />
-              חיוג
-            </a>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            className={itemClass}
-            onClick={() => run(onWhatsApp)}
-          >
-            <MessageCircle className="size-4 shrink-0 text-emerald-700" />
-            וואטסאפ
-          </button>
-          {p.certificateUrl?.trim() ? (
-            <a
-              role="menuitem"
-              href={p.certificateUrl.trim()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={itemClass}
-              onClick={() => setOpen(false)}
-            >
-              <FileCheck className="size-4 shrink-0 text-amber-500" />
-              תעודה
-            </a>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            className={itemClass}
-            onClick={() => run(onToggleAttended)}
-          >
-            <CheckCheck
-              className={cn(
-                "size-4 shrink-0",
-                p.attended ? "text-emerald-700" : "text-muted-foreground",
-              )}
-            />
-            {p.attended ? "בטל נוכחות" : "סמן נוכחות"}
-          </button>
-          {!p.hasLmsAccess ? (
+          <SheetHeader className="border-b border-border px-4 py-3 text-right">
+            <SheetTitle className="text-base">
+              פעולות · {p.name}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="flex max-h-[min(70dvh,480px)] flex-col gap-1 overflow-y-auto overscroll-contain p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {p.phone?.trim() ? (
+              <a
+                href={`tel:${p.phone}`}
+                className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-base hover:bg-secondary"
+                onClick={() => setOpen(false)}
+              >
+                <Phone className="size-5 shrink-0 text-primary" />
+                חיוג
+              </a>
+            ) : null}
             <button
               type="button"
-              role="menuitem"
-              disabled={Boolean(lmsBusy)}
-              className={itemClass}
-              onClick={() => run(onCreateLms)}
+              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary"
+              onClick={() => run(onWhatsApp)}
             >
-              {busy ? (
-                <RefreshCw className="size-4 shrink-0 animate-spin" />
-              ) : (
-                <GraduationCap className="size-4 shrink-0 text-primary" />
-              )}
-              פתח משתמש LMS
+              <MessageCircle className="size-5 shrink-0 text-emerald-700" />
+              וואטסאפ
             </button>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            className={itemClass}
-            onClick={() => run(onEdit)}
-          >
-            <Pencil className="size-4 shrink-0 text-muted-foreground" />
-            עריכה
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={cn(itemClass, "text-destructive")}
-            onClick={() => run(onRemove)}
-          >
-            <Trash2 className="size-4 shrink-0" />
-            מחיקה
-          </button>
-        </div>
-      ) : null}
-    </div>
+            {p.certificateUrl?.trim() ? (
+              <a
+                href={p.certificateUrl.trim()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-base hover:bg-secondary"
+                onClick={() => setOpen(false)}
+              >
+                <FileCheck className="size-5 shrink-0 text-amber-500" />
+                תעודה
+              </a>
+            ) : null}
+            <button
+              type="button"
+              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary"
+              onClick={() => run(onToggleAttended)}
+            >
+              <CheckCheck
+                className={cn(
+                  "size-5 shrink-0",
+                  p.attended ? "text-emerald-700" : "text-muted-foreground",
+                )}
+              />
+              {p.attended ? "בטל נוכחות" : "סמן נוכחות"}
+            </button>
+            {!p.hasLmsAccess ? (
+              <button
+                type="button"
+                disabled={Boolean(lmsBusy)}
+                className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary disabled:opacity-50"
+                onClick={() => run(onCreateLms)}
+              >
+                {busy ? (
+                  <RefreshCw className="size-5 shrink-0 animate-spin" />
+                ) : (
+                  <GraduationCap className="size-5 shrink-0 text-primary" />
+                )}
+                פתח משתמש LMS
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary"
+              onClick={() => run(onEdit)}
+            >
+              <Pencil className="size-5 shrink-0 text-muted-foreground" />
+              עריכה
+            </button>
+            <button
+              type="button"
+              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base text-destructive hover:bg-destructive/10"
+              onClick={() => run(onRemove)}
+            >
+              <Trash2 className="size-5 shrink-0" />
+              מחיקה
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }
 
