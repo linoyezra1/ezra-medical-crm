@@ -22,6 +22,33 @@ export type LmsAccessParticipantPayload = {
   emailHtml?: string
 }
 
+const LOG_PREFIX = "[LMS Dispatch]"
+
+function logDispatchError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  console.error(`❌ CRM LMS Dispatch Error: ${message}`, err)
+  return message
+}
+
+/** לוג payload מלא — emailHtml מקוצר כדי לא להציף את הלוגים */
+function payloadForLog(payload: {
+  pin: string
+  participants: Array<Record<string, unknown>>
+}) {
+  return {
+    pin: payload.pin,
+    participants: payload.participants.map((p) => {
+      const html = typeof p.emailHtml === "string" ? p.emailHtml : ""
+      return {
+        ...p,
+        emailHtml: html
+          ? `[html ${html.length} chars]`
+          : p.emailHtml,
+      }
+    }),
+  }
+}
+
 export function getLmsAppsScriptUrl(): string | null {
   return process.env.LMS_GOOGLE_APPS_SCRIPT_URL?.trim() || null
 }
@@ -63,6 +90,8 @@ export async function loadLmsAccessParticipants(
   | { ok: false; error: string }
 > {
   const ids = [...new Set(participantIds.map((id) => id.trim()).filter(Boolean))]
+  console.info(`${LOG_PREFIX} load participants`, { requestedIds: ids })
+
   if (!ids.length) {
     return { ok: false, error: "לא נבחרו משתתפים" }
   }
@@ -130,14 +159,21 @@ export async function loadLmsAccessParticipants(
   }
 
   if (missing.length && !participants.length) {
+    console.warn(`${LOG_PREFIX} all participants missing fields`, { missing })
     return { ok: false, error: missing.join("; ") }
   }
   if (missing.length) {
+    console.warn(`${LOG_PREFIX} some participants missing fields`, { missing })
     return {
       ok: false,
       error: `חלק מהמשתתפים חסרים פרטים: ${missing.join("; ")}`,
     }
   }
+
+  console.info(`${LOG_PREFIX} loaded participants`, {
+    count: participants.length,
+    participantIds: participants.map((p) => p.participantId),
+  })
 
   return {
     ok: true,
@@ -152,14 +188,13 @@ export async function loadLmsAccessParticipants(
  */
 export async function postLmsAccessToSheets(
   participants: LmsAccessParticipantPayload[],
-): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; message: string; rawBody?: string } | { ok: false; error: string }> {
   const webhookUrl = getLmsAppsScriptUrl()
   if (!webhookUrl) {
-    return {
-      ok: false,
-      error:
-        "חסר LMS_GOOGLE_APPS_SCRIPT_URL — הגדירו את כתובת ה-Web App ליצירת משתמשי LMS",
-    }
+    const err =
+      "חסר LMS_GOOGLE_APPS_SCRIPT_URL — הגדירו את כתובת ה-Web App ליצירת משתמשי LMS"
+    console.error(`❌ CRM LMS Dispatch Error: ${err}`)
+    return { ok: false, error: err }
   }
 
   const payload = {
@@ -171,12 +206,19 @@ export async function postLmsAccessToSheets(
       phone: p.phone,
       courseType: p.courseType,
       participantId: p.participantId,
-      // אופציונלי למייל ב-Apps Script
       ...(p.loginUrl ? { loginUrl: p.loginUrl } : {}),
       ...(p.emailSubject ? { emailSubject: p.emailSubject } : {}),
       ...(p.emailHtml ? { emailHtml: p.emailHtml } : {}),
     })),
   }
+
+  console.info(`${LOG_PREFIX} outgoing request`, {
+    url: webhookUrl,
+    envKey: "LMS_GOOGLE_APPS_SCRIPT_URL",
+    pin: payload.pin,
+    participantCount: payload.participants.length,
+    payload: payloadForLog(payload),
+  })
 
   try {
     const res = await fetch(webhookUrl, {
@@ -185,7 +227,21 @@ export async function postLmsAccessToSheets(
       body: JSON.stringify(payload),
       redirect: "follow",
     })
+
+    const headersObj: Record<string, string> = {}
+    res.headers.forEach((value, key) => {
+      headersObj[key] = value
+    })
+
     const text = await res.text()
+    console.info(`${LOG_PREFIX} Apps Script response`, {
+      status: res.status,
+      statusText: res.statusText,
+      ok: res.ok,
+      headers: headersObj,
+      rawBody: text,
+    })
+
     let scriptMessage = ""
     try {
       const json = JSON.parse(text) as {
@@ -193,23 +249,36 @@ export async function postLmsAccessToSheets(
         success?: boolean
         message?: string
         error?: string
+        processedCount?: number
       }
+      console.info(`${LOG_PREFIX} Apps Script JSON`, {
+        message: json.message,
+        processedCount: json.processedCount,
+        success: json.success,
+        ok: json.ok,
+        error: json.error,
+        fullJson: json,
+      })
       if (json.error) {
+        console.error(`❌ CRM LMS Dispatch Error: ${json.error}`)
         return { ok: false, error: json.error }
       }
       scriptMessage = json.message || ""
       if (json.ok === false || json.success === false) {
-        return {
-          ok: false,
-          error: scriptMessage || "הסקריפט ב-Sheets החזיר כישלון",
-        }
+        const failMsg = scriptMessage || "הסקריפט ב-Sheets החזיר כישלון"
+        console.error(`❌ CRM LMS Dispatch Error: ${failMsg}`)
+        return { ok: false, error: failMsg }
       }
-    } catch {
+    } catch (parseErr) {
+      console.warn(`${LOG_PREFIX} response is not JSON — using raw text`, {
+        parseError:
+          parseErr instanceof Error ? parseErr.message : String(parseErr),
+        rawBody: text,
+      })
       if (!res.ok) {
-        return {
-          ok: false,
-          error: text || `שגיאת Webhook (${res.status})`,
-        }
+        const failMsg = text || `שגיאת Webhook (${res.status})`
+        console.error(`❌ CRM LMS Dispatch Error: ${failMsg}`)
+        return { ok: false, error: failMsg }
       }
       scriptMessage = text.trim()
     }
@@ -219,13 +288,13 @@ export async function postLmsAccessToSheets(
       message:
         scriptMessage ||
         "פרטי הגישה למערכת הלמידה נשלחו בהצלחה!",
+      rawBody: text,
     }
   } catch (err) {
-    console.error("[postLmsAccessToSheets]", err)
+    const message = logDispatchError(err)
     return {
       ok: false,
-      error:
-        err instanceof Error ? err.message : "שגיאה בשליחה ל-Google Sheets",
+      error: message || "שגיאה בשליחה ל-Google Sheets",
     }
   }
 }

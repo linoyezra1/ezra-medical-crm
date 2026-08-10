@@ -78,11 +78,21 @@ function buildLmsWelcomeEmailHtml_(p) {
     '" style="display:inline-block;background-color:' +
     blue +
     ';color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:10px;">כניסה למערכת הלמידה</a></td></tr>' +
-    '<tr><td style="padding:8px 24px 24px;text-align:center;font-size:12px;line-height:1.6;color:' +
+    '<tr><td style="padding:8px 24px 4px;text-align:center;font-size:12px;line-height:1.6;color:' +
     footer +
     ';"><p style="margin:0;" dir="ltr">' +
     loginUrl +
     "</p></td></tr>" +
+    '<tr><td style="padding:20px 24px 8px;text-align:right;color:#0f172a;">' +
+    '<h2 style="margin:0 0 12px;font-size:18px;line-height:1.4;color:' +
+    blue +
+    ';font-weight:700;">מה מחכה לך במערכת?</h2>' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:15px;line-height:1.75;color:#0f172a;">' +
+    '<tr><td style="padding:0 0 10px;text-align:right;">שקפי לימוד מובנים ומחולקים לפי נושאים.</td></tr>' +
+    '<tr><td style="padding:0 0 10px;text-align:right;">שאלת בדיקה עצמית בסוף כל שקף לחיזוק החומר.</td></tr>' +
+    '<tr><td style="padding:0 0 10px;text-align:right;">מעקב רציף אחר אחוזי הלמידה וההתקדמות האישית שלך.</td></tr>' +
+    '<tr><td style="padding:0;text-align:right;">צ&#39;אט ישיר להתייעצות ומענה ממדריך עזרה ראשונה לאורך כל הדרך.</td></tr>' +
+    "</table></td></tr>" +
     '<tr><td style="border-top:1px solid #e2e8f0;padding:18px 24px 22px;text-align:center;font-size:12px;line-height:1.7;color:' +
     footer +
     ';"><p style="margin:0;font-weight:700;color:' +

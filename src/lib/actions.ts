@@ -2396,6 +2396,11 @@ export async function sendLmsAccessToSheets(
 ): Promise<
   ActionResult<{ count: number; participantIds: string[]; message: string }>
 > {
+  console.info("[LMS Dispatch] sendLmsAccessToSheets start", {
+    participantIds,
+    targetUrl: process.env.LMS_GOOGLE_APPS_SCRIPT_URL?.trim() || null,
+  });
+
   try {
     const {
       loadLmsAccessParticipants,
@@ -2404,18 +2409,31 @@ export async function sendLmsAccessToSheets(
 
     const loaded = await loadLmsAccessParticipants(participantIds);
     if (!loaded.ok) {
+      console.error(`❌ CRM LMS Dispatch Error: ${loaded.error}`);
       return { ok: false, error: loaded.error };
     }
 
     const posted = await postLmsAccessToSheets(loaded.participants);
     if (!posted.ok) {
+      console.error(`❌ CRM LMS Dispatch Error: ${posted.error}`);
       return { ok: false, error: posted.error };
     }
 
     const okIds = loaded.participants.map((p) => p.participantId);
-    await prisma.participant.updateMany({
+    console.info("[LMS Dispatch] DB update hasLmsAccess=true attempt", {
+      participantIds: okIds,
+      count: okIds.length,
+    });
+
+    const updated = await prisma.participant.updateMany({
       where: { id: { in: okIds } },
       data: { hasLmsAccess: true },
+    });
+
+    console.info("[LMS Dispatch] DB update hasLmsAccess result", {
+      requested: okIds.length,
+      updatedCount: updated.count,
+      participantIds: okIds,
     });
 
     for (const leadId of loaded.leadIds) {
@@ -2423,6 +2441,11 @@ export async function sendLmsAccessToSheets(
     }
     revalidatePath("/leads");
     revalidatePath("/");
+
+    console.info("[LMS Dispatch] sendLmsAccessToSheets success", {
+      count: okIds.length,
+      message: posted.message,
+    });
 
     return {
       ok: true,
@@ -2435,13 +2458,12 @@ export async function sendLmsAccessToSheets(
       },
     };
   } catch (err) {
-    console.error("[sendLmsAccessToSheets]", err);
+    const message =
+      err instanceof Error ? err.message : "שגיאה בשליחת פרטי LMS ל-Google Sheets";
+    console.error(`❌ CRM LMS Dispatch Error: ${message}`, err);
     return {
       ok: false,
-      error:
-        err instanceof Error
-          ? err.message
-          : "שגיאה בשליחת פרטי LMS ל-Google Sheets",
+      error: message,
     };
   }
 }
