@@ -743,7 +743,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       )}
                       {p.hasLmsAccess && (
                         <p className="font-medium text-emerald-700">
-                          ✓ משתמש LMS פעיל (שם משתמש וסיסמה = טלפון)
+                          ✓ משתמש LMS פעיל (שם משתמש וסיסמה = ת״ז)
                         </p>
                       )}
                     </div>

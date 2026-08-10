@@ -1,11 +1,25 @@
 import { prisma } from "@/lib/db"
+import { formatCourseTypeLabel } from "@/lib/course-type"
+import { getLmsEnvConfig } from "@/lib/lms"
+import {
+  buildLmsWelcomeEmailHtml,
+  LMS_EMAIL_BRAND_NAME,
+  lmsWelcomeEmailSubject,
+} from "@/lib/lms-welcome-email"
 
 export type LmsAccessParticipantPayload = {
   fullName: string
   idNumber: string
   email: string
   phone: string
+  courseType: string
   participantId: string
+  /** כתובת כניסה למערכת הלמידה */
+  loginUrl?: string
+  /** נושא המייל */
+  emailSubject?: string
+  /** HTML ממותג למייל ברוכים הבאים (ללא אמוג׳ים) */
+  emailHtml?: string
 }
 
 export function getLmsAppsScriptUrl(): string | null {
@@ -18,6 +32,28 @@ function issuancePin(): string {
     process.env.LMS_BACKUP_PIN?.trim() ||
     "214215444"
   )
+}
+
+async function resolveLmsLoginUrl(): Promise<string> {
+  const fromEnv = getLmsEnvConfig().loginUrl
+  if (fromEnv) return fromEnv
+  const settings = await prisma.settings.findUnique({
+    where: { id: "default" },
+    select: { lmsLoginUrl: true, businessName: true },
+  })
+  return settings?.lmsLoginUrl?.trim() || ""
+}
+
+async function resolveBusinessName(): Promise<string> {
+  const settings = await prisma.settings.findUnique({
+    where: { id: "default" },
+    select: { businessName: true },
+  })
+  const name = settings?.businessName?.trim()
+  if (!name || name === "עזרה!" || name === "עזרא ורפואה" || name === "בריאות ורפואה") {
+    return LMS_EMAIL_BRAND_NAME
+  }
+  return name
 }
 
 export async function loadLmsAccessParticipants(
@@ -40,12 +76,23 @@ export async function loadLmsAccessParticipants(
       email: true,
       phone: true,
       leadId: true,
+      lead: {
+        select: {
+          courseType: true,
+          courseTypeOther: true,
+        },
+      },
     },
   })
 
   if (!rows.length) {
     return { ok: false, error: "המשתתפים לא נמצאו" }
   }
+
+  const [loginUrl, businessName] = await Promise.all([
+    resolveLmsLoginUrl(),
+    resolveBusinessName(),
+  ])
 
   const missing: string[] = []
   const participants: LmsAccessParticipantPayload[] = []
@@ -59,12 +106,26 @@ export async function loadLmsAccessParticipants(
       )
       continue
     }
+    const fullName = row.fullName?.trim() || ""
+    const courseLabel = formatCourseTypeLabel(row.lead?.courseType, {
+      other: row.lead?.courseTypeOther,
+    })
+    const courseType = courseLabel === "קורס" ? "" : courseLabel
     participants.push({
-      fullName: row.fullName?.trim() || "",
+      fullName,
       idNumber,
       email,
       phone: row.phone?.trim() || "",
+      courseType,
       participantId: row.id,
+      loginUrl,
+      emailSubject: lmsWelcomeEmailSubject(businessName),
+      emailHtml: buildLmsWelcomeEmailHtml({
+        fullName,
+        idNumber,
+        loginUrl,
+        businessName,
+      }),
     })
   }
 
@@ -85,6 +146,10 @@ export async function loadLmsAccessParticipants(
   }
 }
 
+/**
+ * POST ל־LMS_GOOGLE_APPS_SCRIPT_URL עם המבנה:
+ * { pin, participants: [{ fullName, idNumber, email, phone, courseType, participantId }] }
+ */
 export async function postLmsAccessToSheets(
   participants: LmsAccessParticipantPayload[],
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
@@ -97,14 +162,27 @@ export async function postLmsAccessToSheets(
     }
   }
 
+  const payload = {
+    pin: issuancePin(),
+    participants: participants.map((p) => ({
+      fullName: p.fullName,
+      idNumber: p.idNumber,
+      email: p.email,
+      phone: p.phone,
+      courseType: p.courseType,
+      participantId: p.participantId,
+      // אופציונלי למייל ב-Apps Script
+      ...(p.loginUrl ? { loginUrl: p.loginUrl } : {}),
+      ...(p.emailSubject ? { emailSubject: p.emailSubject } : {}),
+      ...(p.emailHtml ? { emailHtml: p.emailHtml } : {}),
+    })),
+  }
+
   try {
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pin: issuancePin(),
-        participants,
-      }),
+      body: JSON.stringify(payload),
       redirect: "follow",
     })
     const text = await res.text()

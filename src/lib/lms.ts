@@ -81,7 +81,7 @@ export function lmsParticipantWhatsAppMessage(params: {
 }): string {
   const name = params.fullName.trim() || "מודרך"
   const url = params.loginUrl.trim() || "קישור המערכת"
-  return `היי ${name}, נוצר עבורך משתמש במערכת הלמידה. הקישור: ${url}. שם המשתמש והסיסמה שלך הם מספר הטלפון שלך.`
+  return `היי ${name}, נוצר עבורך משתמש במערכת הלמידה של עזרה ורפואה. הקישור: ${url}. שם המשתמש והסיסמה שלך הם מספר תעודת הזהות שלך.`
 }
 
 export type LmsWebhookPayload = {

@@ -47,7 +47,7 @@ export function lmsWelcomeMessage(params: {
   loginUrl: string;
 }): string {
   const url = params.loginUrl.trim() || "קישור המערכת";
-  return `היי ${params.fullName}, נוצר עבורך משתמש במערכת הלמידה. הקישור: ${url}. שם המשתמש והסיסמה שלך הם מספר הטלפון שלך.`;
+  return `היי ${params.fullName}, נוצר עבורך משתמש במערכת הלמידה של עזרה ורפואה. הקישור: ${url}. שם המשתמש והסיסמה שלך הם מספר תעודת הזהות שלך.`;
 }
 
 export function shareSocialMessage(label: string, url: string): string {
