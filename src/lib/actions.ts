@@ -2386,3 +2386,62 @@ export async function backupSalesToSheets(): Promise<
     };
   }
 }
+
+/**
+ * יצירת גישת LMS דרך Google Sheets (Apps Script → טאב LMS-CRM).
+ * שם משתמש וסיסמה = ת״ז; דוא״ל ות״ז חובה.
+ */
+export async function sendLmsAccessToSheets(
+  participantIds: string[],
+): Promise<
+  ActionResult<{ count: number; participantIds: string[]; message: string }>
+> {
+  try {
+    const {
+      loadLmsAccessParticipants,
+      postLmsAccessToSheets,
+    } = await import("@/lib/google-sheets/lms-access");
+
+    const loaded = await loadLmsAccessParticipants(participantIds);
+    if (!loaded.ok) {
+      return { ok: false, error: loaded.error };
+    }
+
+    const posted = await postLmsAccessToSheets(loaded.participants);
+    if (!posted.ok) {
+      return { ok: false, error: posted.error };
+    }
+
+    const okIds = loaded.participants.map((p) => p.participantId);
+    await prisma.participant.updateMany({
+      where: { id: { in: okIds } },
+      data: { hasLmsAccess: true },
+    });
+
+    for (const leadId of loaded.leadIds) {
+      revalidatePath(`/leads/${leadId}`);
+    }
+    revalidatePath("/leads");
+    revalidatePath("/");
+
+    return {
+      ok: true,
+      data: {
+        count: okIds.length,
+        participantIds: okIds,
+        message:
+          posted.message ||
+          "פרטי הגישה למערכת הלמידה נשלחו בהצלחה!",
+      },
+    };
+  } catch (err) {
+    console.error("[sendLmsAccessToSheets]", err);
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "שגיאה בשליחת פרטי LMS ל-Google Sheets",
+    };
+  }
+}

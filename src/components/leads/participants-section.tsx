@@ -38,6 +38,7 @@ import {
 import {
   fetchLeadParticipants,
   removeParticipant,
+  sendLmsAccessToSheets,
   setParticipantAttended,
   updateParticipantDetails,
 } from "@/lib/actions"
@@ -46,24 +47,6 @@ import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { useApp } from "@/lib/store"
 import type { Lead, Participant } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-type LmsApiResult = {
-  ok: boolean
-  error?: string
-  data?: {
-    results: Array<{
-      participantId: string
-      name: string
-      ok: boolean
-      error?: string
-      username?: string
-      loginUrl?: string
-      whatsappMessage?: string
-    }>
-    succeededCount: number
-    failedCount: number
-  }
-}
 
 /** פרטי התחברות LMS שנשמרו מקומית אחרי יצירה — מוכנים לשליחת מייל בעתיד */
 type LmsCredentialMeta = {
@@ -185,7 +168,7 @@ function ParticipantMobileKebab({
                 ) : (
                   <GraduationCap className="size-5 shrink-0 text-primary" />
                 )}
-                פתח משתמש LMS
+                פתח משתמש בלמידה
               </button>
             ) : null}
             <button
@@ -376,57 +359,39 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
     }
     setLmsBusy(ids.length === 1 ? ids[0]! : "bulk")
     try {
-      const res = await fetch("/api/lms/create-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantIds: ids }),
-      })
-      const json = (await res.json()) as LmsApiResult
-      const results = json.data?.results || []
+      const res = await sendLmsAccessToSheets(ids)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
 
-      const okIds = results.filter((r) => r.ok).map((r) => r.participantId)
+      const okIds = res.data.participantIds
       if (okIds.length) markLmsLocal(okIds)
 
       const credUpdates: Record<string, LmsCredentialMeta> = {}
-      for (const r of results) {
-        if (!r.ok || !r.username) continue
-        const participant = participants.find((p) => p.id === r.participantId)
-        credUpdates[r.participantId] = {
-          participantId: r.participantId,
-          fullName: r.name,
-          email: participant?.email,
-          username: r.username,
-          password: r.username,
-          loginUrl: r.loginUrl || settings.lmsLoginUrl,
+      for (const id of okIds) {
+        const participant = participants.find((p) => p.id === id)
+        if (!participant?.idNumber?.trim()) continue
+        credUpdates[id] = {
+          participantId: id,
+          fullName: participant.name,
+          email: participant.email,
+          username: participant.idNumber.trim(),
+          password: participant.idNumber.trim(),
+          loginUrl: settings.lmsLoginUrl,
         }
       }
       if (Object.keys(credUpdates).length) {
         setLmsCredentials((prev) => ({ ...prev, ...credUpdates }))
       }
 
-      for (const r of results) {
-        if (r.ok) {
-          toast.success(`משתמש נוצר בהצלחה עבור ${r.name}`)
-          /*
-           * TODO(email) — future transactional welcome email:
-           * Send via Resend / SendGrid / Nodemailer using credUpdates[r.participantId]
-           * (or lmsCredentials state): { email, username, password, loginUrl, fullName }.
-           * Do not auto-open WhatsApp after create.
-           */
-        } else {
-          toast.error(
-            `נכשל עבור ${r.name || "משתתף"}: ${r.error || "שגיאה לא ידועה"}`,
-          )
-        }
-      }
-
-      if (!results.length && !json.ok) {
-        toast.error(json.error || "יצירת משתמשי LMS נכשלה")
-      }
-
+      toast.success(
+        res.data.message ||
+          "פרטי הגישה למערכת הלמידה נשלחו בהצלחה!",
+      )
       refresh()
     } catch {
-      toast.error("שגיאת רשת ביצירת משתמשי LMS")
+      toast.error("שגיאת רשת בשליחת פרטי LMS")
     } finally {
       setLmsBusy(null)
     }
@@ -488,8 +453,8 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
           >
             <UserPlus className="size-4" />
             {lmsBusy === "bulk"
-              ? "יוצר משתמשי LMS…"
-              : `פתח משתמש LMS לנבחרים (${selectedPendingLms.length})`}
+              ? "שולח פרטי LMS…"
+              : `פתח משתמש בלמידה לנבחרים (${selectedPendingLms.length})`}
           </Button>
         )}
         <Button
@@ -626,14 +591,14 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                               disabled={Boolean(lmsBusy)}
                               onClick={() => void createLmsUsers([p.id])}
                               className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
-                              aria-label="פתח משתמש LMS"
+                              aria-label="פתח משתמש בלמידה"
                             >
                               {busy ? (
                                 <RefreshCw className="size-3.5 animate-spin" />
                               ) : (
                                 <GraduationCap className="size-3.5" />
                               )}
-                              פתח משתמש
+                              פתח משתמש בלמידה
                             </button>
                           )}
                         </td>
