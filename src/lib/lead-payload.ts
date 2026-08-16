@@ -1,3 +1,4 @@
+import { serializeSessionsJson } from "@/lib/payment"
 import { jerusalemLocalToISO } from "@/lib/timezone"
 import {
   isInstructorUnassigned,
@@ -66,7 +67,7 @@ export function leadToDbPayload(
     sessionsCount: merged.sessionsCount ?? null,
     sessionsJson:
       merged.sessions && merged.sessions.length > 0
-        ? JSON.stringify(merged.sessions)
+        ? serializeSessionsJson(merged.sessions)
         : null,
   }
 

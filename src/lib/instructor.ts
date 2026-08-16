@@ -19,6 +19,18 @@ export function isInstructorUnassigned(
   return t === UNASSIGNED_INSTRUCTOR
 }
 
+/**
+ * באנר אדום «לא שובץ מדריך» — רק כשההדרכה בסטטוס «סגרנו נרשם ביומן» (closed).
+ * לא מוצג בסטטוס ליד / לפני רישום ביומן.
+ */
+export function shouldShowUnassignedInstructorWarning(lead: {
+  instructor?: string | null
+  status?: string | null
+}): boolean {
+  if (!isInstructorUnassigned(lead.instructor)) return false
+  return lead.status === "closed"
+}
+
 /** יצחק — אין תעריף מדריך */
 export function isOwnerInstructor(instructor?: string | null): boolean {
   return instructor?.trim() === OWNER_INSTRUCTOR_NAME

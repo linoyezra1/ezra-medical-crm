@@ -32,7 +32,9 @@ export function TrainingPickerDialog({
   const [q, setQ] = useState("")
 
   const options = useMemo(() => {
-    const list = leads.filter((l) => l.status !== "lost")
+    const list = leads.filter(
+      (l) => l.status === "new" || l.status === "closed",
+    )
     const term = q.trim().toLowerCase()
     const filtered = !term
       ? list

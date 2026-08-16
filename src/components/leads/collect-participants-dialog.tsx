@@ -46,7 +46,6 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
   ).trim()
 
   const googleReviewUrl = (settings.googleReviewUrl || "").trim()
-  const facebookUrl = (settings.facebookUrl || "").trim()
 
   const registrationWhatsAppText = () => {
     const reviewLine = googleReviewUrl
@@ -228,12 +227,6 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
 
         {step === "detail" && option === "copy_link" && (
           <div className="space-y-3">
-            <p
-              className="break-all rounded-xl bg-secondary/50 px-3 py-3 text-xs text-muted-foreground"
-              dir="ltr"
-            >
-              {formUrl}
-            </p>
             <Button className="h-12 w-full gap-2 rounded-xl text-base" onClick={copyLink}>
               {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
               {copied ? "הועתק!" : "העתק קישור"}
@@ -244,10 +237,10 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
               onClick={sendRegistrationWhatsApp}
             >
               <MessageCircle className="size-5" />
-              שלח בווצאפ קישור לרישום
+              שלח קישור לרישום ב-WhatsApp
             </Button>
-            <div className="flex items-center justify-center gap-3 pt-1">
-              {googleReviewUrl && (
+            {googleReviewUrl ? (
+              <div className="flex items-center justify-center gap-3 pt-1">
                 <button
                   type="button"
                   onClick={sendGoogleReviewWhatsApp}
@@ -257,20 +250,8 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
                 >
                   <Star className="size-5 fill-current" />
                 </button>
-              )}
-              {facebookUrl && (
-                <a
-                  href={facebookUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex size-11 items-center justify-center rounded-full bg-blue-100 text-blue-700"
-                  title="פייסבוק"
-                  aria-label="פייסבוק"
-                >
-                  <span className="text-sm font-bold">f</span>
-                </a>
-              )}
-            </div>
+              </div>
+            ) : null}
           </div>
         )}
 

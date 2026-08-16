@@ -5,11 +5,13 @@ import {
   BadgeCheck,
   CheckCheck,
   FileCheck,
+  FileSpreadsheet,
   GraduationCap,
   MessageCircle,
   MoreVertical,
   Pencil,
   Phone,
+  Plus,
   RefreshCw,
   ScrollText,
   Search,
@@ -18,6 +20,8 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
+import { ParticipantPaymentDialog } from "@/components/leads/participant-payment-dialog"
+import { ParticipantsDialog } from "@/components/leads/participants-dialog"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -66,6 +70,7 @@ function ParticipantMobileKebab({
   onToggleAttended,
   onCreateLms,
   onEdit,
+  onPayment,
   onRemove,
 }: {
   p: Participant
@@ -74,6 +79,7 @@ function ParticipantMobileKebab({
   onToggleAttended: () => void
   onCreateLms: () => void
   onEdit: () => void
+  onPayment: () => void
   onRemove: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -181,6 +187,14 @@ function ParticipantMobileKebab({
             </button>
             <button
               type="button"
+              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary"
+              onClick={() => run(onPayment)}
+            >
+              <ScrollText className="size-5 shrink-0 text-primary" />
+              רישום תשלום למשתתף
+            </button>
+            <button
+              type="button"
               className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base text-destructive hover:bg-destructive/10"
               onClick={() => run(onRemove)}
             >
@@ -205,6 +219,8 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
     Record<string, LmsCredentialMeta>
   >({})
   const [editP, setEditP] = useState<Participant | null>(null)
+  const [payParticipant, setPayParticipant] = useState<Participant | null>(null)
+  const [manualOpen, setManualOpen] = useState(false)
   const [editForm, setEditForm] = useState({
     fullName: "",
     idNumber: "",
@@ -436,27 +452,43 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
           variant="outline"
           size="sm"
           className="gap-2 rounded-xl md:w-auto"
+          onClick={() => setManualOpen(true)}
+        >
+          <Plus className="size-4" />
+          הוספת מודרך ידנית
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2 rounded-xl md:w-auto"
           onClick={markAllAttended}
         >
           <CheckCheck className="size-4" />
           אישור נוכחות לכולם
         </Button>
-        {selectedPendingLms.length > 0 && (
-          <Button
-            type="button"
-            size="sm"
-            className="gap-2 rounded-xl md:w-auto"
-            disabled={Boolean(lmsBusy)}
-            onClick={() =>
-              void createLmsUsers(selectedPendingLms.map((p) => p.id))
+        <Button
+          type="button"
+          size="sm"
+          className="gap-2 rounded-xl"
+          disabled={selectedIds.size === 0 || Boolean(lmsBusy)}
+          onClick={() => {
+            if (selectedIds.size === 0) {
+              toast.error("יש לסמן משתתפים לפתיחת משתמש בלמידה")
+              return
             }
-          >
-            <UserPlus className="size-4" />
-            {lmsBusy === "bulk"
-              ? "שולח פרטי LMS…"
-              : `פתח משתמש בלמידה לנבחרים (${selectedPendingLms.length})`}
-          </Button>
-        )}
+            if (!selectedPendingLms.length) {
+              toast.error("לכל הנבחרים כבר יש גישת LMS")
+              return
+            }
+            void createLmsUsers(selectedPendingLms.map((p) => p.id))
+          }}
+        >
+          <UserPlus className="size-4" />
+          {lmsBusy === "bulk"
+            ? "שולח פרטי LMS…"
+            : `פתיחת משתמש בלמידה${selectedPendingLms.length ? ` (${selectedPendingLms.length})` : ""}`}
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -562,6 +594,11 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                               />
                             )}
                             <span className="truncate">{p.name}</span>
+                            {p.isExternal ? (
+                              <span className="shrink-0 rounded bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold text-pink-700">
+                                חיצוני
+                              </span>
+                            ) : null}
                           </span>
                         </td>
                         <td
@@ -661,6 +698,15 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                             </button>
                             <button
                               type="button"
+                              onClick={() => setPayParticipant(p)}
+                              className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+                              aria-label="רישום תשלום למשתתף"
+                              title="רישום תשלום למשתתף"
+                            >
+                              <ScrollText className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => void remove(p)}
                               className="flex size-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
                               aria-label="מחק"
@@ -712,7 +758,12 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                             aria-label="יש גישת LMS"
                           />
                         )}
-                        <span className="truncate">
+                        <span
+                          className={cn(
+                            "truncate",
+                            p.isExternal && "font-semibold text-amber-500",
+                          )}
+                        >
                           {p.name} – {p.idNumber}
                         </span>
                       </p>
@@ -727,6 +778,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       }
                       onCreateLms={() => void createLmsUsers([p.id])}
                       onEdit={() => openEdit(p)}
+                      onPayment={() => setPayParticipant(p)}
                       onRemove={() => void remove(p)}
                     />
                   </div>
@@ -813,6 +865,19 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
         onOpenChange={setIssueOpen}
         leadId={lead.id}
         participantIds={[...selectedIds]}
+      />
+
+      <ParticipantPaymentDialog
+        leadId={lead.id}
+        participant={payParticipant}
+        open={Boolean(payParticipant)}
+        onOpenChange={(o) => !o && setPayParticipant(null)}
+      />
+
+      <ParticipantsDialog
+        lead={lead}
+        open={manualOpen}
+        onOpenChange={setManualOpen}
       />
     </CollapsibleSection>
   )

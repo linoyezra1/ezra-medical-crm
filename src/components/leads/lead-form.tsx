@@ -42,6 +42,7 @@ import {
   UNASSIGNED_INSTRUCTOR,
   UNASSIGNED_INSTRUCTOR_VALUE,
 } from "@/lib/instructor"
+import { addHoursToTime } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { resolveInstructorFee } from "@/lib/training-profit"
 import type { Lead } from "@/lib/types"
@@ -222,7 +223,16 @@ export function LeadForm({ existing }: Props) {
     const existingSessions = form.sessions?.length
       ? form.sessions
       : form.date && form.time
-        ? [{ date: form.date, time: form.time, endTime: form.endTime }]
+        ? [
+            {
+              date: form.date,
+              time: form.time,
+              endTime: form.endTime,
+              city: form.address.city,
+              street: form.address.street,
+              houseNumber: form.address.houseNumber,
+            },
+          ]
         : []
     return Array.from({ length: resolvedSessionsCount }, (_, i) => {
       const s = existingSessions[i]
@@ -230,6 +240,11 @@ export function LeadForm({ existing }: Props) {
         date: s?.date || (i === 0 ? form.date || "" : ""),
         time: s?.time || (i === 0 ? form.time || "" : ""),
         endTime: s?.endTime || (i === 0 ? form.endTime || "" : ""),
+        isZoom: Boolean(s?.isZoom),
+        city: s?.city || (i === 0 ? form.address.city || "" : ""),
+        street: s?.street || (i === 0 ? form.address.street || "" : ""),
+        houseNumber:
+          s?.houseNumber || (i === 0 ? form.address.houseNumber || "" : ""),
       }
     })
   }, [
@@ -238,22 +253,48 @@ export function LeadForm({ existing }: Props) {
     form.date,
     form.time,
     form.endTime,
+    form.address.city,
+    form.address.street,
+    form.address.houseNumber,
   ])
 
   const setSessionSlot = (
     index: number,
-    patch: Partial<{ date: string; time: string; endTime: string }>,
+    patch: Partial<{
+      date: string
+      time: string
+      endTime: string
+      isZoom: boolean
+      city: string
+      street: string
+      houseNumber: string
+    }>,
   ) => {
-    const next = sessionSlots.map((s, i) =>
-      i === index ? { ...s, ...patch } : s,
-    )
+    const next = sessionSlots.map((s, i) => {
+      if (i !== index) return s
+      const merged = { ...s, ...patch }
+      if (patch.time != null && patch.endTime === undefined) {
+        merged.endTime = addHoursToTime(patch.time, 4)
+      }
+      return merged
+    })
+    const first = next[0]
     setForm((f) => ({
       ...f,
       sessionsCount: resolvedSessionsCount,
       sessions: next,
-      date: next[0]?.date || f.date,
+      date: first?.date || f.date,
       time: next[0]?.time || f.time,
       endTime: next[0]?.endTime || f.endTime,
+      address:
+        index === 0 && !first?.isZoom
+          ? {
+              ...f.address,
+              city: first?.city ?? f.address.city,
+              street: first?.street ?? f.address.street,
+              houseNumber: first?.houseNumber ?? f.address.houseNumber,
+            }
+          : f.address,
     }))
   }
 
@@ -500,10 +541,26 @@ export function LeadForm({ existing }: Props) {
           date: s.date,
           time: s.time,
           endTime: s.endTime || undefined,
+          isZoom: Boolean(s.isZoom),
+          city: s.isZoom ? undefined : s.city || undefined,
+          street: s.isZoom ? undefined : s.street || undefined,
+          houseNumber: s.isZoom ? undefined : s.houseNumber || undefined,
         })),
         date: sessionSlots[0]?.date || form.date,
         time: sessionSlots[0]?.time || form.time,
         endTime: sessionSlots[0]?.endTime || form.endTime,
+        address: {
+          ...form.address,
+          city: sessionSlots[0]?.isZoom
+            ? form.address.city
+            : sessionSlots[0]?.city || form.address.city,
+          street: sessionSlots[0]?.isZoom
+            ? form.address.street
+            : sessionSlots[0]?.street || form.address.street,
+          houseNumber: sessionSlots[0]?.isZoom
+            ? form.address.houseNumber
+            : sessionSlots[0]?.houseNumber || form.address.houseNumber,
+        },
       }
 
       if (existing) {
@@ -906,9 +963,6 @@ export function LeadForm({ existing }: Props) {
                 onCheckedChange={(v) => set("isPrivateCourse", Boolean(v))}
               />
               <span className="font-semibold">קורס פרטי</span>
-              <span className="text-xs text-muted-foreground">
-                (ברירת מחדל: קבוצה · בלו״ז יופיע בוורוד)
-              </span>
             </label>
 
             <div className="space-y-2">
@@ -1021,12 +1075,12 @@ export function LeadForm({ existing }: Props) {
             {sessionSlots.map((slot, idx) => (
               <div
                 key={`session-${idx}`}
-                className="space-y-2 rounded-xl border border-border bg-secondary/20 p-3"
+                className="space-y-3 rounded-xl border border-border bg-secondary/20 p-3"
               >
                 <p className="text-xs font-semibold text-muted-foreground">
                   {sessionSlots.length > 1
                     ? `מפגש ${idx + 1}`
-                    : "תאריך ושעה"}
+                    : "מפגש הדרכה"}
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   <Field label="תאריך" error={errors[`session_${idx}`]} required>
@@ -1060,6 +1114,43 @@ export function LeadForm({ existing }: Props) {
                     />
                   </Field>
                 </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={Boolean(slot.isZoom)}
+                    onCheckedChange={(v) =>
+                      setSessionSlot(idx, { isZoom: Boolean(v) })
+                    }
+                  />
+                  <span className="font-medium">מפגש בזום</span>
+                </label>
+                {!slot.isZoom ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    <Field label="עיר" className="col-span-1">
+                      <Input
+                        value={slot.city}
+                        onChange={(e) =>
+                          setSessionSlot(idx, { city: e.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field label="רחוב" className="col-span-1">
+                      <Input
+                        value={slot.street}
+                        onChange={(e) =>
+                          setSessionSlot(idx, { street: e.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field label="מס' בית">
+                      <Input
+                        value={slot.houseNumber}
+                        onChange={(e) =>
+                          setSessionSlot(idx, { houseNumber: e.target.value })
+                        }
+                      />
+                    </Field>
+                  </div>
+                ) : null}
               </div>
             ))}
 
@@ -1198,25 +1289,14 @@ export function LeadForm({ existing }: Props) {
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="עיר">
-                <Input
-                  value={form.address.city}
-                  onChange={(e) =>
-                    set("address", { ...form.address, city: e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="מיקוד (אופציונלי)">
-                <Input
-                  value={form.address.zip ?? ""}
-                  onChange={(e) =>
-                    set("address", { ...form.address, zip: e.target.value })
-                  }
-                  inputMode="numeric"
-                />
-              </Field>
-            </div>
+            <Field label="עיר">
+              <Input
+                value={form.address.city}
+                onChange={(e) =>
+                  set("address", { ...form.address, city: e.target.value })
+                }
+              />
+            </Field>
 
             {(form.category === "גני ילדים" ||
               form.categoryOther === "גני ילדים" ||

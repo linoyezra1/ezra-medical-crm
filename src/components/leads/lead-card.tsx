@@ -19,7 +19,7 @@ import {
   whatsappSummary,
   leadStatusCardClass,
 } from "@/lib/helpers"
-import { isInstructorUnassigned } from "@/lib/instructor"
+import { isInstructorUnassigned, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { leadCalendarSessions } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
@@ -112,11 +112,13 @@ export function LeadCard({ lead }: { lead: Lead }) {
           <span className="font-semibold text-foreground">
             {formatCurrency(lead.totalPrice)}
           </span>
-          {isInstructorUnassigned(lead.instructor) ? (
+          {shouldShowUnassignedInstructorWarning(lead) ? (
             <span className="font-bold text-red-600">לא שובץ מדריך</span>
           ) : (
             <span className="font-medium text-foreground">
-              {lead.instructor}
+              {isInstructorUnassigned(lead.instructor)
+                ? "—"
+                : lead.instructor}
             </span>
           )}
         </div>

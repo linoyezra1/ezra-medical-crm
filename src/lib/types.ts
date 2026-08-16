@@ -1,7 +1,6 @@
 export type LeadStatus =
   | "new"
   | "closed"
-  | "done"
   | "pending_certificates"
   | "completed"
   | "lost";
@@ -9,8 +8,7 @@ export type LeadStatus =
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new: "ליד חדש / בטיפול",
   closed: "סגרנו נרשם ביומן",
-  done: "הדרכה בוצעה",
-  pending_certificates: "ממתין לתעודות",
+  pending_certificates: "הדרכה בוצעה וממתינה לתעודות",
   completed: "הסתיים",
   lost: "אבוד / בוטל",
 };
@@ -18,7 +16,6 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 export const LEAD_STATUS_ORDER: LeadStatus[] = [
   "new",
   "closed",
-  "done",
   "pending_certificates",
   "completed",
 ];
@@ -39,8 +36,8 @@ export function dbStatusToUi(status: string): LeadStatus {
   switch (status) {
     case "closed":
       return "closed";
+    // Legacy DB `completed` (= old UI "done") merges into certificates_pending
     case "completed":
-      return "done";
     case "certificates_pending":
       return "pending_certificates";
     case "closed_won":
@@ -60,8 +57,6 @@ export function uiStatusToDb(status: LeadStatus): string {
   switch (status) {
     case "closed":
       return "closed";
-    case "done":
-      return "completed";
     case "pending_certificates":
       return "certificates_pending";
     case "completed":
@@ -114,6 +109,17 @@ export interface Participant {
   traineeId?: string;
   /** קישור PDF לתעודה מ-Google Sheets (עמודה N) */
   certificateUrl?: string;
+  /** משתתף חיצוני / מצטרף נוסף */
+  isExternal?: boolean;
+  /** סוג קורס אישי לתעודה (חיצוני) */
+  courseType?: string;
+  /** מחיר לתשלום אישי */
+  agreedPrice?: number;
+  paymentStatus?: string;
+  paymentDate?: string;
+  paymentMethod?: string;
+  paymentReceivedBy?: string;
+  paymentReceiptIssued?: boolean;
 }
 
 export interface TrainingSale {
@@ -125,6 +131,9 @@ export interface TrainingSale {
   unitCostPrice: number;
   paymentMethod?: string;
   paymentStatus?: string;
+  participantId?: string;
+  participantName?: string;
+  receiptIssued?: boolean;
   createdAt: string;
 }
 
@@ -271,8 +280,17 @@ export interface Lead {
   /** קורס פרטי */
   isPrivateCourse?: boolean;
   sessionsCount?: number | null;
-  /** מפגשים מרובים */
-  sessions?: Array<{ date: string; time: string; endTime?: string }>;
+  /** מפגשים מרובים (כולל זום וכתובת למפגש) */
+  sessions?: Array<{
+    id?: string;
+    date: string;
+    time: string;
+    endTime?: string;
+    isZoom?: boolean;
+    city?: string;
+    street?: string;
+    houseNumber?: string;
+  }>;
   sessionDuration?: string | null;
   bookletRequired?: boolean;
   reason?: string | null;

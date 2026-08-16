@@ -54,7 +54,8 @@ model Lead {
   // Pipelines
   activityType      String  @default("course") // course | equipment | combined
   courseStatus      String  @default("new")
-  // new | cold | pending | closed | completed | certificates_pending | closed_won | canceled
+  // new | cold | pending | closed | certificates_pending | closed_won | canceled
+  // legacy: completed (migrated → certificates_pending)
   equipmentStatus   String?
   // inquiry | requisition_received | supplied_invoiced | pending_payment | completed_paid
 
@@ -102,7 +103,7 @@ model Lead {
   paymentReceiptIssued Boolean @default(false)
   /** קורס פרטי (לו״ז ורוד) מול קבוצה */
   isPrivateCourse    Boolean @default(false)
-  /** מפגשים נוספים כ־JSON: [{date,time,endTime?}] */
+  /** מפגשים נוספים כ־JSON (legacy mirror): [{date,time,endTime?,isZoom?,city?,street?,houseNumber?}] */
   sessionsJson       String?
   shippingStreet     String?
   shippingHouseNo    String?
@@ -129,6 +130,7 @@ model Lead {
   updatedAt DateTime @updatedAt
 
   participants  Participant[]
+  trainingSessions TrainingSession[]
   expenses      Expense[]
   tasks         FollowUpTask[]
   trainingSales TrainingSale[]
@@ -139,6 +141,24 @@ model Lead {
   @@index([urgency])
   @@index([scheduledStart])
   @@index([instructorId])
+}
+
+/** מפגש הדרכה בודד (תאריך/שעה/זום/כתובת) */
+model TrainingSession {
+  id          String  @id @default(cuid())
+  leadId      String
+  lead        Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sortOrder   Int     @default(0)
+  date        String  // YYYY-MM-DD
+  startTime   String  // HH:mm
+  endTime     String?
+  isZoom      Boolean @default(false)
+  city        String?
+  street      String?
+  houseNumber String?
+
+  @@index([leadId])
+  @@index([date])
 }
 
 /** יומן שינויי סטטוס / פעולות על ליד */
@@ -193,7 +213,19 @@ model Participant {
   sheetsExportedAt DateTime?
   /** קישור PDF לתעודה מ-Google Drive (עמודה N בגיליון) */
   certificateUrl  String?
+  /** משתתף חיצוני / מצטרף נוסף */
+  isExternal      Boolean  @default(false)
+  /** סוג קורס אישי לתעודה (חיצוני) */
+  courseType      String?
+  /** מחיר לתשלום אישי */
+  agreedPrice     Float?
+  paymentStatus   String?
+  paymentDate     DateTime?
+  paymentMethod   String?
+  paymentReceivedBy String?
+  paymentReceiptIssued Boolean @default(false)
   createdAt       DateTime @default(now())
+  trainingSales   TrainingSale[]
 
   @@index([leadId])
   @@index([traineeId])
@@ -269,10 +301,14 @@ model TrainingSale {
   paymentMethod    String?
   /// paid | PENDING_PAYMENT
   paymentStatus    String        @default("paid")
+  participantId    String?
+  participant      Participant?  @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  receiptIssued    Boolean        @default(false)
   createdAt        DateTime      @default(now())
 
   @@index([leadId])
   @@index([inventoryItemId])
+  @@index([participantId])
 }
 
 model Expense {

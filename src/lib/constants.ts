@@ -16,8 +16,8 @@ export const COURSE_STATUS_LABELS: Record<CourseStatus, string> = {
   cold: "ליד קר",
   pending: "ממתין לאישור",
   closed: "סגרנו נרשם ביומן",
-  completed: "הדרכה הושלמה",
-  certificates_pending: "ממתין לתעודות",
+  completed: "הדרכה בוצעה וממתינה לתעודות",
+  certificates_pending: "הדרכה בוצעה וממתינה לתעודות",
   closed_won: "נסגר בהצלחה",
   canceled: "בוטל / אבוד",
 };

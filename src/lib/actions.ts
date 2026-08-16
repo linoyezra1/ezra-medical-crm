@@ -22,6 +22,7 @@ import {
   isLeadPaid,
   unpaidPaymentTaskTitle,
   parseSessionsJson,
+  type TrainingSessionSlot,
 } from "@/lib/payment";
 import { sanitizePhone } from "@/lib/utils";
 import { validateStatusTransition } from "@/lib/conflicts";
@@ -172,7 +173,7 @@ async function ensureNetFollowUp(leadId: string, paymentTerms: string | null | u
   }
 }
 
-/** משימה אוטומטית כשאין מדריך משובץ; סוגרת אותה כששובץ */
+/** משימה אוטומטית כשאין מדריך משובץ — רק בסטטוס closed (נרשם ביומן); סוגרת כששובץ / לא ביומן */
 async function syncUnassignedInstructorTask(lead: {
   id: string;
   fullName: string;
@@ -180,13 +181,15 @@ async function syncUnassignedInstructorTask(lead: {
   courseType: string | null;
   courseTypeOther: string | null;
   scheduledStart: Date | null;
+  courseStatus?: string | null;
 }) {
   const courseLabel = formatCourseTypeLabel(lead.courseType || "", {
     other: lead.courseTypeOther,
   });
   const title = assignInstructorTaskTitle(lead.fullName, courseLabel);
+  const registeredInCalendar = lead.courseStatus === "closed";
 
-  if (isInstructorUnassigned(lead.instructor)) {
+  if (isInstructorUnassigned(lead.instructor) && registeredInCalendar) {
     let dueDate: Date | null = null;
     if (lead.scheduledStart) {
       const { date } = formatInJerusalem(lead.scheduledStart);
@@ -301,6 +304,39 @@ export async function checkDuplicatePhone(phone: string, excludeLeadId?: string)
     take: 5,
   });
   return { duplicates };
+}
+
+async function replaceTrainingSessions(
+  leadId: string,
+  sessionsRaw: string | null | undefined,
+  fallbackAddress?: {
+    city?: string | null
+    street?: string | null
+    houseNumber?: string | null
+  },
+) {
+  if (sessionsRaw === undefined) return
+  const slots: TrainingSessionSlot[] = sessionsRaw
+    ? parseSessionsJson(String(sessionsRaw))
+    : []
+  await prisma.trainingSession.deleteMany({ where: { leadId } })
+  if (slots.length === 0) return
+  await prisma.trainingSession.createMany({
+    data: slots.map((s, i) => ({
+      leadId,
+      sortOrder: i,
+      date: s.date,
+      startTime: s.time,
+      endTime: s.endTime || null,
+      isZoom: Boolean(s.isZoom),
+      city: s.city || (!s.isZoom ? fallbackAddress?.city : null) || null,
+      street: s.street || (!s.isZoom ? fallbackAddress?.street : null) || null,
+      houseNumber:
+        s.houseNumber ||
+        (!s.isZoom ? fallbackAddress?.houseNumber : null) ||
+        null,
+    })),
+  })
 }
 
 export async function createLead(formData: FormData): Promise<
@@ -642,6 +678,18 @@ export async function updateLead(
     },
   });
 
+  if (raw.sessionsJson !== undefined) {
+    await replaceTrainingSessions(
+      leadId,
+      raw.sessionsJson ? String(raw.sessionsJson) : null,
+      {
+        city: merged.shippingCity || merged.city,
+        street: merged.shippingStreet,
+        houseNumber: merged.shippingHouseNo,
+      },
+    )
+  }
+
   if (statusChanged) {
     await prisma.activityLog.create({
       data: {
@@ -664,6 +712,7 @@ export async function updateLead(
       courseType: true,
       courseTypeOther: true,
       scheduledStart: true,
+      courseStatus: true,
       paymentStatus: true,
     },
   });
@@ -768,6 +817,7 @@ export async function duplicateLead(
       courseType: true,
       courseTypeOther: true,
       scheduledStart: true,
+      courseStatus: true,
       paymentStatus: true,
     },
   });
@@ -829,6 +879,7 @@ export async function rollbackLeadStatus(
       courseType: true,
       courseTypeOther: true,
       scheduledStart: true,
+      courseStatus: true,
       paymentStatus: true,
     },
   });
@@ -971,6 +1022,85 @@ export async function addParticipant(
   }
 
   return { ok: true as const };
+}
+
+/** מצטרף נוסף / משתתף חיצוני */
+export async function addExternalParticipant(input: {
+  leadId: string
+  fullName?: string
+  phone?: string
+  idNumber?: string
+  email?: string
+  courseType?: string
+  agreedPrice?: number
+}): Promise<ActionResult<{ id: string }>> {
+  const lead = await prisma.lead.findUnique({ where: { id: input.leadId } })
+  if (!lead) return { ok: false, error: "הדרכה לא נמצאה" }
+  const ui = dbStatusToUi(lead.courseStatus)
+  if (ui !== "new" && ui !== "closed") {
+    return {
+      ok: false,
+      error: "ניתן לשייך מצטרף נוסף רק להדרכה בסטטוס ליד חדש או נרשם ביומן",
+    }
+  }
+  const name = (input.fullName || "").trim()
+  const id = (input.idNumber || "").trim().replace(/[-\s]/g, "")
+  const phone = (input.phone || "").trim()
+  const email = (input.email || "").trim()
+  if (!name && !id && !phone && !email) {
+    return {
+      ok: false,
+      error: "יש למלא לפחות שדה אחד",
+    }
+  }
+  const created = await prisma.participant.create({
+    data: {
+      leadId: input.leadId,
+      fullName: name || "מצטרף נוסף",
+      idNumber: id,
+      phone: phone || null,
+      email: email || null,
+      isExternal: true,
+      courseType: input.courseType?.trim() || null,
+      agreedPrice:
+        input.agreedPrice != null && Number.isFinite(input.agreedPrice)
+          ? Number(input.agreedPrice)
+          : null,
+    },
+  })
+  revalidatePath("/")
+  revalidatePath("/leads")
+  revalidatePath(`/leads/${input.leadId}`)
+  return { ok: true, data: { id: created.id } }
+}
+
+export async function recordParticipantPayment(
+  participantId: string,
+  leadId: string,
+  data: {
+    paymentDate: string
+    paymentMethod: string
+    paymentReceivedBy: string
+    paymentReceiptIssued?: boolean
+  },
+): Promise<ActionResult<{ id: string }>> {
+  const date = data.paymentDate?.trim()
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { ok: false, error: "תאריך תשלום לא תקין" }
+  }
+  await prisma.participant.update({
+    where: { id: participantId },
+    data: {
+      paymentStatus: PAID_PAYMENT_STATUS,
+      paymentDate: jerusalemLocalToUtcDate(date, "12:00"),
+      paymentMethod: data.paymentMethod.trim() || null,
+      paymentReceivedBy: data.paymentReceivedBy.trim() || null,
+      paymentReceiptIssued: Boolean(data.paymentReceiptIssued),
+    },
+  })
+  revalidatePath(`/leads/${leadId}`)
+  revalidatePath("/")
+  return { ok: true, data: { id: participantId } }
 }
 
 export async function setCollectCertificateShipping(
@@ -1981,6 +2111,8 @@ export async function addTrainingSale(
   opts?: {
     paymentMethod?: string | null
     unpaid?: boolean
+    participantId?: string | null
+    receiptIssued?: boolean
   },
 ): Promise<ActionResult<{ id: string }>> {
   const qty = Math.max(1, Math.floor(Number(quantity) || 0));
@@ -2025,6 +2157,8 @@ export async function addTrainingSale(
       paymentStatus: unpaid
         ? TRAINING_SALE_PENDING_PAYMENT
         : TRAINING_SALE_PAID,
+      participantId: opts?.participantId || null,
+      receiptIssued: Boolean(opts?.receiptIssued),
     },
   });
 

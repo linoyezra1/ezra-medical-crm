@@ -12,6 +12,7 @@ import {
   MapPin,
   Pencil,
   Phone,
+  Plus,
   UserPlus,
   Users,
   Wallet,
@@ -22,6 +23,7 @@ import { CollectParticipantsDialog } from "@/components/leads/collect-participan
 import { LeadPaymentDialog } from "@/components/leads/lead-payment-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
+import { ParticipantsDialog } from "@/components/leads/participants-dialog"
 import { ParticipantsSection } from "@/components/leads/participants-section"
 import { TrainingSalesSection } from "@/components/leads/training-sales-section"
 import { Button } from "@/components/ui/button"
@@ -36,8 +38,7 @@ import {
   downloadLeadIcs,
   whatsappLink,
 } from "@/lib/helpers"
-import { formatActivityLogLine } from "@/lib/activity-log"
-import { isInstructorUnassigned, isOwnerInstructor } from "@/lib/instructor"
+import { isInstructorUnassigned, isOwnerInstructor, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { computeTrainingProfit } from "@/lib/training-profit"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -218,7 +219,6 @@ export function LeadDetailView({
               lead={lead}
               addressLine={addressLine}
               wazeUrl={wazeUrl}
-              onCollect={() => setCollectOpen(true)}
             />
           </TabsContent>
 
@@ -310,12 +310,10 @@ function HomeTab({
   lead,
   addressLine,
   wazeUrl,
-  onCollect,
 }: {
   lead: Lead
   addressLine: string
   wazeUrl: string | null
-  onCollect: () => void
 }) {
   return (
     <>
@@ -336,12 +334,14 @@ function HomeTab({
           <Info
             label="מדריך"
             value={
-              isInstructorUnassigned(lead.instructor)
+              shouldShowUnassignedInstructorWarning(lead)
                 ? "לא שובץ מדריך"
-                : lead.instructor || "—"
+                : isInstructorUnassigned(lead.instructor)
+                  ? "—"
+                  : lead.instructor || "—"
             }
             valueClassName={
-              isInstructorUnassigned(lead.instructor)
+              shouldShowUnassignedInstructorWarning(lead)
                 ? "font-bold text-red-600"
                 : undefined
             }
@@ -400,56 +400,6 @@ function HomeTab({
       </Card>
 
       <LifecycleControls lead={lead} hideParticipantsManage />
-
-      <Card className="gap-2 rounded-2xl border border-border/80 bg-card p-4 shadow-sm text-sm">
-        <h2 className="text-sm font-bold text-foreground">מעקב משתמשים</h2>
-        <p className="text-muted-foreground">
-          נוצר על ידי:{" "}
-          <span className="font-medium text-foreground">
-            {lead.createdBy || "—"}
-          </span>
-        </p>
-        <p className="text-muted-foreground">
-          עודכן לאחרונה על ידי:{" "}
-          <span className="font-medium text-foreground">
-            {lead.lastUpdatedBy || "—"}
-          </span>
-        </p>
-        {(lead.status === "closed" || lead.closedBy) && (
-          <p className="text-muted-foreground">
-            העסקה נסגרה על ידי:{" "}
-            <span className="font-medium text-foreground">
-              {lead.closedBy || "—"}
-            </span>
-          </p>
-        )}
-      </Card>
-
-      <Card className="gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-        <h2 className="text-sm font-bold text-foreground">היסטוריית שינויים</h2>
-        {(lead.activityLogs || []).length === 0 ? (
-          <p className="text-xs text-muted-foreground">אין שינויים מתועדים עדיין</p>
-        ) : (
-          <ul className="space-y-2">
-            {(lead.activityLogs || []).map((entry) => (
-              <li
-                key={entry.id}
-                className="rounded-xl bg-secondary/40 px-3 py-2 text-xs leading-relaxed text-foreground"
-              >
-                {formatActivityLogLine(entry)}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <Button
-        className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
-        onClick={onCollect}
-      >
-        <UserPlus className="size-5" />
-        הוסף משתתפים
-      </Button>
     </>
   )
 }
@@ -462,6 +412,7 @@ function ParticipantsTab({
   onCollect: () => void
 }) {
   const [exporting, setExporting] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
 
   const exportToSheets = async () => {
     setExporting(true)
@@ -481,10 +432,30 @@ function ParticipantsTab({
   return (
     <>
       <Card className="gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-        <h2 className="text-sm font-bold">כלי רישום משתתפים</h2>
-        <p className="text-xs text-muted-foreground">
-          QR, העתקת קישור ושליחה בוואטסאפ — כולל בקשת דירוג בגוגל
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold">כלי רישום משתתפים</h2>
+            <p className="text-xs text-muted-foreground">
+              QR, העתקת קישור ושליחה בוואטסאפ
+            </p>
+          </div>
+          {(lead.status === "pending_certificates" ||
+            lead.status === "completed" ||
+            lead.status === "closed") && (
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="size-10 shrink-0 rounded-xl"
+              disabled={exporting}
+              onClick={() => void exportToSheets()}
+              aria-label="ייצוא תעודות לאקסל"
+              title="ייצוא תעודות לאקסל"
+            >
+              <FileSpreadsheet className="size-4" />
+            </Button>
+          )}
+        </div>
         <Button
           className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
           onClick={onCollect}
@@ -492,23 +463,23 @@ function ParticipantsTab({
           <UserPlus className="size-5" />
           פתח אפשרויות רישום
         </Button>
-        {(lead.status === "pending_certificates" ||
-          lead.status === "done" ||
-          lead.status === "completed") && (
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 w-full gap-2 rounded-2xl"
-            disabled={exporting}
-            onClick={() => void exportToSheets()}
-          >
-            <FileSpreadsheet className="size-4" />
-            {exporting ? "מייצא…" : "ייצוא תעודות ל-Google Sheets"}
-          </Button>
-        )}
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full gap-2 rounded-2xl"
+          onClick={() => setManualOpen(true)}
+        >
+          <Plus className="size-4" />
+          הוספת מודרך ידנית
+        </Button>
       </Card>
 
       <ParticipantsSection lead={lead} />
+      <ParticipantsDialog
+        lead={lead}
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+      />
     </>
   )
 }

@@ -38,10 +38,8 @@ function advanceButtonClass(target: LeadStatus): string {
       return "bg-amber-400 text-amber-950 hover:bg-amber-500"
     case "closed":
       return "bg-orange-500 text-white hover:bg-orange-600"
-    case "done":
-      return "bg-emerald-500 text-white hover:bg-emerald-600"
     case "pending_certificates":
-      return "bg-emerald-700 text-white hover:bg-emerald-800"
+      return "bg-emerald-600 text-white hover:bg-emerald-700"
     case "completed":
       return "bg-slate-500 text-white hover:bg-slate-600"
     default:
@@ -64,6 +62,7 @@ export function LifecycleControls({
   const [googleCalOpen, setGoogleCalOpen] = useState(false)
   const [paymentBlockOpen, setPaymentBlockOpen] = useState(false)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
+  const [lostConfirmOpen, setLostConfirmOpen] = useState(false)
 
   const currentIdx = LEAD_STATUS_ORDER.indexOf(lead.status)
   const nextStatus =
@@ -102,16 +101,10 @@ export function LifecycleControls({
       return
     }
 
-    // מעבר ל"בוצעה" → אוטומטית "ממתין לתעודות"
-    if (target === "done") {
-      updateLead(lead.id, { status: "pending_certificates" })
-      toast.success("ההדרכה סומנה כבוצעה ועברה אוטומטית לממתין לתעודות")
-      return
-    }
-
+    // מעבר ל"הדרכה בוצעה וממתינה לתעודות"
     if (target === "pending_certificates") {
       updateLead(lead.id, { status: "pending_certificates" })
-      toast.success("עבר לסטטוס ממתין לתעודות")
+      toast.success("ההדרכה סומנה כבוצעה וממתינה לתעודות")
       return
     }
 
@@ -129,7 +122,12 @@ export function LifecycleControls({
   }
 
   const markLost = () => {
+    setLostConfirmOpen(true)
+  }
+
+  const confirmMarkLost = () => {
     updateLead(lead.id, { status: "lost" })
+    setLostConfirmOpen(false)
     toast.success("הליד הועבר לארכיון (אבוד)")
   }
 
@@ -144,7 +142,7 @@ export function LifecycleControls({
       <h2 className="text-sm font-bold">מחזור חיים של הליד</h2>
 
       {/* מחוון שלבים ממוספר */}
-      <div className="grid grid-cols-5 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         {LEAD_STATUS_ORDER.map((s, i) => {
           const active = i <= currentIdx && lead.status !== "lost"
           const current = s === lead.status
@@ -201,7 +199,7 @@ export function LifecycleControls({
       ) : (
         <>
           {!hideParticipantsManage &&
-          (lead.status === "done" || lead.status === "pending_certificates") ? (
+          lead.status === "pending_certificates" ? (
             <Button
               variant="outline"
               className="justify-between"
@@ -404,6 +402,33 @@ export function LifecycleControls({
         open={paymentDialogOpen}
         onOpenChange={setPaymentDialogOpen}
       />
+
+      <Dialog open={lostConfirmOpen} onOpenChange={setLostConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-right">סמן כאבוד</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            האם אתה בטוח שברצונך לאבד את הליד?
+          </p>
+          <DialogFooter className="flex-row gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setLostConfirmOpen(false)}
+            >
+              ביטול
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={confirmMarkLost}
+            >
+              כן, סמן כאבוד
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

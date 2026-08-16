@@ -66,6 +66,14 @@ export function computeTrainingProfit(
   instructors: InstructorProfile[],
 ): TrainingProfitSummary {
   const coursePrice = lead.totalPrice || 0
+  const externalPaid = (lead.participants || [])
+    .filter(
+      (p) =>
+        p.isExternal &&
+        p.paymentStatus === "paid_in_full" &&
+        (p.agreedPrice || 0) > 0,
+    )
+    .reduce((s, p) => s + (p.agreedPrice || 0), 0)
   const sales = lead.trainingSales || []
   const salesIncome = sales.reduce(
     (s, x) => s + (x.unitSellingPrice || 0) * (x.quantity || 0),
@@ -80,18 +88,16 @@ export function computeTrainingProfit(
     .filter((e) => !isInstructorExpenseType(e.type))
     .reduce((s, e) => s + (e.amount || 0), 0)
 
-  const revenue = coursePrice + salesIncome
+  const revenue = coursePrice + externalPaid + salesIncome
   const totalExpenses = instructorFee + otherExpenses + salesCost
-  const netProfit = revenue - totalExpenses
-
   return {
-    coursePrice,
+    coursePrice: coursePrice + externalPaid,
     salesIncome,
     revenue,
     instructorFee,
     otherExpenses,
     salesCost,
     totalExpenses,
-    netProfit,
+    netProfit: revenue - totalExpenses,
   }
 }

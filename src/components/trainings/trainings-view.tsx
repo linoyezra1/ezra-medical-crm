@@ -13,13 +13,13 @@ import { StatusBadge } from "@/components/status-badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { formatDateWithWeekday, leadStatusCardClass } from "@/lib/helpers"
-import { isInstructorUnassigned } from "@/lib/instructor"
+import { shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { jerusalemLocalToUtcDate } from "@/lib/timezone"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-type Filter = "upcoming" | "done" | "certificates" | "all"
+type Filter = "upcoming" | "pending_certificates" | "completed" | "all"
 
 export function TrainingsView() {
   const { leads } = useApp()
@@ -33,10 +33,10 @@ export function TrainingsView() {
   const filtered = useMemo(() => {
     let list = trainings
     if (filter === "upcoming") list = trainings.filter((l) => l.status === "closed")
-    else if (filter === "done")
-      list = trainings.filter((l) => l.status === "done" || l.status === "completed")
-    else if (filter === "certificates")
+    else if (filter === "pending_certificates")
       list = trainings.filter((l) => l.status === "pending_certificates")
+    else if (filter === "completed")
+      list = trainings.filter((l) => l.status === "completed")
     return [...list].sort((a, b) => {
       const ta = a.date
         ? jerusalemLocalToUtcDate(a.date, a.time || "00:00").getTime()
@@ -44,7 +44,7 @@ export function TrainingsView() {
       const tb = b.date
         ? jerusalemLocalToUtcDate(b.date, b.time || "00:00").getTime()
         : 0
-      return filter === "done" ? tb - ta : ta - tb
+      return filter === "upcoming" ? ta - tb : tb - ta
     })
   }, [trainings, filter])
 
@@ -75,15 +75,15 @@ export function TrainingsView() {
 
       <div className="px-4 pt-3 md:mx-auto md:max-w-6xl md:px-6">
         <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-          <TabsList className="grid w-full grid-cols-4 md:max-w-md">
+          <TabsList className="grid w-full grid-cols-4 md:max-w-lg">
             <TabsTrigger value="upcoming" className="text-xs">
               קרובות
             </TabsTrigger>
-            <TabsTrigger value="done" className="text-xs">
-              בוצעו
+            <TabsTrigger value="pending_certificates" className="text-[10px] leading-tight sm:text-xs">
+              בוצעה / תעודות
             </TabsTrigger>
-            <TabsTrigger value="certificates" className="text-xs">
-              תעודות
+            <TabsTrigger value="completed" className="text-xs">
+              הסתיים
             </TabsTrigger>
             <TabsTrigger value="all" className="text-xs">
               הכל
@@ -104,7 +104,6 @@ export function TrainingsView() {
             <div className="mb-2 flex items-center gap-2 px-1">
               <CalendarClock className="size-4 text-primary" />
               <h2 className="text-sm font-bold text-foreground">{day}</h2>
-              <span className="text-xs text-muted-foreground">({items.length})</span>
             </div>
             <div className="space-y-2">
               {items.map((l) => (
@@ -189,7 +188,7 @@ function TrainingTableRow({ lead: l }: { lead: Lead }) {
           .join(" ") || "—"}
       </td>
       <td className="px-3 py-2.5">
-        {isInstructorUnassigned(l.instructor) ? (
+        {shouldShowUnassignedInstructorWarning(l) ? (
           <span className="font-bold text-red-600">לא שובץ מדריך</span>
         ) : (
           l.instructor || "—"
@@ -248,13 +247,15 @@ function TrainingCard({ lead: l }: { lead: Lead }) {
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1">
             <MapPin className="size-3" />
-            {l.address.city || "-"}
+            {l.sessions?.[0]?.isZoom
+              ? "זום"
+              : l.address.city || "-"}
           </span>
           <span className="flex items-center gap-1">
             <Users className="size-3" />
             {l.participants.length || l.participantsCount}
           </span>
-          {isInstructorUnassigned(l.instructor) ? (
+          {shouldShowUnassignedInstructorWarning(l) ? (
             <span className="font-bold text-red-600">לא שובץ מדריך</span>
           ) : l.instructor ? (
             <span className="flex items-center gap-1 font-medium text-foreground">
@@ -264,7 +265,6 @@ function TrainingCard({ lead: l }: { lead: Lead }) {
           ) : null}
         </div>
       </div>
-      {/* Action sheet עדיין נדרש — מוצג גם כש־showKebab=false */}
     </div>
   )
 }

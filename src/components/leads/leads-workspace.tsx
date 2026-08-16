@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { LayoutGrid, LayoutList, Plus, Search } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
+import { ExternalParticipantDialog } from "@/components/leads/external-participant-dialog"
 import { LeadCard } from "@/components/leads/lead-card"
 import { LeadDetailView } from "@/components/leads/lead-detail-view"
 import {
@@ -15,7 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { formatCurrency, formatDateWithWeekday } from "@/lib/helpers"
-import { isInstructorUnassigned } from "@/lib/instructor"
+import { shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { LEAD_STATUS_LABELS, type Lead, type LeadStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -24,7 +25,6 @@ const FILTERS: { value: LeadStatus | "all"; label: string }[] = [
   { value: "all", label: "הכל" },
   { value: "new", label: LEAD_STATUS_LABELS.new },
   { value: "closed", label: LEAD_STATUS_LABELS.closed },
-  { value: "done", label: LEAD_STATUS_LABELS.done },
   { value: "pending_certificates", label: LEAD_STATUS_LABELS.pending_certificates },
   { value: "completed", label: LEAD_STATUS_LABELS.completed },
   { value: "lost", label: LEAD_STATUS_LABELS.lost },
@@ -37,6 +37,22 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
   const [filter, setFilter] = useState<LeadStatus | "all">("all")
   const [query, setQuery] = useState("")
   const [browseMode, setBrowseMode] = useState<DesktopBrowseMode>("cards")
+  const [externalOpen, setExternalOpen] = useState(false)
+
+  // Deep-link: /leads?status=new
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const status = new URLSearchParams(window.location.search).get("status")
+    if (
+      status === "new" ||
+      status === "closed" ||
+      status === "pending_certificates" ||
+      status === "completed" ||
+      status === "lost"
+    ) {
+      setFilter(status)
+    }
+  }, [])
 
   const filtered = useMemo(() => {
     return leads
@@ -101,16 +117,27 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
         title="לידים"
         subtitle={`${filtered.length} רשומות`}
         action={
-          <Button
-            size="icon"
-            nativeButton={false}
-            className="size-10 shrink-0 rounded-full"
-            render={
-              <Link href="/leads/new" aria-label="ליד חדש">
-                <Plus className="size-5" />
-              </Link>
-            }
-          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              type="button"
+              className="size-10 shrink-0 rounded-full bg-pink-500 text-white hover:bg-pink-600"
+              aria-label="מצטרף נוסף"
+              onClick={() => setExternalOpen(true)}
+            >
+              <Plus className="size-5" />
+            </Button>
+            <Button
+              size="icon"
+              nativeButton={false}
+              className="size-10 shrink-0 rounded-full"
+              render={
+                <Link href="/leads/new" aria-label="ליד חדש">
+                  <Plus className="size-5" />
+                </Link>
+              }
+            />
+          </div>
         }
       />
 
@@ -170,6 +197,15 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
                 </div>
                 <Button
                   size="icon"
+                  type="button"
+                  className="size-9 shrink-0 rounded-full bg-pink-500 text-white hover:bg-pink-600"
+                  aria-label="מצטרף נוסף"
+                  onClick={() => setExternalOpen(true)}
+                >
+                  <Plus className="size-5" />
+                </Button>
+                <Button
+                  size="icon"
                   nativeButton={false}
                   className="size-9 shrink-0 rounded-full"
                   render={
@@ -224,6 +260,10 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
           <LeadDetailView leadId={selectedId} embedded />
         </div>
       )}
+      <ExternalParticipantDialog
+        open={externalOpen}
+        onOpenChange={setExternalOpen}
+      />
     </div>
   )
 }
@@ -300,7 +340,7 @@ function DesktopLeadRow({ lead }: { lead: Lead }) {
         {lead.time ? ` ${lead.time}` : ""}
       </td>
       <td className="max-w-0 truncate px-2 py-2">
-        {isInstructorUnassigned(lead.instructor) ? (
+        {shouldShowUnassignedInstructorWarning(lead) ? (
           <span className="font-bold text-red-600">לא שובץ מדריך</span>
         ) : (
           lead.instructor || "—"

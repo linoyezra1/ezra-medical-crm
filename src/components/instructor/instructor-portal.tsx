@@ -56,7 +56,7 @@ export function InstructorTrainingsView({
       .filter(
         (l) =>
           l.instructor?.trim() === n &&
-          ["closed", "done", "pending_certificates"].includes(l.status),
+          ["closed", "pending_certificates"].includes(l.status),
       )
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
   }, [leads, name])
@@ -198,7 +198,7 @@ export function InstructorPayDashboard({
     const n = name.trim()
     if (!n) return []
     return leads.filter(
-      (l) => l.instructor?.trim() === n && l.status === "done",
+      (l) => l.instructor?.trim() === n && l.status === "pending_certificates",
     )
   }, [leads, name])
 

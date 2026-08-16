@@ -10,6 +10,7 @@ import {
   mapTask,
   mapTrainee,
 } from "@/lib/mappers";
+import { parseSessionsJson } from "@/lib/payment";
 import type {
   BusinessSettings,
   Client,
@@ -48,6 +49,46 @@ export function emptyAppData(): AppData {
 export async function loadAppData(): Promise<AppData> {
   // During Railway image build, private DB host is unreachable — never fail the build.
   try {
+    // Migrate legacy DB status `completed` → certificates_pending (one-shot)
+    await prisma.lead.updateMany({
+      where: { courseStatus: "completed" },
+      data: { courseStatus: "certificates_pending" },
+    });
+
+    // Backfill TrainingSession rows from sessionsJson when missing
+    const needsSessionBackfill = await prisma.lead.findMany({
+      where: {
+        sessionsJson: { not: null },
+        trainingSessions: { none: {} },
+      },
+      select: {
+        id: true,
+        sessionsJson: true,
+        shippingCity: true,
+        shippingStreet: true,
+        shippingHouseNo: true,
+        city: true,
+      },
+      take: 200,
+    });
+    for (const lead of needsSessionBackfill) {
+      const slots = parseSessionsJson(lead.sessionsJson);
+      if (!slots.length) continue;
+      await prisma.trainingSession.createMany({
+        data: slots.map((s, i) => ({
+          leadId: lead.id,
+          sortOrder: i,
+          date: s.date,
+          startTime: s.time,
+          endTime: s.endTime || null,
+          isZoom: Boolean(s.isZoom),
+          city: s.city || lead.shippingCity || lead.city || null,
+          street: s.street || lead.shippingStreet || null,
+          houseNumber: s.houseNumber || lead.shippingHouseNo || null,
+        })),
+      });
+    }
+
     const [
       leadsDb,
       accounts,
@@ -61,8 +102,14 @@ export async function loadAppData(): Promise<AppData> {
       prisma.lead.findMany({
         include: {
           participants: true,
+          trainingSessions: { orderBy: { sortOrder: "asc" } },
           expenses: true,
-          trainingSales: { include: { inventoryItem: true } },
+          trainingSales: {
+            include: {
+              inventoryItem: true,
+              participant: { select: { id: true, fullName: true } },
+            },
+          },
           instructorRef: true,
           activityLogs: { orderBy: { createdAt: "desc" }, take: 50 },
         },

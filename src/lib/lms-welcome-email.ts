@@ -8,6 +8,15 @@ export const LMS_EMAIL_BRAND_BLUE = "#0284c7"
 export const LMS_EMAIL_FOOTER_TEXT = "#334155"
 export const LMS_EMAIL_MAX_WIDTH_PX = 580
 
+/** סעיף «מה מחכה לך במערכת?» — המלל המאושר (לא גרסת «חומרי לימוד מוקלטים…») */
+export const LMS_EMAIL_WHAT_AWAITS_TITLE = "מה מחכה לך במערכת?"
+export const LMS_EMAIL_WHAT_AWAITS_ITEMS = [
+  "שקפי לימוד מובנים ומחולקים לפי נושאים.",
+  "שאלת בדיקה עצמית בסוף כל שקף לחיזוק החומר.",
+  "מעקב רציף אחר אחוזי הלמידה וההתקדמות האישית שלך.",
+  "צ'אט ישיר להתייעצות ומענה ממדריך עזרה ראשונה לאורך כל הדרך.",
+] as const
+
 export type LmsWelcomeEmailParams = {
   fullName: string
   /** שם משתמש וסיסמה = תעודת זהות */
@@ -90,20 +99,12 @@ export function buildLmsWelcomeEmailHtml(params: LmsWelcomeEmailParams): string 
           </tr>
           <tr>
             <td style="padding:20px 24px 8px;text-align:right;color:#0f172a;">
-              <h2 style="margin:0 0 12px;font-size:18px;line-height:1.4;color:${blue};font-weight:700;">מה מחכה לך במערכת?</h2>
+              <h2 style="margin:0 0 12px;font-size:18px;line-height:1.4;color:${blue};font-weight:700;">${escapeHtml(LMS_EMAIL_WHAT_AWAITS_TITLE)}</h2>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:15px;line-height:1.75;color:#0f172a;">
-                <tr>
-                  <td style="padding:0 0 10px;text-align:right;">שקפי לימוד מובנים ומחולקים לפי נושאים.</td>
-                </tr>
-                <tr>
-                  <td style="padding:0 0 10px;text-align:right;">שאלת בדיקה עצמית בסוף כל שקף לחיזוק החומר.</td>
-                </tr>
-                <tr>
-                  <td style="padding:0 0 10px;text-align:right;">מעקב רציף אחר אחוזי הלמידה וההתקדמות האישית שלך.</td>
-                </tr>
-                <tr>
-                  <td style="padding:0;text-align:right;">צ&#39;אט ישיר להתייעצות ומענה ממדריך עזרה ראשונה לאורך כל הדרך.</td>
-                </tr>
+                ${LMS_EMAIL_WHAT_AWAITS_ITEMS.map(
+                  (item, i) =>
+                    `<tr><td style="padding:0 0 ${i === LMS_EMAIL_WHAT_AWAITS_ITEMS.length - 1 ? "0" : "10px"};text-align:right;">${escapeHtml(item)}</td></tr>`,
+                ).join("")}
               </table>
             </td>
           </tr>

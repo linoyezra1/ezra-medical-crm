@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useState } from "react"
 import {
   ArrowLeft,
   CalendarClock,
@@ -18,14 +19,17 @@ import {
 import { PageHeader } from "@/components/app-shell"
 import { ProfitHistoryDialog } from "@/components/dashboard/profit-history-dialog"
 import { StandaloneSalesButton } from "@/components/dashboard/standalone-sales-button"
+import { ExternalParticipantDialog } from "@/components/leads/external-participant-dialog"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/helpers"
 import { isLeadPaid } from "@/lib/payment"
+import { cn } from "@/lib/utils"
 
 export function DashboardView() {
   const { leads, tasks, settings } = useApp()
+  const [externalOpen, setExternalOpen] = useState(false)
 
   const activeLeads = leads.filter((l) => l.status !== "lost")
   // רווח בדשבורד — רק הדרכות ששולמו בפועל (ללא תלות בסטטוס ההדרכה)
@@ -57,7 +61,7 @@ export function DashboardView() {
   const expenses = courseExpenses + salesCost
   const netProfit = income - expenses
   const closedCourses = activeLeads.filter((l) =>
-    ["closed", "done", "pending_certificates", "completed"].includes(l.status),
+    ["closed", "pending_certificates", "completed"].includes(l.status),
   ).length
   const onDeck = activeLeads.filter((l) => l.status === "new").length
 
@@ -76,16 +80,27 @@ export function DashboardView() {
         title="שלום, בוקר טוב"
         subtitle={settings.businessName}
         action={
-          <Button
-            size="icon"
-            nativeButton={false}
-            className="size-10 rounded-full shrink-0"
-            render={
-              <Link href="/leads/new" aria-label="ליד חדש">
-                <Plus className="size-5" />
-              </Link>
-            }
-          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              type="button"
+              className="size-10 shrink-0 rounded-full bg-pink-500 text-white hover:bg-pink-600"
+              aria-label="מצטרף נוסף"
+              onClick={() => setExternalOpen(true)}
+            >
+              <Plus className="size-5" />
+            </Button>
+            <Button
+              size="icon"
+              nativeButton={false}
+              className="size-10 rounded-full shrink-0"
+              render={
+                <Link href="/leads/new" aria-label="ליד חדש">
+                  <Plus className="size-5" />
+                </Link>
+              }
+            />
+          </div>
         }
       />
 
@@ -120,12 +135,15 @@ export function DashboardView() {
             value={closedCourses}
             tone="success"
           />
-          <StatCard
-            icon={Flame}
-            label="על הפרק"
-            value={onDeck}
-            tone="primary"
-          />
+          <Link href="/leads?status=new" className="block">
+            <StatCard
+              icon={Flame}
+              label="על הפרק"
+              value={onDeck}
+              tone="primary"
+              clickable
+            />
+          </Link>
         </section>
 
         {/* משימות היום */}
@@ -230,6 +248,10 @@ export function DashboardView() {
           }
         />
       </div>
+      <ExternalParticipantDialog
+        open={externalOpen}
+        onOpenChange={setExternalOpen}
+      />
     </div>
   )
 }
@@ -239,18 +261,25 @@ function StatCard({
   label,
   value,
   tone,
+  clickable,
 }: {
   icon: React.ElementType
   label: string
   value: number
   tone: "primary" | "success"
+  clickable?: boolean
 }) {
   const toneClass =
     tone === "success"
       ? "bg-success/10 text-success"
       : "bg-primary/10 text-primary"
   return (
-    <Card className="gap-0 p-4">
+    <Card
+      className={cn(
+        "gap-0 p-4",
+        clickable && "transition-colors hover:bg-secondary/40",
+      )}
+    >
       <div
         className={`mb-2 flex size-9 items-center justify-center rounded-full ${toneClass}`}
       >

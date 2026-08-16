@@ -19,6 +19,7 @@ export type SalesBackupRow = {
   totalAmount: number
   paymentMethod: string
   paymentStatus: string
+  participantName: string
   saleId: string
 }
 
@@ -80,6 +81,7 @@ export async function buildSalesBackupPayload(): Promise<SalesBackupRow[]> {
   const sales = await prisma.trainingSale.findMany({
     include: {
       inventoryItem: { select: { name: true } },
+      participant: { select: { fullName: true } },
       lead: {
         select: {
           fullName: true,
@@ -112,6 +114,7 @@ export async function buildSalesBackupPayload(): Promise<SalesBackupRow[]> {
       totalAmount: unitPrice * quantity,
       paymentMethod: paymentMethodLabel(sale.paymentMethod),
       paymentStatus: paymentStatusLabel(sale.paymentStatus),
+      participantName: sale.participant?.fullName?.trim() || "",
       saleId: sale.id,
     }
   })

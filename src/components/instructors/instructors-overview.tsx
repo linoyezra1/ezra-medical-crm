@@ -17,7 +17,7 @@ export function InstructorsOverview() {
   const { leads, settings, instructors } = useApp()
 
   const completed = leads
-    .filter((l) => l.status === "done" && l.instructor?.trim())
+    .filter((l) => l.status === "pending_certificates" && l.instructor?.trim())
     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
 
   const byInstructor = completed.reduce<Record<string, number>>((acc, l) => {

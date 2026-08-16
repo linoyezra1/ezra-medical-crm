@@ -105,7 +105,7 @@ export function CalendarView() {
     const items: Item[] = []
     for (const l of leads) {
       if (
-        !["closed", "done", "pending_certificates", "completed"].includes(
+        !["closed", "pending_certificates", "completed"].includes(
           l.status,
         )
       ) {
@@ -113,15 +113,18 @@ export function CalendarView() {
       }
       const sessions = leadCalendarSessions(l)
       sessions.forEach((s, idx) => {
+        const courseTitle = formatLeadCourseType(l)
         items.push({
           kind: "training",
           id: l.id,
           date: s.date,
           time: s.time,
-          title: formatLeadCourseType(l),
-          sub: `${l.name} · ${l.address.city || ""}${
-            sessions.length > 1 ? ` · מפגש ${idx + 1}` : ""
-          }`,
+          title: s.isZoom
+            ? `הדרכה - ${courseTitle} - זום`
+            : courseTitle,
+          sub: `${l.name} · ${
+            s.isZoom ? "זום" : s.city || l.address.city || ""
+          }${sessions.length > 1 ? ` · מפגש ${idx + 1}` : ""}`,
           isPrivate: Boolean(l.isPrivateCourse),
           sessionKey: `${l.id}-${s.date}-${s.time}-${idx}`,
         })

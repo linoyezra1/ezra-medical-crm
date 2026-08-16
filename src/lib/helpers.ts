@@ -108,11 +108,10 @@ export function leadStatusCardClass(status: Lead["status"]): string {
     // נסגר ונכנס ליומן
     case "closed":
       return "border-green-500 bg-green-50/50"
-    // הדרכה בוצעה
-    case "done":
+    // הדרכה בוצעה וממתינה לתעודות
+    case "pending_certificates":
       return "border-blue-500 bg-blue-50/50"
     // תהליך הסתיים / ארכיון
-    case "pending_certificates":
     case "completed":
     case "lost":
       return "border-slate-300 bg-slate-100/60 text-slate-600"
@@ -233,7 +232,26 @@ export function missingForClose(lead: Partial<Lead>): string[] {
   const missing: string[] = [];
   if (!lead.date) missing.push("תאריך");
   if (!lead.time) missing.push("שעה");
-  if (!lead.address?.street || !lead.address?.city) missing.push("כתובת");
+  const sessions = lead.sessions;
+  const allZoom =
+    sessions && sessions.length > 0
+      ? sessions.every((s) => Boolean(s.isZoom))
+      : false;
+  if (!allZoom) {
+    // כתובת ברמת ליד או לפחות מפגש אחד לא-זום עם כתובת
+    const leadHasAddress = Boolean(
+      lead.address?.street?.trim() && lead.address?.city?.trim(),
+    );
+    const sessionHasAddress =
+      sessions?.some(
+        (s) =>
+          !s.isZoom &&
+          Boolean(s.street?.trim() && s.city?.trim()),
+      ) ?? false;
+    if (!leadHasAddress && !sessionHasAddress) {
+      missing.push("כתובת");
+    }
+  }
   return missing;
 }
 
@@ -257,17 +275,27 @@ function toIcsUtcStamp(d: Date): string {
 
 /** בונה תוכן קובץ iCalendar (.ics) להוספה ליומן המכשיר */
 export function buildLeadIcsContent(lead: Lead): string {
-  const city = lead.address?.city?.trim() || "";
+  const firstSession = lead.sessions?.[0];
+  const isZoom = Boolean(firstSession?.isZoom);
+  const city =
+    firstSession?.city?.trim() || lead.address?.city?.trim() || "";
   const courseTitle =
     formatCourseTypeLabel(lead.courseType, { other: lead.courseTypeOther }) ||
     "הדרכה";
-  const summary = `הדרכה - ${courseTitle} - ${city || "ללא עיר"}`;
+  const summary = isZoom
+    ? `הדרכה - ${courseTitle} - זום`
+    : `הדרכה - ${courseTitle} - ${city || "ללא עיר"}`;
 
-  const street = [lead.address?.street, lead.address?.houseNumber]
+  const street = [
+    firstSession?.street || lead.address?.street,
+    firstSession?.houseNumber || lead.address?.houseNumber,
+  ]
     .filter(Boolean)
     .join(" ")
     .trim();
-  const location = [street, city].filter(Boolean).join(", ");
+  const location = isZoom
+    ? "זום"
+    : [street, city].filter(Boolean).join(", ");
 
   const contactName = lead.contactName?.trim() || lead.name;
   const price = Math.round(lead.totalPrice || 0);

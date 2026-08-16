@@ -218,17 +218,9 @@ export function QuickActionsView() {
 
   return (
     <div>
-      <PageHeader
-        title="פעולות מהירות"
-        subtitle="פעולות לפי הדרכה או פתיחה ישירה ל-WhatsApp"
-      />
+      <PageHeader title="פעולות מהירות" />
 
       <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-        <p className="text-sm text-muted-foreground">
-          רוב הפעולות יפתחו בחירת הדרכה. שליחת פרטי חשבון פותחת ישירות את
-          WhatsApp לבחירת איש קשר.
-        </p>
-
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {ACTIONS.map((action) => {
             const Icon = action.icon

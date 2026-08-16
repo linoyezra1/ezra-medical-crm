@@ -13,10 +13,11 @@ import type {
   TrainingSale as DbTrainingSale,
   Instructor as DbInstructor,
   ActivityLog as DbActivityLog,
+  TrainingSession as DbTrainingSession,
 } from "@/generated/prisma/client";
 import { DEFAULT_COURSES } from "@/lib/demo-data";
 import { currentStockOf } from "@/lib/inventory-stock";
-import { parseSessionsJson } from "@/lib/payment";
+import { parseSessionsJson, type TrainingSessionSlot } from "@/lib/payment";
 import { formatInJerusalem } from "@/lib/timezone";
 import {
   dbEquipmentToUi,
@@ -35,8 +36,12 @@ import {
 
 type DbLeadFull = DbLead & {
   participants?: Participant[];
+  trainingSessions?: DbTrainingSession[];
   expenses?: Expense[];
-  trainingSales?: (DbTrainingSale & { inventoryItem?: { name: string } | null })[];
+  trainingSales?: (DbTrainingSale & {
+    inventoryItem?: { name: string } | null;
+    participant?: { id: string; fullName: string } | null;
+  })[];
   instructorRef?: DbInstructor | null;
   activityLogs?: DbActivityLog[];
 };
@@ -74,9 +79,37 @@ function mapDelivery(method: string | null | undefined): Lead["certificateDelive
   return "עזרה ורפואה";
 }
 
+function mapTrainingSessions(
+  db: DbLeadFull,
+): TrainingSessionSlot[] {
+  if (db.trainingSessions && db.trainingSessions.length > 0) {
+    return db.trainingSessions.map((s) => ({
+      id: s.id,
+      date: s.date,
+      time: s.startTime,
+      endTime: s.endTime || undefined,
+      isZoom: Boolean(s.isZoom),
+      city: s.city || undefined,
+      street: s.street || undefined,
+      houseNumber: s.houseNumber || undefined,
+    }));
+  }
+  const fromJson = parseSessionsJson(db.sessionsJson);
+  if (fromJson.length > 0) {
+    return fromJson.map((s) => ({
+      ...s,
+      city: s.city || db.shippingCity || db.city || undefined,
+      street: s.street || db.shippingStreet || undefined,
+      houseNumber: s.houseNumber || db.shippingHouseNo || undefined,
+    }));
+  }
+  return [];
+}
+
 export function mapLead(db: DbLeadFull): Lead {
   const { date, time } = splitDateTime(db.scheduledStart);
   const end = splitDateTime(db.scheduledEnd);
+  const sessions = mapTrainingSessions(db);
   return {
     id: db.id,
     clientId: db.accountId || "",
@@ -132,6 +165,28 @@ export function mapLead(db: DbLeadFull): Lead {
       hasLmsAccess: Boolean(p.hasLmsAccess),
       traineeId: p.traineeId || undefined,
       certificateUrl: p.certificateUrl || undefined,
+      isExternal: Boolean(
+        (p as { isExternal?: boolean }).isExternal,
+      ),
+      courseType: (p as { courseType?: string | null }).courseType || undefined,
+      agreedPrice:
+        (p as { agreedPrice?: number | null }).agreedPrice != null
+          ? Number((p as { agreedPrice?: number | null }).agreedPrice)
+          : undefined,
+      paymentStatus:
+        (p as { paymentStatus?: string | null }).paymentStatus || undefined,
+      paymentDate: (p as { paymentDate?: Date | null }).paymentDate
+        ? formatInJerusalem((p as { paymentDate?: Date | null }).paymentDate!)
+            .date
+        : undefined,
+      paymentMethod:
+        (p as { paymentMethod?: string | null }).paymentMethod || undefined,
+      paymentReceivedBy:
+        (p as { paymentReceivedBy?: string | null }).paymentReceivedBy ||
+        undefined,
+      paymentReceiptIssued: Boolean(
+        (p as { paymentReceiptIssued?: boolean }).paymentReceiptIssued,
+      ),
     })),
     expenses: (db.expenses || []).map((e) => ({
       id: e.id,
@@ -150,6 +205,14 @@ export function mapLead(db: DbLeadFull): Lead {
         unitCostPrice: s.unitCostPrice,
         paymentMethod: s.paymentMethod || undefined,
         paymentStatus: s.paymentStatus || undefined,
+        participantId:
+          (s as { participantId?: string | null }).participantId ||
+          s.participant?.id ||
+          undefined,
+        participantName: s.participant?.fullName || undefined,
+        receiptIssued: Boolean(
+          (s as { receiptIssued?: boolean }).receiptIssued,
+        ),
         createdAt: s.createdAt.toISOString(),
       }),
     ),
@@ -178,8 +241,8 @@ export function mapLead(db: DbLeadFull): Lead {
     paymentReceivedBy: db.paymentReceivedBy || undefined,
     paymentReceiptIssued: Boolean(db.paymentReceiptIssued),
     isPrivateCourse: Boolean(db.isPrivateCourse),
-    sessionsCount: db.sessionsCount,
-    sessions: parseSessionsJson(db.sessionsJson),
+    sessionsCount: db.sessionsCount ?? (sessions.length || null),
+    sessions,
     sessionDuration: db.sessionDuration,
     bookletRequired: db.bookletRequired,
     reason: db.reason,

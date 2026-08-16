@@ -81,10 +81,7 @@ export function buildProfitTransactions(
     if (lead.status === "lost") continue
     if (!isRevenueLead(lead)) continue
 
-    const date = toDateKey(
-      lead.paymentDate || lead.date,
-      lead.updatedAt || lead.createdAt,
-    )
+    const date = toDateKey(lead.date, lead.updatedAt || lead.createdAt)
     const profit = computeTrainingProfit(lead, instructors)
 
     rows.push({

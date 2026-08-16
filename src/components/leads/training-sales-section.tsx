@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Plus, Trash2 } from "lucide-react"
+import { Link2, Minus, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
@@ -56,6 +56,8 @@ export function TrainingSalesSection({
   const [qty, setQty] = useState("1")
   const [paymentMethod, setPaymentMethod] = useState<string>("bit")
   const [unpaid, setUnpaid] = useState(false)
+  const [participantId, setParticipantId] = useState("")
+  const [receiptIssued, setReceiptIssued] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteSaleId, setDeleteSaleId] = useState<string | null>(null)
   const [deletingSale, setDeletingSale] = useState(false)
@@ -100,6 +102,8 @@ export function TrainingSalesSection({
     setSalePrice("")
     setPaymentMethod("bit")
     setUnpaid(false)
+    setParticipantId("")
+    setReceiptIssued(false)
   }
 
   const openModal = () => {
@@ -129,6 +133,8 @@ export function TrainingSalesSection({
     const res = await addTrainingSale(lead.id, itemId, qtyNum, price, {
       unpaid,
       paymentMethod: unpaid ? null : paymentMethod,
+      participantId: participantId || null,
+      receiptIssued,
     })
     setSaving(false)
     if (!res.ok) {
@@ -306,14 +312,29 @@ export function TrainingSalesSection({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>כמות</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={qty}
-                  onChange={(e) => setQty(e.target.value)}
-                  dir="ltr"
-                  className="h-11"
-                />
+                <div className="flex h-11 items-center gap-1 rounded-xl border border-border bg-background px-1">
+                  <button
+                    type="button"
+                    className="flex size-9 items-center justify-center rounded-lg hover:bg-secondary"
+                    onClick={() =>
+                      setQty(String(Math.max(1, qtyNum - 1)))
+                    }
+                    aria-label="הקטן כמות"
+                  >
+                    <Minus className="size-4" />
+                  </button>
+                  <span className="flex-1 text-center font-semibold tabular-nums" dir="ltr">
+                    {qtyNum}
+                  </span>
+                  <button
+                    type="button"
+                    className="flex size-9 items-center justify-center rounded-lg hover:bg-secondary"
+                    onClick={() => setQty(String(qtyNum + 1))}
+                    aria-label="הגדל כמות"
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <Label>עלות / סכום (₪ ליחידה)</Label>
@@ -329,6 +350,38 @@ export function TrainingSalesSection({
                 />
               </div>
             </div>
+
+            {(lead.participants || []).length > 0 ? (
+              <div className="space-y-1.5">
+                <Label className="inline-flex items-center gap-1.5">
+                  <Link2 className="size-3.5" />
+                  שיוך למשתתף (אופציונלי)
+                </Label>
+                <Select
+                  value={participantId || null}
+                  onValueChange={(v) => setParticipantId(v ?? "")}
+                >
+                  <SelectTrigger className="h-11 w-full">
+                    <SelectValue placeholder="ללא שיוך" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(lead.participants || []).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
+              <Checkbox
+                checked={receiptIssued}
+                onCheckedChange={(v) => setReceiptIssued(Boolean(v))}
+              />
+              <span className="text-sm font-semibold">הופקה קבלה</span>
+            </label>
 
             <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
               <Checkbox
