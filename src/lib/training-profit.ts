@@ -136,6 +136,7 @@ export type TrainingProfitSummary = {
   instructorFee: number
   otherExpenses: number
   salesCost: number
+  salesCommissions: number
   totalExpenses: number
   netProfit: number
 }
@@ -161,13 +162,18 @@ export function computeTrainingProfit(
     (s, x) => s + (x.unitCostPrice || 0) * (x.quantity || 0),
     0,
   )
+  const salesCommissions = sales.reduce(
+    (s, x) => s + (x.instructorCommissionAmount || 0),
+    0,
+  )
   const instructorFee = resolveInstructorFee(lead, instructors)
   const otherExpenses = (lead.expenses || [])
     .filter((e) => !isInstructorExpenseType(e.type))
     .reduce((s, e) => s + (e.amount || 0), 0)
 
   const revenue = pay.basePrice + pay.externalCollected + salesIncome
-  const totalExpenses = instructorFee + otherExpenses + salesCost
+  const totalExpenses =
+    instructorFee + otherExpenses + salesCost + salesCommissions
   return {
     coursePrice,
     salesIncome,
@@ -175,6 +181,7 @@ export function computeTrainingProfit(
     instructorFee,
     otherExpenses,
     salesCost,
+    salesCommissions,
     totalExpenses,
     netProfit: revenue - totalExpenses,
   }

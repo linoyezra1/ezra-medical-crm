@@ -10,6 +10,27 @@ export const ASSIGN_INSTRUCTOR_TASK_PREFIX = "יש לשבץ מדריך להדר�
 /** מדריך בעלים — ללא רישום עלות/תעריף */
 export const OWNER_INSTRUCTOR_NAME = "יצחק"
 
+/** ערך Select לפתיחת מודאל הוספת מדריך */
+export const ADD_INSTRUCTOR_VALUE = "__add_instructor__"
+
+export const ADD_INSTRUCTOR_LABEL = "+ הוסף מדריך חדש / אחר..."
+
+/** אפשרויות שיבוץ מדריך — יצחק תמיד + רשימת DB */
+export function buildInstructorSelectOptions(
+  instructors: Array<{ name: string; active?: boolean }>,
+): string[] {
+  const names = new Set<string>([OWNER_INSTRUCTOR_NAME])
+  for (const i of instructors) {
+    if (i.active !== false && i.name && !isInstructorUnassigned(i.name)) {
+      names.add(i.name)
+    }
+  }
+  const rest = [...names]
+    .filter((n) => n !== OWNER_INSTRUCTOR_NAME)
+    .sort((a, b) => a.localeCompare(b, "he"))
+  return [OWNER_INSTRUCTOR_NAME, ...rest]
+}
+
 export function isInstructorUnassigned(
   instructor?: string | null,
 ): boolean {

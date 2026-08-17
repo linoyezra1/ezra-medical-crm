@@ -15,6 +15,7 @@ import { formatCurrency, formatDate } from "@/lib/helpers"
 import {
   buildProfitTransactions,
   groupProfitByMonth,
+  type ProfitTransaction,
 } from "@/lib/profit-history"
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
@@ -134,7 +135,7 @@ export function ProfitHistoryDialog({
                         {month.transactions.map((tx) => (
                           <Link
                             key={`${tx.kind}-${tx.id}`}
-                            href={`/clients/${tx.clientId}`}
+                            href={profitTransactionHref(tx)}
                             onClick={() => setOpen(false)}
                             className="block rounded-xl border border-border bg-card p-3 active:scale-[0.99] transition-transform"
                           >
@@ -195,6 +196,12 @@ export function ProfitHistoryDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function profitTransactionHref(tx: ProfitTransaction): string {
+  if (tx.kind === "course") return `/leads/${tx.id}`
+  if (tx.kind === "equipment") return `/equipment/${tx.id}`
+  return `/clients/${tx.clientId}`
 }
 
 function Metric({

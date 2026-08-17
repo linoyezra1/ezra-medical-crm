@@ -29,6 +29,12 @@ import {
   isAllowedCourseTypeValue,
   resolveCourseTypeForSave,
 } from "@/lib/course-type"
+import {
+  InstructorSelectField,
+  initialInstructorAssignValue,
+  resolvedInstructorName,
+  type InstructorAssignValue,
+} from "@/components/instructors/instructor-select-field"
 import { ensureInstructor } from "@/lib/actions"
 import {
   calcTotal,
@@ -40,11 +46,9 @@ import {
   isInstructorUnassigned,
   isOwnerInstructor,
   UNASSIGNED_INSTRUCTOR,
-  UNASSIGNED_INSTRUCTOR_VALUE,
 } from "@/lib/instructor"
 import { addHoursToTime } from "@/lib/payment"
 import { useApp } from "@/lib/store"
-import { resolveInstructorFee } from "@/lib/training-profit"
 import type { Lead } from "@/lib/types"
 
 const FORM_STEPS = ["details", "course", "logistics"] as const
@@ -76,29 +80,6 @@ export function LeadForm({ existing }: Props) {
     return uniqueSorted(fromDb)
   }, [leads])
 
-  const instructorOptions = useMemo(() => {
-    const fromDb: string[] = []
-    for (const i of instructors) {
-      if (
-        i.active &&
-        i.name !== OTHER &&
-        !isInstructorUnassigned(i.name)
-      ) {
-        fromDb.push(i.name)
-      }
-    }
-    for (const l of leads) {
-      if (
-        l.instructor &&
-        l.instructor !== OTHER &&
-        !isInstructorUnassigned(l.instructor)
-      ) {
-        fromDb.push(l.instructor)
-      }
-    }
-    return uniqueSorted(fromDb)
-  }, [leads, instructors])
-
   const courseTypeOptions = useMemo(
     () => collectCourseTypeOptions(leads, settings.courses),
     [leads, settings.courses],
@@ -111,16 +92,10 @@ export function LeadForm({ existing }: Props) {
     return existing.category || OTHER
   })()
 
-  const initialInstructorSelect = (() => {
-    if (isInstructorUnassigned(existing?.instructor)) {
-      return UNASSIGNED_INSTRUCTOR_VALUE
-    }
-    if (existing?.instructor && instructorOptions.includes(existing.instructor)) {
-      return existing.instructor
-    }
-    if (existing?.instructor) return OTHER
-    return UNASSIGNED_INSTRUCTOR_VALUE
-  })()
+  const initialInstructorAssign = initialInstructorAssignValue(
+    existing,
+    instructors,
+  )
 
   const initialCourseLabel = existing
     ? formatLeadCourseType(existing, settings.courses)
@@ -173,10 +148,8 @@ export function LeadForm({ existing }: Props) {
   const [courseTypeSelect, setCourseTypeSelect] = useState(initialCourseSelect)
   const [courseTypeOther, setCourseTypeOther] = useState(initialCourseOtherText)
   const [categorySelect, setCategorySelect] = useState(initialCategorySelect)
-  const [instructorSelect, setInstructorSelect] = useState(initialInstructorSelect)
-  const [instructorOther, setInstructorOther] = useState(
-    initialInstructorSelect === OTHER ? existing?.instructor ?? "" : "",
-  )
+  const [instructorAssign, setInstructorAssign] =
+    useState<InstructorAssignValue>(initialInstructorAssign)
   const [globalPrice, setGlobalPrice] = useState(
     existing?.pricingType === "global" ? existing.totalPrice : 0,
   )
@@ -184,13 +157,6 @@ export function LeadForm({ existing }: Props) {
     null,
   )
   const [errors, setErrors] = useState<Record<string, boolean>>({})
-  const [instructorFee, setInstructorFee] = useState(() => {
-    if (!existing || isInstructorUnassigned(existing.instructor)) return ""
-    const live = resolveInstructorFee(existing, instructors)
-    return live > 0 || existing.instructorFeeOverride != null
-      ? String(existing.instructorFeeOverride ?? live)
-      : ""
-  })
   const [wizardStep, setWizardStep] = useState<FormStep>("details")
   const [savedFlash, setSavedFlash] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -443,9 +409,6 @@ export function LeadForm({ existing }: Props) {
         toast.error(COURSE_TYPE_FORMAT_ERROR)
       }
     }
-    if (instructorSelect === OTHER && !instructorOther.trim()) {
-      e.instructorOther = true
-    }
     if (sessionsMode === "other") {
       const n = Number(sessionsOtherCount)
       if (!Number.isFinite(n) || n < 1) e.sessionsOtherCount = true
@@ -471,16 +434,8 @@ export function LeadForm({ existing }: Props) {
     return { category: categorySelect, categoryOther: undefined }
   }
 
-  const resolveInstructor = (): string => {
-    if (instructorSelect === OTHER) return instructorOther.trim()
-    if (
-      instructorSelect === UNASSIGNED_INSTRUCTOR_VALUE ||
-      isInstructorUnassigned(instructorSelect)
-    ) {
-      return UNASSIGNED_INSTRUCTOR
-    }
-    return instructorSelect
-  }
+  const resolveInstructor = (): string =>
+    resolvedInstructorName(instructorAssign)
 
   const save = async () => {
     if (!validate()) {
@@ -500,7 +455,7 @@ export function LeadForm({ existing }: Props) {
     const unassigned = isInstructorUnassigned(instructor)
     const fee = isOwnerInstructor(instructor)
       ? 0
-      : Number(instructorFee) || 0
+      : Number(instructorAssign.fee) || 0
 
     setSaving(true)
     try {
@@ -1196,90 +1151,29 @@ export function LeadForm({ existing }: Props) {
               </div>
             ))}
 
-            <Field label="מדריך" error={errors.instructorOther}>
-              <Select
-                value={instructorSelect}
-                onValueChange={(v) => {
-                  const next = v ?? UNASSIGNED_INSTRUCTOR_VALUE
-                  setInstructorSelect(next)
-                  if (next === OTHER) return
-                  if (
-                    next === UNASSIGNED_INSTRUCTOR_VALUE ||
-                    isInstructorUnassigned(next)
-                  ) {
-                    set("instructor", UNASSIGNED_INSTRUCTOR)
-                    setInstructorOther("")
-                    setInstructorFee("")
-                    return
-                  }
-                  set("instructor", next)
-                  setInstructorOther("")
-                  if (isOwnerInstructor(next)) {
-                    setInstructorFee("")
-                    return
-                  }
-                  const profile = instructors.find((i) => i.name === next)
-                  setInstructorFee(
-                    profile && profile.fee > 0 ? String(profile.fee) : "",
-                  )
+            <Field label="מדריך">
+              <InstructorSelectField
+                value={instructorAssign}
+                onChange={(next) => {
+                  setInstructorAssign(next)
+                  set("instructor", next.instructorName)
                 }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="בחר מדריך">
-                    {(value: string | null) => {
-                      if (
-                        !value ||
-                        value === UNASSIGNED_INSTRUCTOR_VALUE ||
-                        isInstructorUnassigned(value)
-                      ) {
-                        return UNASSIGNED_INSTRUCTOR
-                      }
-                      if (value === OTHER) return OTHER
-                      return value
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent
-                  alignItemWithTrigger={false}
-                  className="max-h-[min(320px,70vh)]"
-                >
-                  <SelectItem
-                    value={UNASSIGNED_INSTRUCTOR_VALUE}
-                    className="font-semibold text-red-600 focus:text-red-700"
-                  >
-                    {UNASSIGNED_INSTRUCTOR}
-                  </SelectItem>
-                  <SelectSeparator />
-                  {instructorOptions.map((i) => (
-                    <SelectItem key={i} value={i}>
-                      {i}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value={OTHER}>{OTHER}</SelectItem>
-                </SelectContent>
-              </Select>
+                error={errors.instructorOther}
+              />
             </Field>
-            {instructorSelect === OTHER && (
-              <Field label="שם מדריך חדש" required error={errors.instructorOther}>
-                <Input
-                  value={instructorOther}
-                  onChange={(e) => setInstructorOther(e.target.value)}
-                  placeholder="הזן שם מדריך"
-                />
-              </Field>
-            )}
-            {!isInstructorUnassigned(instructorSelect) &&
-              !isOwnerInstructor(
-                instructorSelect === OTHER
-                  ? instructorOther
-                  : instructorSelect,
-              ) && (
+            {!isInstructorUnassigned(instructorAssign.selectValue) &&
+              !isOwnerInstructor(instructorAssign.selectValue) && (
               <Field label="תעריף מדריך חי (₪)">
                 <Input
                   type="number"
                   min={0}
-                  value={instructorFee}
-                  onChange={(e) => setInstructorFee(e.target.value)}
+                  value={instructorAssign.fee}
+                  onChange={(e) =>
+                    setInstructorAssign((prev) => ({
+                      ...prev,
+                      fee: e.target.value,
+                    }))
+                  }
                   placeholder="מתעדכן בפרופיל המדריך"
                   dir="ltr"
                 />

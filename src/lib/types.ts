@@ -136,6 +136,10 @@ export interface TrainingSale {
   participantId?: string;
   participantName?: string;
   receiptIssued?: boolean;
+  reportedByInstructorId?: string;
+  reportedByInstructorName?: string;
+  instructorCommissionAmount?: number;
+  isInstructorReported?: boolean;
   createdAt: string;
 }
 
@@ -444,4 +448,8 @@ export interface InstructorProfile {
   name: string;
   fee: number;
   active: boolean;
+  phone?: string;
+  username?: string;
+  salesCommissionPercentage?: number;
+  role?: string;
 }

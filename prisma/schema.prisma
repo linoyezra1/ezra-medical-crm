@@ -179,13 +179,21 @@ model ActivityLog {
 
 /** פרופיל מדריך — תעריף חי כמקור אמת לחישוב רווח */
 model Instructor {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  fee       Float    @default(0)
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  leads     Lead[]
+  id                        String         @id @default(cuid())
+  name                      String         @unique
+  fee                       Float          @default(0)
+  phone                     String?
+  username                  String?        @unique
+  password                  String?
+  salesCommissionPercentage Float          @default(0)
+  role                      String         @default("INSTRUCTOR")
+  active                    Boolean        @default(true)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+  leads                     Lead[]
+  reportedSales             TrainingSale[] @relation("ReportedByInstructor")
+
+  @@index([username])
 }
 
 model Participant {
@@ -293,26 +301,31 @@ model InventoryComponent {
 
 /** מכירת ציוד בשטח להדרכה או מכירה עצמאית */
 model TrainingSale {
-  id               String        @id @default(cuid())
-  leadId           String?
-  lead             Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  inventoryItemId  String
-  inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
-  quantity         Int           @default(1)
-  unitSellingPrice Float
-  unitCostPrice    Float
+  id                         String        @id @default(cuid())
+  leadId                     String?
+  lead                       Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  inventoryItemId            String
+  inventoryItem              InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  quantity                   Int           @default(1)
+  unitSellingPrice           Float
+  unitCostPrice              Float
   /// bit | bank_transfer | cash | paybox | check | other — null כשלא שולם
-  paymentMethod    String?
+  paymentMethod              String?
   /// paid | PENDING_PAYMENT
-  paymentStatus    String        @default("paid")
-  participantId    String?
-  participant      Participant?  @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  receiptIssued    Boolean        @default(false)
-  createdAt        DateTime      @default(now())
+  paymentStatus              String        @default("paid")
+  participantId              String?
+  participant                Participant?  @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  receiptIssued              Boolean       @default(false)
+  reportedByInstructorId     String?
+  reportedByInstructor       Instructor?   @relation("ReportedByInstructor", fields: [reportedByInstructorId], references: [id], onDelete: SetNull)
+  instructorCommissionAmount Float         @default(0)
+  isInstructorReported       Boolean       @default(false)
+  createdAt                  DateTime      @default(now())
 
   @@index([leadId])
   @@index([inventoryItemId])
   @@index([participantId])
+  @@index([reportedByInstructorId])
 }
 
 model Expense {

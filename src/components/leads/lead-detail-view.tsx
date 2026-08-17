@@ -18,6 +18,7 @@ import {
   Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
+import { InstructorAssignmentWidget } from "@/components/instructors/instructor-assignment-widget"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
 import { ExternalParticipantDialog } from "@/components/leads/external-participant-dialog"
@@ -35,6 +36,7 @@ import { exportLeadCertificatesToSheetsAction } from "@/lib/actions"
 import {
   formatCurrency,
   formatDateWithWeekday,
+  formatLeadCategory,
   downloadLeadIcs,
   whatsappLink,
 } from "@/lib/helpers"
@@ -166,6 +168,9 @@ export function LeadDetailView({
                 <p className="truncate text-sm font-medium text-muted-foreground md:text-base">
                   {courseLabel}
                 </p>
+                <div className="max-w-xs pt-1">
+                  <InstructorAssignmentWidget lead={lead} compact />
+                </div>
                 <p className="text-base font-extrabold text-foreground md:text-lg">
                   הסכום הכולל של ההדרכה:{" "}
                   <span className="text-primary">
@@ -396,11 +401,8 @@ function HomeTab({
             )}
           />
           <Info
-            label="סוג"
-            value={lead.isPrivateCourse ? "קורס פרטי" : "קבוצה"}
-            valueClassName={
-              lead.isPrivateCourse ? "font-semibold text-pink-600" : undefined
-            }
+            label="קטגוריה"
+            value={formatLeadCategory(lead.category)}
           />
         </div>
 

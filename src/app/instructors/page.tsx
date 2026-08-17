@@ -1,7 +1,7 @@
-import { InstructorsOverview } from "@/components/instructors/instructors-overview"
+import { InstructorsAdminView } from "@/components/instructors/instructors-admin-view"
 
 export const dynamic = "force-dynamic"
 
-export default function InstructorsAdminPage() {
-  return <InstructorsOverview />
+export default function InstructorsPage() {
+  return <InstructorsAdminView />
 }

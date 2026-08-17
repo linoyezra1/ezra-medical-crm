@@ -35,7 +35,7 @@ type DesktopBrowseMode = "cards" | "table"
 
 export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
   const { leads } = useApp()
-  const [filter, setFilter] = useState<LeadStatus | "all">("all")
+  const [filter, setFilter] = useState<LeadStatus | "all">("new")
   const [query, setQuery] = useState("")
   const [browseMode, setBrowseMode] = useState<DesktopBrowseMode>("cards")
   const [externalOpen, setExternalOpen] = useState(false)

@@ -112,6 +112,7 @@ export async function loadAppData(): Promise<AppData> {
             include: {
               inventoryItem: true,
               participant: { select: { id: true, fullName: true } },
+              reportedByInstructor: { select: { id: true, name: true } },
             },
           },
           instructorRef: true,

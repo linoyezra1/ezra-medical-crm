@@ -302,6 +302,13 @@ export function uniqueSorted(values: Iterable<string>): string[] {
   );
 }
 
+/** תווית קטגוריה לתצוגה (slug מקטלוג או טקסט חופשי) */
+export function formatLeadCategory(category?: string | null): string {
+  const raw = category?.trim() || ""
+  if (!raw) return "—"
+  return COURSE_CATEGORIES.find((c) => c.value === raw)?.label || raw
+}
+
 /** אפשרויות קטגוריה לדרופדאון (ליד / משתתף חיצוני) */
 export function collectLeadCategoryOptions(
   leads: Array<Pick<Lead, "category"> & { categoryOther?: string | null }>,

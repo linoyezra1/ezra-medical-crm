@@ -2341,6 +2341,9 @@ export async function addTrainingSale(
     unpaid?: boolean
     participantId?: string | null
     receiptIssued?: boolean
+    reportedByInstructorId?: string | null
+    instructorCommissionAmount?: number
+    isInstructorReported?: boolean
   },
 ): Promise<ActionResult<{ id: string }>> {
   const qty = Math.max(1, Math.floor(Number(quantity) || 0));
@@ -2387,6 +2390,12 @@ export async function addTrainingSale(
         : TRAINING_SALE_PAID,
       participantId: opts?.participantId || null,
       receiptIssued: Boolean(opts?.receiptIssued),
+      reportedByInstructorId: opts?.reportedByInstructorId || null,
+      instructorCommissionAmount: Math.max(
+        0,
+        Number(opts?.instructorCommissionAmount) || 0,
+      ),
+      isInstructorReported: Boolean(opts?.isInstructorReported),
     },
   });
 
@@ -2429,6 +2438,7 @@ export async function addTrainingSale(
   revalidatePath("/dashboard");
   revalidatePath("/");
   revalidatePath("/equipment");
+  revalidatePath("/instructor/dashboard");
   return { ok: true, data: { id: created.id } };
 }
 

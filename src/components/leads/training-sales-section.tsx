@@ -94,7 +94,11 @@ export function TrainingSalesSection({
     0,
   )
   const totalCost = sales.reduce((s, x) => s + x.unitCostPrice * x.quantity, 0)
-  const profit = totalSale - totalCost
+  const totalCommissions = sales.reduce(
+    (s, x) => s + (x.instructorCommissionAmount || 0),
+    0,
+  )
+  const profit = totalSale - totalCost - totalCommissions
 
   const resetForm = () => {
     setItemId("")
@@ -218,7 +222,12 @@ export function TrainingSalesSection({
                   return (
                     <tr key={s.id} className="border-t border-border">
                       <td className="px-3 py-2.5 font-medium">
-                        {s.itemName || "פריט"}
+                        <div>{s.itemName || "פריט"}</div>
+                        {s.isInstructorReported && s.reportedByInstructorName && (
+                          <span className="mt-0.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+                            🏷️ דיווח מדריך: {s.reportedByInstructorName}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5" dir="ltr">
                         {s.quantity}
@@ -264,6 +273,12 @@ export function TrainingSalesSection({
             <p>
               סה״כ עלויות: <strong>{formatCurrency(totalCost)}</strong>
             </p>
+            {totalCommissions > 0 && (
+              <p>
+                עמלות מדריך:{" "}
+                <strong>{formatCurrency(totalCommissions)}</strong>
+              </p>
+            )}
             <p className="text-primary">
               רווח: <strong>{formatCurrency(profit)}</strong>
             </p>

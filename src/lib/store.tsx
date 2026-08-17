@@ -65,6 +65,7 @@ interface AppState {
   updateTraineeLocal: (id: string, patch: Partial<Trainee>) => void;
   setInventoryLocal: (items: InventoryItem[]) => void;
   updateSettings: (patch: Partial<BusinessSettings>) => void;
+  addInstructorLocal: (instructor: InstructorProfile) => void;
   refresh: () => void;
 }
 
@@ -386,6 +387,20 @@ export function AppProvider({
     [refresh]
   );
 
+  const addInstructorLocal = useCallback((instructor: InstructorProfile) => {
+    setInstructors((prev) => {
+      const idx = prev.findIndex((i) => i.id === instructor.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = instructor;
+        return next;
+      }
+      return [...prev, instructor].sort((a, b) =>
+        a.name.localeCompare(b.name, "he"),
+      );
+    });
+  }, []);
+
   const value = useMemo<AppState>(
     () => ({
       leads,
@@ -411,6 +426,7 @@ export function AppProvider({
       updateTraineeLocal,
       setInventoryLocal,
       updateSettings,
+      addInstructorLocal,
       refresh,
     }),
     [
@@ -437,8 +453,9 @@ export function AppProvider({
       updateTraineeLocal,
       setInventoryLocal,
       updateSettings,
+      addInstructorLocal,
       refresh,
-    ]
+    ],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

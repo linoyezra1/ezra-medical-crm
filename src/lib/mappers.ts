@@ -52,6 +52,12 @@ export function mapInstructor(db: DbInstructor): InstructorProfile {
     name: db.name,
     fee: db.fee || 0,
     active: db.active,
+    phone: (db as { phone?: string | null }).phone?.trim() || undefined,
+    username: (db as { username?: string | null }).username?.trim() || undefined,
+    salesCommissionPercentage:
+      (db as { salesCommissionPercentage?: number | null })
+        .salesCommissionPercentage ?? 0,
+    role: (db as { role?: string | null }).role || "INSTRUCTOR",
   };
 }
 
@@ -216,6 +222,18 @@ export function mapLead(db: DbLeadFull): Lead {
         participantName: s.participant?.fullName || undefined,
         receiptIssued: Boolean(
           (s as { receiptIssued?: boolean }).receiptIssued,
+        ),
+        reportedByInstructorId:
+          (s as { reportedByInstructorId?: string | null })
+            .reportedByInstructorId || undefined,
+        reportedByInstructorName:
+          (s as { reportedByInstructor?: { name?: string } | null })
+            .reportedByInstructor?.name || undefined,
+        instructorCommissionAmount:
+          (s as { instructorCommissionAmount?: number | null })
+            .instructorCommissionAmount ?? 0,
+        isInstructorReported: Boolean(
+          (s as { isInstructorReported?: boolean }).isInstructorReported,
         ),
         createdAt: s.createdAt.toISOString(),
       }),

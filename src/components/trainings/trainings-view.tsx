@@ -80,7 +80,7 @@ export function TrainingsView() {
               קרובות
             </TabsTrigger>
             <TabsTrigger value="pending_certificates" className="text-[10px] leading-tight sm:text-xs">
-              בוצעה / תעודות
+              בוצעו וממתינות לתעודות
             </TabsTrigger>
             <TabsTrigger value="completed" className="text-xs">
               הסתיים

@@ -1,6 +1,7 @@
+import { instructorDashboardPath } from "@/lib/instructor-portal-urls"
+
 /**
- * טוקן ייעודי לממשק מדריך — רק דרך URL ייחודי.
- * בפרודקשן הגדירו NEXT_PUBLIC_INSTRUCTOR_PORTAL_TOKEN (חובה לתאימות שרת+לקוח).
+ * טוקן ייעודי לממשק מדריך — legacy; כניסה חדשה דרך /instructor/login
  */
 export function getInstructorPortalToken(): string {
   return (
@@ -15,7 +16,11 @@ export function isValidInstructorPortalToken(token: string | undefined | null): 
   return token.trim() === getInstructorPortalToken()
 }
 
-export function instructorPortalPath(token: string, sub?: "pay"): string {
-  const base = `/instructor/${encodeURIComponent(token)}`
-  return sub === "pay" ? `${base}/pay` : base
+export function instructorPortalPath(_token?: string, _sub?: "pay"): string {
+  return instructorDashboardPath()
 }
+
+export {
+  buildInstructorCredentialsWhatsApp,
+  instructorLoginUrl,
+} from "@/lib/instructor-portal-urls"

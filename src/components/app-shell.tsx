@@ -13,7 +13,6 @@ import {
   Settings,
   UserRound,
   Users,
-  Wallet,
   Zap,
 } from "lucide-react"
 import {
@@ -23,7 +22,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { instructorPortalPath } from "@/lib/instructor-portal"
 import { UserSwitcher } from "@/components/user-switcher"
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
@@ -39,7 +37,7 @@ const MORE = [
   { href: "/quick-actions", label: "פעולות מהירות", icon: Zap },
   { href: "/equipment", label: "ניהול מלאי", icon: Boxes },
   { href: "/calendar", label: "יומן ומשימות", icon: CalendarDays },
-  { href: "/instructors", label: "הדרכות מדריכים", icon: UserRound },
+  { href: "/instructors", label: "ניהול מדריכים", icon: UserRound },
   { href: "/settings", label: "הגדרות עסק", icon: Settings },
 ]
 
@@ -55,14 +53,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { settings } = useApp()
   const [moreOpen, setMoreOpen] = useState(false)
   const isPublicForm = pathname.startsWith("/p/")
-  const instructorTokenMatch = pathname.match(
-    /^\/instructor\/([^/]+)(?:\/pay)?\/?$/,
-  )
-  const instructorToken =
-    instructorTokenMatch?.[1] && instructorTokenMatch[1] !== "pay"
-      ? decodeURIComponent(instructorTokenMatch[1])
-      : null
-  const isInstructorPortal = Boolean(instructorToken)
+  const isInstructorLogin = pathname === "/instructor/login"
+  const isInstructorDashboard = pathname.startsWith("/instructor/dashboard")
   const isInstructorGate =
     pathname === "/instructor" || pathname.startsWith("/instructor/")
 
@@ -79,74 +71,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (isInstructorGate && !isInstructorPortal) {
+  if (isInstructorLogin) {
     return (
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background md:max-w-lg md:justify-center md:py-10">
-        <main className="flex-1 md:flex-none">{children}</main>
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background">
+        <main className="flex-1">{children}</main>
       </div>
     )
   }
 
-  if (isInstructorPortal && instructorToken) {
-    const trainingsHref = instructorPortalPath(instructorToken)
-    const payHref = instructorPortalPath(instructorToken, "pay")
+  if (isInstructorDashboard) {
     return (
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background md:max-w-2xl">
-        <nav className="sticky top-0 z-40 hidden border-b border-border bg-card/95 backdrop-blur-md md:block">
-          <div className="flex gap-2 px-4 py-2">
-            <Link
-              href={trainingsHref}
-              className={cn(
-                "rounded-lg px-3 py-2 text-sm font-medium",
-                pathname === trainingsHref
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-secondary",
-              )}
-            >
-              הדרכות שלי
-            </Link>
-            <Link
-              href={payHref}
-              className={cn(
-                "rounded-lg px-3 py-2 text-sm font-medium",
-                pathname.startsWith(payHref)
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-secondary",
-              )}
-            >
-              דשבורד שכר
-            </Link>
-          </div>
-        </nav>
-        <main className="flex-1 pb-24 md:pb-6">{children}</main>
-        <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur-md md:hidden">
-          <div className="flex items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)]">
-            <Link
-              href={trainingsHref}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium transition-colors",
-                pathname === trainingsHref
-                  ? "text-primary"
-                  : "text-muted-foreground",
-              )}
-            >
-              <GraduationCap className="size-6" strokeWidth={1.8} />
-              הדרכות שלי
-            </Link>
-            <Link
-              href={payHref}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium transition-colors",
-                pathname.startsWith(payHref)
-                  ? "text-primary"
-                  : "text-muted-foreground",
-              )}
-            >
-              <Wallet className="size-6" strokeWidth={1.8} />
-              דשבורד שכר
-            </Link>
-          </div>
-        </nav>
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background md:max-w-lg">
+        <main className="flex-1">{children}</main>
+      </div>
+    )
+  }
+
+  if (isInstructorGate) {
+    return (
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background md:max-w-lg md:justify-center md:py-10">
+        <main className="flex-1 md:flex-none">{children}</main>
       </div>
     )
   }
