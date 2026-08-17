@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/db"
-import { extractCourseHoursDigits } from "@/lib/course-type"
+import {
+  extractCourseHoursDigits,
+  resolveParticipantCertificateCourseType,
+} from "@/lib/course-type"
 import { PAID_PAYMENT_STATUS } from "@/lib/payment"
 import {
   getSheetTabName,
@@ -118,6 +121,8 @@ function participantRow(p: {
   email: string | null
   organizerName: string | null
   courseDate: string | null
+  isExternal?: boolean | null
+  courseType?: string | null
   trainee?: {
     certificateEmailSent: boolean
     certificateCardPrinted: boolean
@@ -130,9 +135,10 @@ function participantRow(p: {
   } | null
 }): (string | boolean)[] {
   const courseDate = trainingDateLabel(p.courseDate, p.lead?.scheduledStart)
+  const certCourse = resolveParticipantCertificateCourseType(p)
   const hoursScope = hoursScopeForSheet(
-    p.lead?.courseType,
-    p.lead?.courseTypeOther,
+    certCourse.courseType,
+    certCourse.courseTypeOther,
   )
   const exportTimestamp = new Date().toISOString()
 
@@ -316,13 +322,18 @@ export async function exportTraineesToCertificateSheet(
     const values = toExport.map((t) => {
       const p = t.participants[0]
       const lead = p?.lead
+      const certCourse = resolveParticipantCertificateCourseType({
+        isExternal: p?.isExternal,
+        courseType: p?.courseType,
+        lead,
+      })
       return [
         t.fullName || "",
         t.idNumber || "",
         trainingDateLabel(p?.courseDate, lead?.scheduledStart),
         t.email || "",
         t.phone || "",
-        hoursScopeForSheet(lead?.courseType, lead?.courseTypeOther),
+        hoursScopeForSheet(certCourse.courseType, certCourse.courseTypeOther),
         "",
         "",
         "",
@@ -348,6 +359,81 @@ export async function exportTraineesToCertificateSheet(
     return {
       ok: false,
       error: err instanceof Error ? err.message : "שגיאה בייצוא מודרכים ל-Google Sheets",
+    }
+  }
+}
+
+/**
+ * מעדכן היקף שעות (עמודה F) בגיליון לפי סוג הקורס האישי של משתתף חיצוני.
+ * נדרש כי ייצוא ראשוני עלול לדלג על שורות שכבר קיימות.
+ */
+export async function syncCertificateHoursForParticipantIds(
+  participantIds: string[],
+): Promise<{ ok: true; updated: number } | { ok: false; error: string }> {
+  if (!isGoogleSheetsConfigured()) {
+    return { ok: true, updated: 0 }
+  }
+  const ids = [...new Set(participantIds.map((id) => id.trim()).filter(Boolean))]
+  if (!ids.length) return { ok: true, updated: 0 }
+
+  try {
+    const rows = await prisma.participant.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        isExternal: true,
+        courseType: true,
+        lead: {
+          select: {
+            courseType: true,
+            courseTypeOther: true,
+          },
+        },
+      },
+    })
+    const hoursById = new Map(
+      rows.map((p) => {
+        const cert = resolveParticipantCertificateCourseType(p)
+        return [p.id, hoursScopeForSheet(cert.courseType, cert.courseTypeOther)]
+      }),
+    )
+
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+    const existing = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${tab}!${SHEET_RANGE_DATA}`,
+    })
+    const data = existing.data.values || []
+    const updates: { range: string; values: string[][] }[] = []
+    data.forEach((row, i) => {
+      const crmId = String(row[COL.crmId] || "").trim()
+      const hours = hoursById.get(crmId)
+      if (hours == null) return
+      const current = String(row[COL.hours] || "").trim()
+      if (current === hours) return
+      updates.push({
+        range: `${tab}!F${i + 2}`,
+        values: [[hours]],
+      })
+    })
+    if (!updates.length) return { ok: true, updated: 0 }
+
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "USER_ENTERED",
+        data: updates,
+      },
+    })
+    return { ok: true, updated: updates.length }
+  } catch (err) {
+    console.error("[syncCertificateHoursForParticipantIds]", err)
+    return {
+      ok: false,
+      error:
+        err instanceof Error ? err.message : "שגיאה בעדכון היקף שעות בגיליון",
     }
   }
 }

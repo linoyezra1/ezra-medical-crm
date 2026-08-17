@@ -175,6 +175,28 @@ export function formatLeadCourseType(
   })
 }
 
+/**
+ * סוג קורס לתעודה / LMS:
+ * משתתף חיצוני עם סוג אישי מוגדר → שלו; אחרת סוג ההדרכה.
+ */
+export function resolveParticipantCertificateCourseType(p: {
+  isExternal?: boolean | null
+  courseType?: string | null
+  lead?: {
+    courseType?: string | null
+    courseTypeOther?: string | null
+  } | null
+}): { courseType: string | null; courseTypeOther: string | null } {
+  const personal = p.courseType?.trim() || ""
+  if (p.isExternal && personal) {
+    return { courseType: personal, courseTypeOther: null }
+  }
+  return {
+    courseType: p.lead?.courseType ?? null,
+    courseTypeOther: p.lead?.courseTypeOther ?? null,
+  }
+}
+
 /** מוצא נכס קורס לפי מפתח, תווית או כותרת */
 export function findCourseCatalog(
   courseType: string | null | undefined,

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db"
-import { formatCourseTypeLabel } from "@/lib/course-type"
+import { formatCourseTypeLabel, resolveParticipantCertificateCourseType } from "@/lib/course-type"
 import { getLmsEnvConfig } from "@/lib/lms"
 import {
   buildLmsWelcomeEmailHtml,
@@ -105,6 +105,8 @@ export async function loadLmsAccessParticipants(
       email: true,
       phone: true,
       leadId: true,
+      isExternal: true,
+      courseType: true,
       lead: {
         select: {
           courseType: true,
@@ -136,8 +138,9 @@ export async function loadLmsAccessParticipants(
       continue
     }
     const fullName = row.fullName?.trim() || ""
-    const courseLabel = formatCourseTypeLabel(row.lead?.courseType, {
-      other: row.lead?.courseTypeOther,
+    const cert = resolveParticipantCertificateCourseType(row)
+    const courseLabel = formatCourseTypeLabel(cert.courseType, {
+      other: cert.courseTypeOther,
     })
     const courseType = courseLabel === "קורס" ? "" : courseLabel
     participants.push({

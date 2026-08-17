@@ -5,13 +5,11 @@ import {
   BadgeCheck,
   CheckCheck,
   FileCheck,
-  FileSpreadsheet,
   GraduationCap,
   MessageCircle,
   MoreVertical,
   Pencil,
   Phone,
-  Plus,
   RefreshCw,
   ScrollText,
   Search,
@@ -21,11 +19,11 @@ import {
 import { toast } from "sonner"
 import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
 import { ParticipantPaymentDialog } from "@/components/leads/participant-payment-dialog"
-import { ParticipantsDialog } from "@/components/leads/participants-dialog"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -33,6 +31,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -46,11 +51,23 @@ import {
   setParticipantAttended,
   updateParticipantDetails,
 } from "@/lib/actions"
-import { whatsappLink } from "@/lib/helpers"
+import {
+  collectCourseTypeOptions,
+  formatCourseTypeLabel,
+} from "@/lib/course-type"
+import { formatCurrency, whatsappLink } from "@/lib/helpers"
 import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { useApp } from "@/lib/store"
 import type { Lead, Participant } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+function ExternalTag() {
+  return (
+    <span className="shrink-0 rounded bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-pink-700">
+      חיצוני
+    </span>
+  )
+}
 
 /** פרטי התחברות LMS שנשמרו מקומית אחרי יצירה — מוכנים לשליחת מייל בעתיד */
 type LmsCredentialMeta = {
@@ -209,7 +226,7 @@ function ParticipantMobileKebab({
 }
 
 export function ParticipantsSection({ lead }: { lead: Lead }) {
-  const { setLeadParticipants, refresh, settings } = useApp()
+  const { setLeadParticipants, refresh, settings, leads } = useApp()
   const [polling, setPolling] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [lmsBusy, setLmsBusy] = useState<string | null>(null)
@@ -220,13 +237,15 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
   >({})
   const [editP, setEditP] = useState<Participant | null>(null)
   const [payParticipant, setPayParticipant] = useState<Participant | null>(null)
-  const [manualOpen, setManualOpen] = useState(false)
   const [editForm, setEditForm] = useState({
     fullName: "",
     idNumber: "",
     phone: "",
     email: "",
     feedback: "",
+    isExternal: false,
+    courseType: "",
+    agreedPrice: "",
   })
   const [issueOpen, setIssueOpen] = useState(false)
 
@@ -244,6 +263,11 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
         (p.email || "").includes(q),
     )
   }, [participants, query])
+
+  const courseOptions = useMemo(
+    () => collectCourseTypeOptions(leads, settings.courses),
+    [leads, settings.courses],
+  )
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id))
@@ -336,6 +360,9 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
   }
 
   const openEdit = (p: Participant) => {
+    const courseLabel = p.courseType
+      ? formatCourseTypeLabel(p.courseType, { catalog: settings.courses })
+      : ""
     setEditP(p)
     setEditForm({
       fullName: p.name,
@@ -343,12 +370,31 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
       phone: p.phone || "",
       email: p.email || "",
       feedback: p.feedback || "",
+      isExternal: Boolean(p.isExternal),
+      courseType: courseLabel === "קורס" ? p.courseType || "" : courseLabel,
+      agreedPrice: p.agreedPrice != null ? String(p.agreedPrice) : "",
     })
   }
 
   const saveEdit = async () => {
     if (!editP) return
-    const res = await updateParticipantDetails(editP.id, lead.id, editForm)
+    const priceRaw = editForm.agreedPrice.trim()
+    const agreedPrice =
+      priceRaw === "" ? null : Number(priceRaw)
+    if (editForm.isExternal && agreedPrice != null && !Number.isFinite(agreedPrice)) {
+      toast.error("מחיר לא תקין")
+      return
+    }
+    const res = await updateParticipantDetails(editP.id, lead.id, {
+      fullName: editForm.fullName,
+      idNumber: editForm.idNumber,
+      phone: editForm.phone,
+      email: editForm.email,
+      feedback: editForm.feedback,
+      isExternal: editForm.isExternal,
+      courseType: editForm.isExternal ? editForm.courseType : null,
+      agreedPrice: editForm.isExternal ? agreedPrice : null,
+    })
     if (!res.ok) {
       toast.error(res.error)
       return
@@ -447,16 +493,6 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
             · {attendedCount} נוכחים
           </span>
         </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="gap-2 rounded-xl md:w-auto"
-          onClick={() => setManualOpen(true)}
-        >
-          <Plus className="size-4" />
-          הוספת מודרך ידנית
-        </Button>
         <Button
           type="button"
           variant="outline"
@@ -594,9 +630,10 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                               />
                             )}
                             <span className="truncate">{p.name}</span>
-                            {p.isExternal ? (
-                              <span className="shrink-0 rounded bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold text-pink-700">
-                                חיצוני
+                            {p.isExternal ? <ExternalTag /> : null}
+                            {p.isExternal && p.agreedPrice != null ? (
+                              <span className="shrink-0 text-[10px] font-semibold text-pink-700">
+                                {formatCurrency(p.agreedPrice)}
                               </span>
                             ) : null}
                           </span>
@@ -758,14 +795,10 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                             aria-label="יש גישת LMS"
                           />
                         )}
-                        <span
-                          className={cn(
-                            "truncate",
-                            p.isExternal && "font-semibold text-amber-500",
-                          )}
-                        >
+                        <span className="truncate text-foreground">
                           {p.name} – {p.idNumber}
                         </span>
+                        {p.isExternal ? <ExternalTag /> : null}
                       </p>
                     </button>
 
@@ -784,6 +817,22 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                   </div>
                   {open && (
                     <div className="space-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+                      {p.isExternal ? (
+                        <p className="rounded-lg bg-pink-50 px-2 py-1.5 text-sm font-bold text-pink-800">
+                          מחיר:{" "}
+                          {p.agreedPrice != null
+                            ? formatCurrency(p.agreedPrice)
+                            : "—"}
+                        </p>
+                      ) : null}
+                      {p.isExternal && p.courseType ? (
+                        <p>
+                          סוג קורס:{" "}
+                          {formatCourseTypeLabel(p.courseType, {
+                            catalog: settings.courses,
+                          })}
+                        </p>
+                      ) : null}
                       <p>טלפון: {p.phone || "—"}</p>
                       <p>דוא״ל: {p.email || "—"}</p>
                       <p>דירוג: {p.satisfaction || "—"}</p>
@@ -851,6 +900,59 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
               }
               placeholder="משוב"
             />
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={editForm.isExternal}
+                onCheckedChange={(v) =>
+                  setEditForm((f) => ({ ...f, isExternal: Boolean(v) }))
+                }
+              />
+              משתתף חיצוני
+            </label>
+            {editForm.isExternal ? (
+              <>
+                <div>
+                  <Label className="mb-1.5 block text-sm">סוג קורס</Label>
+                  <Select
+                    value={editForm.courseType || undefined}
+                    onValueChange={(v) =>
+                      setEditForm((f) => ({ ...f, courseType: v ?? "" }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="בחר סוג קורס" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {editForm.courseType &&
+                      !courseOptions.includes(editForm.courseType) ? (
+                        <SelectItem value={editForm.courseType}>
+                          {editForm.courseType}
+                        </SelectItem>
+                      ) : null}
+                      {courseOptions.map((o) => (
+                        <SelectItem key={o} value={o}>
+                          {o}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="mb-1.5 block text-sm">מחיר</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editForm.agreedPrice}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, agreedPrice: e.target.value }))
+                    }
+                    placeholder="מחיר"
+                    dir="ltr"
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
           <DialogFooter>
             <Button onClick={saveEdit} className="w-full">
@@ -872,12 +974,6 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
         participant={payParticipant}
         open={Boolean(payParticipant)}
         onOpenChange={(o) => !o && setPayParticipant(null)}
-      />
-
-      <ParticipantsDialog
-        lead={lead}
-        open={manualOpen}
-        onOpenChange={setManualOpen}
       />
     </CollapsibleSection>
   )

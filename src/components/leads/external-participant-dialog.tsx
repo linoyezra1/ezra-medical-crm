@@ -1,9 +1,9 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ContactRound } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -30,18 +30,21 @@ type Props = {
   onOpenChange: (open: boolean) => void
 }
 
+const EMPTY_FORM = {
+  fullName: "",
+  idNumber: "",
+  email: "",
+  phone: "",
+  leadId: "",
+  isExternal: true,
+  courseType: "",
+  agreedPrice: "",
+}
+
 export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
   const { leads, settings, refresh } = useApp()
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    fullName: "",
-    phone: "",
-    courseType: "",
-    agreedPrice: "",
-    idNumber: "",
-    email: "",
-    leadId: "",
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
 
   const assignable = useMemo(
     () =>
@@ -56,47 +59,7 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
     [settings.courses, leads],
   )
 
-  const reset = () =>
-    setForm({
-      fullName: "",
-      phone: "",
-      courseType: "",
-      agreedPrice: "",
-      idNumber: "",
-      email: "",
-      leadId: "",
-    })
-
-  const importContact = async () => {
-    const contacts = (
-      navigator as Navigator & {
-        contacts?: {
-          select: (
-            props: string[],
-            opts: { multiple: boolean },
-          ) => Promise<Array<{ name?: string[]; tel?: string[] }>>
-        }
-      }
-    ).contacts
-    if (!contacts?.select) {
-      toast.error("ייבוא אנשי קשר לא נתמך במכשיר זה")
-      return
-    }
-    try {
-      const selected = await contacts.select(["name", "tel"], {
-        multiple: false,
-      })
-      const c = selected[0]
-      if (!c) return
-      setForm((f) => ({
-        ...f,
-        fullName: c.name?.[0] || f.fullName,
-        phone: c.tel?.[0]?.replace(/\D/g, "") || f.phone,
-      }))
-    } catch {
-      /* user cancelled */
-    }
-  }
+  const reset = () => setForm(EMPTY_FORM)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -109,10 +72,14 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
       leadId: form.leadId,
       fullName: form.fullName,
       phone: form.phone,
-      courseType: form.courseType,
-      agreedPrice: form.agreedPrice ? Number(form.agreedPrice) : undefined,
+      courseType: form.isExternal ? form.courseType : undefined,
+      agreedPrice:
+        form.isExternal && form.agreedPrice
+          ? Number(form.agreedPrice)
+          : undefined,
       idNumber: form.idNumber,
       email: form.email,
+      isExternal: form.isExternal,
     })
     setSaving(false)
     if (!res.ok) {
@@ -148,58 +115,6 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
             />
           </div>
           <div>
-            <Label className="mb-1.5 block text-sm">טלפון</Label>
-            <Input
-              value={form.phone}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, phone: e.target.value }))
-              }
-              inputMode="tel"
-              dir="ltr"
-            />
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full gap-2"
-            onClick={importContact}
-          >
-            <ContactRound className="size-4" />
-            ייבוא מאנשי קשר
-          </Button>
-          <div>
-            <Label className="mb-1.5 block text-sm">סוג קורס לתעודה</Label>
-            <Select
-              value={form.courseType || undefined}
-              onValueChange={(v) =>
-                setForm((f) => ({ ...f, courseType: v ?? "" }))
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="בחר סוג קורס" />
-              </SelectTrigger>
-              <SelectContent>
-                {courseOptions.map((o) => (
-                  <SelectItem key={o} value={o}>
-                    {o}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="mb-1.5 block text-sm">מחיר לתשלום</Label>
-            <Input
-              type="number"
-              min={0}
-              value={form.agreedPrice}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, agreedPrice: e.target.value }))
-              }
-              dir="ltr"
-            />
-          </div>
-          <div>
             <Label className="mb-1.5 block text-sm">תעודת זהות</Label>
             <Input
               value={form.idNumber}
@@ -217,6 +132,17 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
               onChange={(e) =>
                 setForm((f) => ({ ...f, email: e.target.value }))
               }
+              dir="ltr"
+            />
+          </div>
+          <div>
+            <Label className="mb-1.5 block text-sm">טלפון</Label>
+            <Input
+              value={form.phone}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, phone: e.target.value }))
+              }
+              inputMode="tel"
               dir="ltr"
             />
           </div>
@@ -241,6 +167,53 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
               </SelectContent>
             </Select>
           </div>
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <Checkbox
+              checked={form.isExternal}
+              onCheckedChange={(v) =>
+                setForm((f) => ({ ...f, isExternal: Boolean(v) }))
+              }
+            />
+            משתתף חיצוני
+          </label>
+          {form.isExternal ? (
+            <>
+              <div>
+                <Label className="mb-1.5 block text-sm">
+                  סוג קורס אישי לתעודה
+                </Label>
+                <Select
+                  value={form.courseType || undefined}
+                  onValueChange={(v) =>
+                    setForm((f) => ({ ...f, courseType: v ?? "" }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="בחר סוג קורס" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courseOptions.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {o}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1.5 block text-sm">מחיר</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.agreedPrice}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, agreedPrice: e.target.value }))
+                  }
+                  dir="ltr"
+                />
+              </div>
+            </>
+          ) : null}
           <DialogFooter className="flex-row gap-2 pt-2">
             <Button
               type="button"

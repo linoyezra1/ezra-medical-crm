@@ -12,7 +12,6 @@ import {
   MapPin,
   Pencil,
   Phone,
-  Plus,
   UserPlus,
   Users,
   Wallet,
@@ -23,7 +22,6 @@ import { CollectParticipantsDialog } from "@/components/leads/collect-participan
 import { LeadPaymentDialog } from "@/components/leads/lead-payment-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
-import { ParticipantsDialog } from "@/components/leads/participants-dialog"
 import { ParticipantsSection } from "@/components/leads/participants-section"
 import { TrainingSalesSection } from "@/components/leads/training-sales-section"
 import { Button } from "@/components/ui/button"
@@ -412,7 +410,6 @@ function ParticipantsTab({
   onCollect: () => void
 }) {
   const [exporting, setExporting] = useState(false)
-  const [manualOpen, setManualOpen] = useState(false)
 
   const exportToSheets = async () => {
     setExporting(true)
@@ -463,23 +460,9 @@ function ParticipantsTab({
           <UserPlus className="size-5" />
           פתח אפשרויות רישום
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 w-full gap-2 rounded-2xl"
-          onClick={() => setManualOpen(true)}
-        >
-          <Plus className="size-4" />
-          הוספת מודרך ידנית
-        </Button>
       </Card>
 
       <ParticipantsSection lead={lead} />
-      <ParticipantsDialog
-        lead={lead}
-        open={manualOpen}
-        onOpenChange={setManualOpen}
-      />
     </>
   )
 }

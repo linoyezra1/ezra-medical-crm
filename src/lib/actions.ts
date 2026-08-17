@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getActiveCrmUser } from "@/lib/crm-user-server";
-import { formatCourseTypeLabel } from "@/lib/course-type";
+import {
+  formatCourseTypeLabel,
+  resolveCourseTypeForSave,
+  resolveParticipantCertificateCourseType,
+} from "@/lib/course-type";
 import {
   ASSIGN_INSTRUCTOR_TASK_PREFIX,
   assignInstructorTaskTitle,
@@ -30,6 +34,7 @@ import type { ConflictHit } from "@/lib/conflicts";
 import {
   exportLeadParticipantsToSheets,
   syncCertificateFlagsFromSheets,
+  syncCertificateHoursForParticipantIds,
   tryAutoCompleteTrainingIfReady,
   exportTraineesToCertificateSheet,
 } from "@/lib/google-sheets/certificates";
@@ -1033,6 +1038,7 @@ export async function addExternalParticipant(input: {
   email?: string
   courseType?: string
   agreedPrice?: number
+  isExternal?: boolean
 }): Promise<ActionResult<{ id: string }>> {
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } })
   if (!lead) return { ok: false, error: "הדרכה לא נמצאה" }
@@ -1053,6 +1059,10 @@ export async function addExternalParticipant(input: {
       error: "יש למלא לפחות שדה אחד",
     }
   }
+  const isExternal = input.isExternal !== false
+  const courseSaved = isExternal && input.courseType?.trim()
+    ? resolveCourseTypeForSave(input.courseType.trim())
+    : null
   const created = await prisma.participant.create({
     data: {
       leadId: input.leadId,
@@ -1060,10 +1070,12 @@ export async function addExternalParticipant(input: {
       idNumber: id,
       phone: phone || null,
       email: email || null,
-      isExternal: true,
-      courseType: input.courseType?.trim() || null,
+      isExternal,
+      courseType: courseSaved?.courseType || input.courseType?.trim() || null,
       agreedPrice:
-        input.agreedPrice != null && Number.isFinite(input.agreedPrice)
+        isExternal &&
+        input.agreedPrice != null &&
+        Number.isFinite(input.agreedPrice)
           ? Number(input.agreedPrice)
           : null,
     },
@@ -1082,11 +1094,19 @@ export async function recordParticipantPayment(
     paymentMethod: string
     paymentReceivedBy: string
     paymentReceiptIssued?: boolean
+    amount?: number
   },
 ): Promise<ActionResult<{ id: string }>> {
   const date = data.paymentDate?.trim()
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return { ok: false, error: "תאריך תשלום לא תקין" }
+  }
+  const amount =
+    data.amount != null && Number.isFinite(Number(data.amount))
+      ? Number(data.amount)
+      : undefined
+  if (amount != null && amount < 0) {
+    return { ok: false, error: "סכום תשלום לא תקין" }
   }
   await prisma.participant.update({
     where: { id: participantId },
@@ -1096,6 +1116,7 @@ export async function recordParticipantPayment(
       paymentMethod: data.paymentMethod.trim() || null,
       paymentReceivedBy: data.paymentReceivedBy.trim() || null,
       paymentReceiptIssued: Boolean(data.paymentReceiptIssued),
+      ...(amount != null ? { agreedPrice: amount } : {}),
     },
   })
   revalidatePath(`/leads/${leadId}`)
@@ -1229,8 +1250,22 @@ export async function updateParticipantDetails(
     phone?: string;
     email?: string;
     feedback?: string;
+    isExternal?: boolean;
+    courseType?: string | null;
+    agreedPrice?: number | null;
   },
 ): Promise<ActionResult<{ id: string }>> {
+  const isExternal = Boolean(data.isExternal);
+  const courseSaved =
+    isExternal && data.courseType?.trim()
+      ? resolveCourseTypeForSave(data.courseType.trim())
+      : null;
+  const agreedPrice =
+    isExternal && data.agreedPrice != null && Number.isFinite(Number(data.agreedPrice))
+      ? Number(data.agreedPrice)
+      : isExternal
+        ? null
+        : undefined;
   await prisma.participant.update({
     where: { id: participantId },
     data: {
@@ -1239,6 +1274,13 @@ export async function updateParticipantDetails(
       phone: data.phone?.trim() || null,
       email: data.email?.trim() || null,
       feedback: data.feedback?.trim() || null,
+      isExternal,
+      ...(isExternal
+        ? {
+            courseType: courseSaved?.courseType || data.courseType?.trim() || null,
+            ...(agreedPrice !== undefined ? { agreedPrice } : {}),
+          }
+        : {}),
     },
   });
   revalidatePath(`/leads/${leadId}`);
@@ -1269,6 +1311,16 @@ export async function fetchLeadParticipants(leadId: string) {
     hasLmsAccess: Boolean(p.hasLmsAccess),
     traineeId: p.traineeId || undefined,
     certificateUrl: p.certificateUrl || undefined,
+    isExternal: Boolean(p.isExternal),
+    courseType: p.courseType || undefined,
+    agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
+    paymentStatus: p.paymentStatus || undefined,
+    paymentDate: p.paymentDate
+      ? formatInJerusalem(p.paymentDate).date
+      : undefined,
+    paymentMethod: p.paymentMethod || undefined,
+    paymentReceivedBy: p.paymentReceivedBy || undefined,
+    paymentReceiptIssued: Boolean(p.paymentReceiptIssued),
   }));
 }
 
@@ -1434,7 +1486,18 @@ export async function triggerRemoteCertificates(input: {
       id: { in: ids },
       ...(leadIdFilter ? { leadId: leadIdFilter } : {}),
     },
-    select: { id: true, leadId: true },
+    select: {
+      id: true,
+      leadId: true,
+      isExternal: true,
+      courseType: true,
+      lead: {
+        select: {
+          courseType: true,
+          courseTypeOther: true,
+        },
+      },
+    },
   });
   const foundParticipantIds = new Set(ownedParticipants.map((p) => p.id));
   const remainingIds = ids.filter((id) => !foundParticipantIds.has(id));
@@ -1488,6 +1551,11 @@ export async function triggerRemoteCertificates(input: {
         };
       }
     }
+
+    const hoursSync = await syncCertificateHoursForParticipantIds(webhookIds);
+    if (!hoursSync.ok) {
+      console.error("[triggerRemoteCertificates] hours sync", hoursSync.error);
+    }
   }
 
   const webhookUrl =
@@ -1509,6 +1577,18 @@ export async function triggerRemoteCertificates(input: {
     authPin: pin,
     pin,
     leadId: leadIdFilter || ownedParticipants[0]?.leadId || null,
+    participants: ownedParticipants.map((p) => {
+      const cert = resolveParticipantCertificateCourseType(p);
+      const label = formatCourseTypeLabel(cert.courseType, {
+        other: cert.courseTypeOther,
+      });
+      return {
+        id: p.id,
+        isExternal: Boolean(p.isExternal),
+        courseType: p.isExternal && p.courseType?.trim() ? p.courseType.trim() : cert.courseType,
+        courseTypeLabel: label === "קורס" ? "" : label,
+      };
+    }),
   };
 
   try {

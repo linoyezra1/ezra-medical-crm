@@ -34,6 +34,7 @@ export function ParticipantPaymentDialog({
   const { refresh } = useApp()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
+    amount: "",
     paymentDate: "",
     paymentMethod: "bit",
     paymentReceivedBy: "יצחק",
@@ -43,6 +44,8 @@ export function ParticipantPaymentDialog({
   useEffect(() => {
     if (!open || !participant) return
     setForm({
+      amount:
+        participant.agreedPrice != null ? String(participant.agreedPrice) : "",
       paymentDate:
         participant.paymentDate || new Date().toISOString().slice(0, 10),
       paymentMethod: participant.paymentMethod || "bit",
@@ -56,7 +59,20 @@ export function ParticipantPaymentDialog({
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    const res = await recordParticipantPayment(participant.id, leadId, form)
+    const amountRaw = form.amount.trim()
+    const amount = amountRaw === "" ? undefined : Number(amountRaw)
+    if (amount != null && !Number.isFinite(amount)) {
+      toast.error("סכום תשלום לא תקין")
+      setSaving(false)
+      return
+    }
+    const res = await recordParticipantPayment(participant.id, leadId, {
+      paymentDate: form.paymentDate,
+      paymentMethod: form.paymentMethod,
+      paymentReceivedBy: form.paymentReceivedBy,
+      paymentReceiptIssued: form.paymentReceiptIssued,
+      amount,
+    })
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
@@ -80,6 +96,19 @@ export function ParticipantPaymentDialog({
           </p>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-3">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">סכום</label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={form.amount}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, amount: e.target.value }))
+              }
+              dir="ltr"
+            />
+          </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium">תאריך</label>
             <Input
