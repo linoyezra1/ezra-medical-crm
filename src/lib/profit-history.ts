@@ -1,6 +1,7 @@
 import { formatCourseTypeLabel } from "@/lib/course-type"
 import { isLeadPaid } from "@/lib/payment"
 import { computeTrainingProfit } from "@/lib/training-profit"
+import { formatInJerusalem } from "@/lib/timezone"
 import type {
   CourseCatalogItem,
   EquipmentDeal,
@@ -54,6 +55,61 @@ function monthLabel(monthKey: string): string {
     month: "long",
     year: "numeric",
   }).format(d)
+}
+
+/** מפתח חודש קלנדרי YYYY-MM לפי שעון ישראל */
+export function calendarMonthKeyFromDate(d: Date): string {
+  const { date } = formatInJerusalem(d)
+  if (date) return date.slice(0, 7)
+  return d.toISOString().slice(0, 7)
+}
+
+export function currentCalendarMonthKey(): string {
+  return calendarMonthKeyFromDate(new Date())
+}
+
+export type MonthProfitSummary = {
+  monthKey: string
+  monthLabel: string
+  netProfit: number
+  paidCoursesCount: number
+  revenue: number
+  expenses: number
+}
+
+/** סיכום רווח לחודש — אותה לוגיקה כמו בחלונית ההיסטוריה */
+export function summarizeProfitMonth(
+  transactions: ProfitTransaction[],
+  monthKey: string,
+): Omit<MonthProfitSummary, "monthKey" | "monthLabel"> {
+  const monthTxs = transactions.filter((t) => t.monthKey === monthKey)
+  const courseTxs = monthTxs.filter((t) => t.kind === "course")
+  return {
+    netProfit: monthTxs.reduce((s, t) => s + t.netProfit, 0),
+    paidCoursesCount: courseTxs.length,
+    revenue: monthTxs.reduce((s, t) => s + t.revenue, 0),
+    expenses: monthTxs.reduce((s, t) => s + t.expenses, 0),
+  }
+}
+
+/**
+ * רווח נקי ממומש לחודש נוכחי (קוביית KPI).
+ * מסונן לפי תאריך הדרכה (lead.date) — זהה לפירוט בהיסטוריה.
+ */
+export function computeCurrentMonthRealizedKpi(
+  leads: Lead[],
+  equipment: EquipmentDeal[],
+  courses: CourseCatalogItem[] | undefined,
+  instructors: InstructorProfile[],
+  monthKey: string = currentCalendarMonthKey(),
+): MonthProfitSummary {
+  const txs = buildProfitTransactions(leads, equipment, courses, instructors)
+  const summary = summarizeProfitMonth(txs, monthKey)
+  return {
+    monthKey,
+    monthLabel: monthLabel(monthKey),
+    ...summary,
+  }
 }
 
 function courseItemLabel(

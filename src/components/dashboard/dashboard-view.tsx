@@ -22,16 +22,28 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate, isOpenTask } from "@/lib/helpers"
+import { computeCurrentMonthRealizedKpi } from "@/lib/profit-history"
 import { computeDashboardKpis } from "@/lib/training-profit"
 import { cn } from "@/lib/utils"
 
 export function DashboardView() {
-  const { leads, tasks, settings, instructors } = useApp()
+  const { leads, tasks, settings, instructors, equipment } = useApp()
   const [externalOpen, setExternalOpen] = useState(false)
 
   const kpis = useMemo(
     () => computeDashboardKpis(leads, instructors),
     [leads, instructors],
+  )
+
+  const realizedMonth = useMemo(
+    () =>
+      computeCurrentMonthRealizedKpi(
+        leads,
+        equipment,
+        settings.courses,
+        instructors,
+      ),
+    [leads, equipment, settings.courses, instructors],
   )
 
   const today = new Date().toISOString().slice(0, 10)
@@ -76,25 +88,24 @@ export function DashboardView() {
       />
 
       <div className="space-y-5 p-4 md:mx-auto md:max-w-6xl md:p-6 lg:grid lg:max-w-none lg:grid-cols-12 lg:gap-6 lg:space-y-0">
-        {/* מטריקות פיננסיות */}
+        {/* מטריקות פיננסיות — רווח נקי · נסגרו · על הפרק */}
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-12">
-          <Link href="/leads?status=new" className="block">
-            <KpiCard
-              icon={Flame}
-              label="על הפרק"
-              primary={String(kpis.pipeline.count)}
-              subtitle={
-                <>
-                  רווח צפוי:{" "}
-                  <span className="font-semibold text-foreground">
-                    {formatCurrency(kpis.pipeline.expectedNetProfit)}
-                  </span>
-                </>
-              }
-              tone="primary"
-              clickable
-            />
-          </Link>
+          <KpiCard
+            icon={Wallet}
+            label={`רווח נקי · ${realizedMonth.monthLabel}`}
+            primary={formatCurrency(realizedMonth.netProfit)}
+            subtitle={
+              <>
+                מתוך{" "}
+                <span className="font-semibold">
+                  {realizedMonth.paidCoursesCount}
+                </span>{" "}
+                קורסים עם תקבולים
+              </>
+            }
+            tone="featured"
+            headerAction={<ProfitHistoryDialog onPrimaryBackground />}
+          />
 
           <Link href="/leads?status=closed" className="block">
             <KpiCard
@@ -114,22 +125,23 @@ export function DashboardView() {
             />
           </Link>
 
-          <KpiCard
-            icon={Wallet}
-            label="רווח נקי"
-            primary={formatCurrency(kpis.realized.netProfit)}
-            subtitle={
-              <>
-                מתוך{" "}
-                <span className="font-semibold text-foreground">
-                  {kpis.realized.paidCoursesCount}
-                </span>{" "}
-                קורסים עם תקבולים
-              </>
-            }
-            tone="accent"
-            headerAction={<ProfitHistoryDialog />}
-          />
+          <Link href="/leads?status=new" className="block">
+            <KpiCard
+              icon={Flame}
+              label="על הפרק"
+              primary={String(kpis.pipeline.count)}
+              subtitle={
+                <>
+                  רווח צפוי:{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(kpis.pipeline.expectedNetProfit)}
+                  </span>
+                </>
+              }
+              tone="primary"
+              clickable
+            />
+          </Link>
         </section>
 
         {/* משימות היום */}
@@ -255,37 +267,60 @@ function KpiCard({
   label: string
   primary: string
   subtitle: React.ReactNode
-  tone: "primary" | "success" | "accent"
+  tone: "primary" | "success" | "featured"
   clickable?: boolean
   headerAction?: React.ReactNode
 }) {
-  const toneClass =
-    tone === "success"
+  const isFeatured = tone === "featured"
+  const toneClass = isFeatured
+    ? "bg-primary-foreground/15 text-primary-foreground"
+    : tone === "success"
       ? "bg-success/10 text-success"
-      : tone === "accent"
-        ? "bg-primary/10 text-primary"
-        : "bg-primary/10 text-primary"
+      : "bg-primary/10 text-primary"
   return (
     <Card
       className={cn(
         "gap-0 p-4",
-        clickable && "transition-colors hover:bg-secondary/40",
-        tone === "accent" && "border-primary/20 bg-primary/5",
+        clickable && !isFeatured && "transition-colors hover:bg-secondary/40",
+        isFeatured &&
+          "border-none bg-primary text-primary-foreground shadow-lg shadow-primary/20",
       )}
     >
       <div className="mb-2 flex items-start justify-between gap-2">
         <div
-          className={`flex size-9 shrink-0 items-center justify-center rounded-full ${toneClass}`}
+          className={cn(
+            "flex size-9 shrink-0 items-center justify-center rounded-full",
+            toneClass,
+          )}
         >
           <Icon className="size-5" />
         </div>
         {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
       </div>
-      <div className="text-2xl font-extrabold tracking-tight">{primary}</div>
-      <div className="mt-0.5 text-xs font-medium text-muted-foreground">
+      <div
+        className={cn(
+          "text-2xl font-extrabold tracking-tight",
+          isFeatured && "text-3xl",
+        )}
+      >
+        {primary}
+      </div>
+      <div
+        className={cn(
+          "mt-0.5 text-xs font-medium",
+          isFeatured ? "text-primary-foreground/90" : "text-muted-foreground",
+        )}
+      >
         {label}
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">{subtitle}</p>
+      <p
+        className={cn(
+          "mt-2 text-xs",
+          isFeatured ? "text-primary-foreground/80" : "text-muted-foreground",
+        )}
+      >
+        {subtitle}
+      </p>
     </Card>
   )
 }

@@ -254,7 +254,6 @@ export function computeRealizedNetProfit(
 export type DashboardKpis = {
   pipeline: { count: number; expectedNetProfit: number }
   booked: { count: number; expectedNetProfit: number }
-  realized: { netProfit: number; paidCoursesCount: number }
 }
 
 /** מדדי דשבורד — שלושת כרטיסי ה-KPI */
@@ -275,14 +274,6 @@ export function computeDashboardKpis(
     0,
   )
 
-  const paidCourseIds = new Set<string>()
-  let realizedTotal = 0
-  for (const lead of active) {
-    if (!leadHasLoggedPayment(lead)) continue
-    paidCourseIds.add(lead.id)
-    realizedTotal += computeRealizedNetProfit(lead, instructors)
-  }
-
   return {
     pipeline: {
       count: pipelineLeads.length,
@@ -291,10 +282,6 @@ export function computeDashboardKpis(
     booked: {
       count: bookedLeads.length,
       expectedNetProfit: bookedExpected,
-    },
-    realized: {
-      netProfit: realizedTotal,
-      paidCoursesCount: paidCourseIds.size,
     },
   }
 }

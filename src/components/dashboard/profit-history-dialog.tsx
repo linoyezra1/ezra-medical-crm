@@ -19,7 +19,11 @@ import {
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
-export function ProfitHistoryDialog() {
+export function ProfitHistoryDialog({
+  onPrimaryBackground = false,
+}: {
+  onPrimaryBackground?: boolean
+}) {
   const { leads, equipment, settings, instructors } = useApp()
   const [open, setOpen] = useState(false)
 
@@ -53,7 +57,12 @@ export function ProfitHistoryDialog() {
             type="button"
             size="icon-sm"
             variant="ghost"
-            className="size-8 shrink-0 rounded-full bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/25 hover:text-primary-foreground"
+            className={cn(
+              "size-8 shrink-0 rounded-full",
+              onPrimaryBackground
+                ? "bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/25 hover:text-primary-foreground"
+                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+            )}
             aria-label="היסטוריית הכנסות ורווחים"
           >
             <History className="size-4" />
