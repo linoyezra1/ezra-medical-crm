@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { backupSalesToSheets, upsertCourseAsset } from "@/lib/actions";
+import { formatCourseTypeLabel } from "@/lib/course-type";
 import {
   buildStructuredSummary,
   buildSummaryVars,
@@ -246,7 +247,9 @@ export function SettingsView() {
                       <BookOpen className="size-4 shrink-0 text-primary" />
                       <p className="truncate text-sm font-bold">{draft.title || draft.type}</p>
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{draft.type}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {formatCourseTypeLabel(draft.type)}
+                    </p>
                   </div>
                   {open ? <ChevronUp className="size-5" /> : <ChevronDown className="size-5" />}
                 </button>

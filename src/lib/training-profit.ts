@@ -85,6 +85,11 @@ export function computeTrainingPaymentSummary(
   }
 }
 
+/** סכום תצוגה בכרטיס ליד — בסיס + מחירי משתתפים חיצוניים */
+export function leadDisplayPrice(lead: Lead): number {
+  return computeTrainingPaymentSummary(lead).expectedTotal
+}
+
 /**
  * תעריף מדריך חי מפרופיל (מקור אמת).
  * דריסה להדרכה ספציפית נלקחת רק אם אין פרופיל חי זמין.

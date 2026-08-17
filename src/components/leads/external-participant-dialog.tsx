@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { addExternalParticipant } from "@/lib/actions"
+import { addExternalParticipant, addParticipant } from "@/lib/actions"
 import { collectCourseTypeOptions, formatLeadCourseType } from "@/lib/course-type"
 import { collectLeadCategoryOptions } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
@@ -28,6 +28,13 @@ import { useApp } from "@/lib/store"
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** הדרכה מראש — מסך פרטי ליד */
+  defaultLeadId?: string
+  /** הסתר בחירת הדרכה כשכבר ידועה */
+  lockLead?: boolean
+  title?: string
+  /** ברירת מחדל לסימון «משתתף חיצוני» */
+  defaultIsExternal?: boolean
 }
 
 const EMPTY_FORM = {
@@ -42,10 +49,26 @@ const EMPTY_FORM = {
   agreedPrice: "",
 }
 
-export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
+export function ExternalParticipantDialog({
+  open,
+  onOpenChange,
+  defaultLeadId,
+  lockLead = false,
+  title = "מצטרף נוסף",
+  defaultIsExternal = true,
+}: Props) {
   const { leads, settings, refresh } = useApp()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
+
+  useEffect(() => {
+    if (!open) return
+    setForm({
+      ...EMPTY_FORM,
+      leadId: defaultLeadId || "",
+      isExternal: defaultIsExternal,
+    })
+  }, [open, defaultLeadId, defaultIsExternal])
 
   const assignable = useMemo(
     () =>
@@ -65,7 +88,12 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
     [leads],
   )
 
-  const reset = () => setForm(EMPTY_FORM)
+  const reset = () =>
+    setForm({
+      ...EMPTY_FORM,
+      leadId: defaultLeadId || "",
+      isExternal: defaultIsExternal,
+    })
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,26 +102,32 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
       return
     }
     setSaving(true)
-    const res = await addExternalParticipant({
-      leadId: form.leadId,
-      fullName: form.fullName,
-      phone: form.phone,
-      courseType: form.isExternal ? form.courseType : undefined,
-      courseCategory: form.isExternal ? form.courseCategory : undefined,
-      agreedPrice:
-        form.isExternal && form.agreedPrice
-          ? Number(form.agreedPrice)
-          : undefined,
-      idNumber: form.idNumber,
-      email: form.email,
-      isExternal: form.isExternal,
-    })
+    let res: { ok: boolean; error?: string }
+    if (form.isExternal) {
+      res = await addExternalParticipant({
+        leadId: form.leadId,
+        fullName: form.fullName,
+        phone: form.phone,
+        courseType: form.courseType,
+        courseCategory: form.courseCategory,
+        agreedPrice:
+          form.agreedPrice ? Number(form.agreedPrice) : undefined,
+        idNumber: form.idNumber,
+        email: form.email,
+        isExternal: true,
+      })
+    } else {
+      res = await addParticipant(form.leadId, form.fullName, form.idNumber, {
+        phone: form.phone || null,
+        email: form.email || null,
+      })
+    }
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
-    toast.success("מצטרף נוסף נרשם")
+    toast.success(form.isExternal ? "מצטרף חיצוני נרשם" : "משתתף נוסף בהצלחה")
     reset()
     refresh()
     onOpenChange(false)
@@ -109,7 +143,7 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-right">מצטרף נוסף</DialogTitle>
+          <DialogTitle className="text-right">{title}</DialogTitle>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-3">
           <div>
@@ -153,32 +187,40 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
               dir="ltr"
             />
           </div>
-          <div>
-            <Label className="mb-1.5 block text-sm">שיוך להדרכה</Label>
-            <Select
-              value={form.leadId || undefined}
-              onValueChange={(v) =>
-                setForm((f) => ({ ...f, leadId: v ?? "" }))
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="בחר הדרכה" />
-              </SelectTrigger>
-              <SelectContent>
-                {assignable.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.name} · {formatLeadCourseType(l, settings.courses)} ·{" "}
-                    {l.date || "ללא תאריך"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {!lockLead ? (
+            <div>
+              <Label className="mb-1.5 block text-sm">שיוך להדרכה</Label>
+              <Select
+                value={form.leadId || undefined}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, leadId: v ?? "" }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="בחר הדרכה" />
+                </SelectTrigger>
+                <SelectContent>
+                  {assignable.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name} · {formatLeadCourseType(l, settings.courses)} ·{" "}
+                      {l.date || "ללא תאריך"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
           <label className="flex items-center gap-2 text-sm font-medium">
             <Checkbox
               checked={form.isExternal}
               onCheckedChange={(v) =>
-                setForm((f) => ({ ...f, isExternal: Boolean(v) }))
+                setForm((f) => ({
+                  ...f,
+                  isExternal: Boolean(v),
+                  courseType: "",
+                  courseCategory: "",
+                  agreedPrice: "",
+                }))
               }
             />
             משתתף חיצוני

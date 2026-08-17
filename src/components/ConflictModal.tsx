@@ -1,5 +1,7 @@
 "use client";
 
+import { formatCourseTypeLabel } from "@/lib/course-type";
+
 export type ConflictItem = {
   id: string;
   courseType: string | null;
@@ -44,14 +46,14 @@ export function ConflictModal({ conflicts, current, onCancel, onConfirm }: Props
           {conflicts.map((c) => (
             <li key={c.id} className="rounded-xl bg-[var(--urgent-soft)] px-3 py-2">
               <div className="font-bold">
-                קיים: {c.courseType || "קורס"} ב{c.city || "—"} ({fmt(c.scheduledStart, c.scheduledEnd)})
+                קיים: {formatCourseTypeLabel(c.courseType) || "קורס"} ב{c.city || "—"} ({fmt(c.scheduledStart, c.scheduledEnd)})
               </div>
               <div className="text-[var(--muted)]">מדריך: {c.instructor || "לא שובץ"} · {c.fullName}</div>
             </li>
           ))}
           <li className="rounded-xl bg-[var(--brand-soft)] px-3 py-2">
             <div className="font-bold">
-              נוכחי: {current.courseType || "קורס"} ב{current.city || "—"} (
+              נוכחי: {formatCourseTypeLabel(current.courseType) || "קורס"} ב{current.city || "—"} (
               {fmt(current.scheduledStart, current.scheduledEnd)})
             </div>
             <div className="text-[var(--muted)]">מדריך: {current.instructor || "לא שובץ"}</div>

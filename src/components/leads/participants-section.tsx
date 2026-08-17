@@ -990,7 +990,9 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       {editForm.courseType &&
                       !courseOptions.includes(editForm.courseType) ? (
                         <SelectItem value={editForm.courseType}>
-                          {editForm.courseType}
+                          {formatCourseTypeLabel(editForm.courseType, {
+                            catalog: settings.courses,
+                          })}
                         </SelectItem>
                       ) : null}
                       {courseOptions.map((o) => (

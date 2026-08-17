@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ArrowRight, Check, Copy, Link2, MessageCircle, QrCode, Star } from "lucide-react"
+import { ArrowRight, Check, Copy, Link2, MessageCircle, QrCode, Star, UserPlus } from "lucide-react"
 import QRCode from "qrcode"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -22,9 +22,15 @@ type Props = {
   lead: Lead
   open: boolean
   onOpenChange: (open: boolean) => void
+  onManualParticipant?: () => void
 }
 
-export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
+export function CollectParticipantsDialog({
+  lead,
+  open,
+  onOpenChange,
+  onManualParticipant,
+}: Props) {
   const { updateLead, settings } = useApp()
   const [step, setStep] = useState<"choose" | "detail">("choose")
   const [option, setOption] = useState<Option | null>(null)
@@ -203,6 +209,15 @@ export function CollectParticipantsDialog({ lead, open, onOpenChange }: Props) {
               title="QR לאתר"
               desc="קוד לסריקה לדף כניסה לתלמידים"
               onClick={() => choose("qr_site")}
+            />
+            <OptionButton
+              icon={UserPlus}
+              title="הוספת משתתף ידני"
+              desc="הוספה ישירה — רגיל או חיצוני (סוג קורס ומחיר)"
+              onClick={() => {
+                onOpenChange(false)
+                onManualParticipant?.()
+              }}
             />
           </div>
         )}

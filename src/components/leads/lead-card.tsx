@@ -21,6 +21,7 @@ import {
 } from "@/lib/helpers"
 import { isInstructorUnassigned, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { leadCalendarSessions } from "@/lib/payment"
+import { leadDisplayPrice } from "@/lib/training-profit"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -110,7 +111,7 @@ export function LeadCard({ lead }: { lead: Lead }) {
             </span>
           )}
           <span className="font-semibold text-foreground">
-            {formatCurrency(lead.totalPrice)}
+            {formatCurrency(leadDisplayPrice(lead))}
           </span>
           {shouldShowUnassignedInstructorWarning(lead) ? (
             <span className="font-bold text-red-600">לא שובץ מדריך</span>

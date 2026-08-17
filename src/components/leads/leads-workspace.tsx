@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { formatCurrency, formatDateWithWeekday } from "@/lib/helpers"
+import { leadDisplayPrice } from "@/lib/training-profit"
 import { shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { LEAD_STATUS_LABELS, type Lead, type LeadStatus } from "@/lib/types"
@@ -353,7 +354,7 @@ function DesktopLeadRow({ lead }: { lead: Lead }) {
         {lead.phone}
       </td>
       <td className="max-w-0 truncate px-2 py-2 font-medium">
-        {formatCurrency(lead.totalPrice)}
+        {formatCurrency(leadDisplayPrice(lead))}
       </td>
     </tr>
   )

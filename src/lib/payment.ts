@@ -219,3 +219,40 @@ export function pickZoomSessionForInvite(lead: {
     .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
   return upcoming[0] || pool[0] || null
 }
+
+/** האם חסרה כתובת פיזית נדרשת לסגירה — מפגשי זום פטורים */
+export function physicalAddressMissingForClose(lead: {
+  sessions?: TrainingSessionSlot[]
+  sessionsJson?: string | null
+  date?: string
+  time?: string
+  endTime?: string
+  sessionsCount?: number | null
+  address?: { street?: string; city?: string; houseNumber?: string }
+  location?: string | null
+  city?: string | null
+}): boolean {
+  const fromJson = lead.sessionsJson ? parseSessionsJson(lead.sessionsJson) : []
+  const sessions =
+    lead.sessions && lead.sessions.length > 0
+      ? lead.sessions
+      : fromJson.length > 0
+        ? fromJson
+        : leadCalendarSessions(lead)
+  const physical = sessions.filter((s) => !s.isZoom)
+  if (physical.length === 0) return false
+
+  const everyPhysicalHasAddress = physical.every((s) =>
+    Boolean(s.street?.trim() && s.city?.trim()),
+  )
+  if (everyPhysicalHasAddress) return false
+
+  const legacyAddress =
+    Boolean(lead.address?.street?.trim() && lead.address?.city?.trim()) ||
+    Boolean(
+      lead.location?.trim() &&
+        (lead.city?.trim() || lead.address?.city?.trim()),
+    )
+
+  return !legacyAddress
+}

@@ -4,6 +4,10 @@ export const COURSE_TYPE_OTHER = "אחר"
 
 /** מיפוי מפתחות פנימיים / סלגים → תווית תצוגה */
 const SLUG_TO_LABEL: Record<string, string> = {
+  "8_hours": "8 שעות",
+  "hours-8": "8 שעות",
+  "hours_8": "8 שעות",
+  "8-hours": "8 שעות",
   "44_hours": "44 שעות",
   "hours-44": "44 שעות",
   "hours_44": "44 שעות",
@@ -34,6 +38,7 @@ const LABEL_TO_SLUG: Record<string, string> = {
   "44 שעות": "44_hours",
   "22 שעות": "22_hours",
   "60 שעות": "60_hours",
+  "8 שעות": "8_hours",
   חובשים: "paramedic",
   חובש: "paramedic",
   "החייאת תינוקות": "infant_cpr",
@@ -52,6 +57,7 @@ export const DEFAULT_COURSE_TYPE_LABELS = [
   "התנהלות בטוחה",
   "רענון עזרה ראשונה +התנהלות בטוחה",
   // תאימות לאחור לתצוגה / קטלוג קיים
+  "8 שעות",
   "22 שעות",
   "44 שעות",
   "60 שעות",
@@ -160,6 +166,14 @@ export function formatCourseTypeLabel(
       return fromSlug || match.title || raw
     }
   }
+
+  const hoursFromSlug =
+    raw.match(/^(\d+(?:\.\d+)?)[_-]hours$/i) ||
+    raw.match(/^hours[_-](\d+(?:\.\d+)?)$/i)
+  if (hoursFromSlug?.[1]) return `${hoursFromSlug[1]} שעות`
+
+  const hoursFromNorm = normalizeKey(raw).match(/^(\d+(?:\.\d+)?)_hours$/)
+  if (hoursFromNorm?.[1]) return `${hoursFromNorm[1]} שעות`
 
   // כבר טקסט ידידותי / שם מותאם שנשמר ישירות
   return raw

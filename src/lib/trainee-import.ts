@@ -309,12 +309,11 @@ export async function parseTraineeImportFile(
   return mapSheetRowsToImport(matrix)
 }
 
-/** Leads eligible for trainee assignment (excluding lost/canceled) */
+/** Leads eligible for trainee assignment (active pipeline — not ended/lost) */
 export const ASSIGNABLE_LEAD_STATUSES = [
   "new",
   "closed",
   "pending_certificates",
-  "completed",
 ] as const
 
 /** Matching DB courseStatus values for server-side validation */
@@ -325,7 +324,6 @@ export const ASSIGNABLE_LEAD_DB_STATUSES = [
   "closed",
   "certificates_pending",
   "completed",
-  "closed_won",
 ] as const
 
 export function isLeadAssignableForTrainee(status: string): boolean {

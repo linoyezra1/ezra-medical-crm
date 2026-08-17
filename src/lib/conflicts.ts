@@ -1,7 +1,12 @@
 import { addHours, subHours } from "date-fns";
 import { prisma } from "@/lib/db";
 import { SCHEDULED_STATUSES } from "@/lib/constants";
-import { parseSessionsJson, sessionLocationLabel } from "@/lib/payment";
+import {
+  parseSessionsJson,
+  physicalAddressMissingForClose,
+  sessionLocationLabel,
+} from "@/lib/payment";
+import { formatInJerusalem } from "@/lib/timezone";
 import type { Lead } from "@/generated/prisma/client";
 
 export type ConflictHit = {
@@ -71,10 +76,26 @@ export async function validateStatusTransition(
         message: "לא ניתן לסגור קורס ללא תאריך ושעה תקפים",
       };
     }
-    if (!lead.location?.trim() && !lead.city?.trim()) {
+    const { date, time } = formatInJerusalem(lead.scheduledStart);
+    const { time: endTime } = formatInJerusalem(lead.scheduledEnd);
+    if (
+      physicalAddressMissingForClose({
+        sessionsJson: lead.sessionsJson,
+        date: date || undefined,
+        time: time || undefined,
+        endTime: endTime || undefined,
+        location: lead.location,
+        city: lead.city,
+        address: {
+          street: lead.shippingStreet ?? undefined,
+          city: lead.shippingCity ?? undefined,
+          houseNumber: lead.shippingHouseNo ?? undefined,
+        },
+      })
+    ) {
       return {
         code: "missing_location",
-        message: "לא ניתן לסגור קורס ללא מיקום / עיר",
+        message: "לא ניתן לסגור קורס ללא מיקום / עיר (מפגשי זום פטורים)",
       };
     }
     if (!opts.bypassConflict) {

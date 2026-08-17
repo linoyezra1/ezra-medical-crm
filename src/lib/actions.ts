@@ -44,6 +44,7 @@ import {
   previousLeadStatus,
   uiStatusToDb,
 } from "@/lib/types";
+import { ASSIGNABLE_LEAD_DB_STATUSES } from "@/lib/trainee-import";
 
 export type ActionResult<T = unknown> =
   | { ok: true; data: T }
@@ -1810,30 +1811,53 @@ export type TraineeImportPayloadRow = {
   notes?: string;
 };
 
-import { ASSIGNABLE_LEAD_DB_STATUSES } from "@/lib/trainee-import";
+function normalizeMatch(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-async function findAssignableLeadId(opts: {
+type AssignableLeadResolve =
+  | { ok: true; leadId: string }
+  | { ok: false; reason: "not_found" | "ended" | "lost" };
+
+function assignableLeadError(
+  reason: "not_found" | "ended" | "lost",
+): string {
+  switch (reason) {
+    case "ended":
+      return "לא ניתן לשייך להדרכה שהסתיימה";
+    case "lost":
+      return "לא ניתן לשייך להדרכה שסומנה כאבודה/מבוטלת";
+    default:
+      return "ההדרכה אינה זמינה לשיוך";
+  }
+}
+
+async function resolveAssignableLead(opts: {
   leadId?: string;
   organizerName?: string;
   trainingDate?: string;
-}): Promise<string | null> {
+}): Promise<AssignableLeadResolve> {
   if (opts.leadId) {
     const lead = await prisma.lead.findUnique({ where: { id: opts.leadId } });
+    if (!lead) return { ok: false, reason: "not_found" };
+    if (lead.courseStatus === "closed_won") {
+      return { ok: false, reason: "ended" };
+    }
+    if (lead.courseStatus === "canceled") {
+      return { ok: false, reason: "lost" };
+    }
     if (
-      lead &&
       (ASSIGNABLE_LEAD_DB_STATUSES as readonly string[]).includes(
         lead.courseStatus,
       )
     ) {
-      return lead.id;
+      return { ok: true, leadId: lead.id };
     }
-    return null;
+    return { ok: false, reason: "not_found" };
   }
 
   const organizer = opts.organizerName?.trim();
-  if (!organizer) return null;
+  if (!organizer) return { ok: false, reason: "not_found" };
 
   const candidates = await prisma.lead.findMany({
     where: { courseStatus: { in: [...ASSIGNABLE_LEAD_DB_STATUSES] } },
@@ -1852,7 +1876,7 @@ async function findAssignableLeadId(opts: {
       target.includes(normalizeMatch(l.fullName)),
   );
 
-  if (byName.length === 1) return byName[0].id;
+  if (byName.length === 1) return { ok: true, leadId: byName[0].id };
   if (byName.length > 1 && opts.trainingDate) {
     const day = opts.trainingDate.trim().slice(0, 10);
     const dated = byName.find((l) => {
@@ -1860,9 +1884,19 @@ async function findAssignableLeadId(opts: {
       const iso = l.scheduledStart.toISOString().slice(0, 10);
       return iso === day;
     });
-    if (dated) return dated.id;
+    if (dated) return { ok: true, leadId: dated.id };
   }
-  return byName[0]?.id ?? null;
+  if (byName[0]) return { ok: true, leadId: byName[0].id };
+  return { ok: false, reason: "not_found" };
+}
+
+async function findAssignableLeadId(opts: {
+  leadId?: string;
+  organizerName?: string;
+  trainingDate?: string;
+}): Promise<string | null> {
+  const resolved = await resolveAssignableLead(opts);
+  return resolved.ok ? resolved.leadId : null;
 }
 
 /** יצירת מודרך ידנית (+ שיוך להדרכה אופציונלי) — שדות אופציונליים, מספיק שדה אחד */
@@ -1902,13 +1936,11 @@ export async function createTraineeManual(data: {
 
   let participantId: string | undefined;
   if (data.leadId) {
-    const leadId = await findAssignableLeadId({ leadId: data.leadId });
-    if (!leadId) {
-      return {
-        ok: false,
-        error: "ההדרכה שנבחרה אינה זמינה לשיוך (ליד אבוד/מבוטל או לא נמצא)",
-      };
+    const resolved = await resolveAssignableLead({ leadId: data.leadId });
+    if (!resolved.ok) {
+      return { ok: false, error: assignableLeadError(resolved.reason) };
     }
+    const leadId = resolved.leadId;
 
     const idNumber = trainee.idNumber;
     const existing = idNumberRaw
@@ -2082,13 +2114,12 @@ export async function assignTraineesToLead(
 ): Promise<ActionResult<{ linked: number; skipped: number }>> {
   if (!traineeIds.length) return { ok: false, error: "לא נבחרו מודרכים" };
 
-  const resolved = await findAssignableLeadId({ leadId });
-  if (!resolved) {
-    return {
-      ok: false,
-      error: "ההדרכה אינה זמינה לשיוך (ליד אבוד/מבוטל או לא נמצא)",
-    };
+  const resolved = await resolveAssignableLead({ leadId });
+  if (!resolved.ok) {
+    return { ok: false, error: assignableLeadError(resolved.reason) };
   }
+
+  const targetLeadId = resolved.leadId;
 
   const trainees = await prisma.trainee.findMany({
     where: { id: { in: traineeIds } },
@@ -2099,7 +2130,7 @@ export async function assignTraineesToLead(
 
   for (const t of trainees) {
     const existing = await prisma.participant.findFirst({
-      where: { leadId: resolved, idNumber: t.idNumber },
+      where: { leadId: targetLeadId, idNumber: t.idNumber },
     });
     if (existing) {
       if (existing.traineeId !== t.id) {
@@ -2115,7 +2146,7 @@ export async function assignTraineesToLead(
     }
     await prisma.participant.create({
       data: {
-        leadId: resolved,
+        leadId: targetLeadId,
         traineeId: t.id,
         fullName: t.fullName,
         idNumber: t.idNumber,
@@ -2127,7 +2158,7 @@ export async function assignTraineesToLead(
     linked += 1;
   }
 
-  revalidatePath(`/leads/${resolved}`);
+  revalidatePath(`/leads/${targetLeadId}`);
   revalidatePath("/clients");
   revalidatePath("/leads");
   return { ok: true, data: { linked, skipped } };

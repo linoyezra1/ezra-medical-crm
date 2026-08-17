@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
+import { ExternalParticipantDialog } from "@/components/leads/external-participant-dialog"
 import { LeadPaymentDialog } from "@/components/leads/lead-payment-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
@@ -60,6 +61,7 @@ export function LeadDetailView({
   const { getLead, settings } = useApp()
   const lead = getLead(leadId)
   const [collectOpen, setCollectOpen] = useState(false)
+  const [manualParticipantOpen, setManualParticipantOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [detailTab, setDetailTab] = useState<DetailTab>("home")
 
@@ -269,6 +271,15 @@ export function LeadDetailView({
         lead={lead}
         open={collectOpen}
         onOpenChange={setCollectOpen}
+        onManualParticipant={() => setManualParticipantOpen(true)}
+      />
+      <ExternalParticipantDialog
+        open={manualParticipantOpen}
+        onOpenChange={setManualParticipantOpen}
+        defaultLeadId={lead.id}
+        lockLead
+        title="הוספת משתתף ידני"
+        defaultIsExternal={false}
       />
       <LeadPaymentDialog
         lead={lead}
@@ -492,7 +503,7 @@ function ParticipantsTab({
           <div className="min-w-0">
             <h2 className="text-sm font-bold">כלי רישום משתתפים</h2>
             <p className="text-xs text-muted-foreground">
-              QR, העתקת קישור ושליחה בוואטסאפ
+              QR, העתקת קישור, שליחה בוואטסאפ והוספת משתתף ידני
             </p>
           </div>
           {(lead.status === "pending_certificates" ||

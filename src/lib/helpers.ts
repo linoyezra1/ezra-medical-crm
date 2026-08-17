@@ -1,6 +1,10 @@
 import { formatLeadCourseType } from "./course-type";
 import { COURSE_CATEGORIES } from "./constants";
-import { leadCalendarSessions, sessionLocationLabel } from "./payment";
+import {
+  leadCalendarSessions,
+  physicalAddressMissingForClose,
+  sessionLocationLabel,
+} from "@/lib/payment";
 import type { CourseCatalogItem, Lead, Task } from "./types";
 import {
   buildStructuredSummary,
@@ -321,21 +325,8 @@ export function missingForClose(lead: Partial<Lead>): string[] {
   const missing: string[] = [];
   if (!lead.date) missing.push("תאריך");
   if (!lead.time) missing.push("שעה");
-  const sessions = lead.sessions;
-  const allZoom =
-    sessions && sessions.length > 0
-      ? sessions.every((s) => Boolean(s.isZoom))
-      : false;
-  if (!allZoom) {
-    const sessionHasAddress =
-      sessions?.some(
-        (s) =>
-          !s.isZoom &&
-          Boolean(s.street?.trim() && s.city?.trim()),
-      ) ?? false;
-    if (!sessionHasAddress) {
-      missing.push("כתובת");
-    }
+  if (physicalAddressMissingForClose(lead)) {
+    missing.push("כתובת");
   }
   return missing;
 }

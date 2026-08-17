@@ -66,7 +66,7 @@ export function TraineeAssignDialog({
           <DialogTitle className="text-right">שיוך להדרכה</DialogTitle>
           <p className="text-xs text-muted-foreground">
             {traineeIds.length} מודרכים נבחרו · ניתן לשייך גם מודרך שכבר משויך
-            להדרכה אחרת · מוצגות הדרכות פעילות (למעט אבוד/מבוטל)
+            להדרכה אחרת · הדרכות שהסתיימו אינן זמינות לשיוך
           </p>
         </DialogHeader>
 
