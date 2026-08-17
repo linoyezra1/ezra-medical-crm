@@ -293,6 +293,7 @@ export function LeadForm({ lead }: { lead: LeadRecord }) {
               <Link href={`/leads/${d.id}`} className="font-bold text-[var(--brand)] underline">
                 {d.fullName}
               </Link>
+              {" "}— ניתן ליצור הדרכה נוספת לאותו לקוח.
             </span>
           ))}
         </div>

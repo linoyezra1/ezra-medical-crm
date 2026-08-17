@@ -295,6 +295,7 @@ async function syncUnpaidPaymentTask(lead: {
   });
 }
 
+/** אזהרה בלבד — לא חוסם יצירת ליד חדש לאותו טלפון */
 export async function checkDuplicatePhone(phone: string, excludeLeadId?: string) {
   const sanitized = sanitizePhone(phone);
   if (!sanitized || sanitized.length < 9) return { duplicates: [] as { id: string; fullName: string }[] };
@@ -344,6 +345,40 @@ async function replaceTrainingSessions(
   })
 }
 
+/** שיוך ליד חדש ללקוח קיים לפי טלפון — בלי לחסום יצירה */
+async function findExistingClientByPhone(phone: string): Promise<{
+  accountId?: string
+  contactId?: string
+} | null> {
+  if (!phone) return null
+
+  const contact = await prisma.contact.findFirst({
+    where: { phone },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, accountId: true },
+  })
+  if (contact) {
+    return {
+      accountId: contact.accountId || undefined,
+      contactId: contact.id,
+    }
+  }
+
+  const existingLead = await prisma.lead.findFirst({
+    where: {
+      phone,
+      OR: [{ accountId: { not: null } }, { contactId: { not: null } }],
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { accountId: true, contactId: true },
+  })
+  if (!existingLead?.accountId && !existingLead?.contactId) return null
+  return {
+    accountId: existingLead.accountId || undefined,
+    contactId: existingLead.contactId || undefined,
+  }
+}
+
 export async function createLead(formData: FormData): Promise<
   ActionResult<{ id: string }> & { fieldErrors?: { fullName?: string; phone?: string }; duplicate?: { id: string; fullName: string } }
 > {
@@ -364,16 +399,8 @@ export async function createLead(formData: FormData): Promise<
     };
   }
 
-  const { duplicates } = await checkDuplicatePhone(phone);
-  if (duplicates.length > 0) {
-    const dup = duplicates[0];
-    return {
-      ok: false,
-      error: `קיים כבר ליד פעיל בשם ${dup.fullName}`,
-      code: "duplicate_phone",
-      duplicate: dup,
-    };
-  }
+  const existingClient = await findExistingClientByPhone(phone);
+  const requestedSource = String(formData.get("leadSource") ?? "") || null;
 
   const actor = await getActiveCrmUser();
   const lead = await prisma.lead.create({
@@ -382,7 +409,9 @@ export async function createLead(formData: FormData): Promise<
       phone,
       email: String(formData.get("email") ?? "") || null,
       city: String(formData.get("city") ?? "") || null,
-      leadSource: String(formData.get("leadSource") ?? "") || null,
+      accountId: existingClient?.accountId,
+      contactId: existingClient?.contactId,
+      leadSource: existingClient?.accountId ? "returning" : requestedSource,
       urgency: "normal",
       activityType: String(formData.get("activityType") ?? "course"),
       notes: String(formData.get("notes") ?? "") || null,
@@ -423,17 +452,6 @@ export async function updateLead(
       error: "שם מלא וטלפון הם שדות חובה",
       code: "required_fields",
     };
-  }
-
-  if (phone !== existing.phone) {
-    const { duplicates } = await checkDuplicatePhone(phone, leadId);
-    if (duplicates.length > 0) {
-      return {
-        ok: false,
-        error: `קיים כבר ליד פעיל בשם ${duplicates[0].fullName}`,
-        code: "duplicate_phone",
-      };
-    }
   }
 
   const merged = {
@@ -964,6 +982,25 @@ async function upsertTraineeFromParticipant(data: {
 }) {
   const fullName = data.fullName.trim() || "ללא שם";
   let idNumber = data.idNumber.trim().replace(/[-\s]/g, "");
+  const phone = data.phone?.trim() || null;
+  const email = data.email?.trim() || null;
+
+  if (!idNumber && phone) {
+    const byPhone = await prisma.trainee.findFirst({
+      where: { phone },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (byPhone) {
+      return prisma.trainee.update({
+        where: { id: byPhone.id },
+        data: {
+          fullName,
+          email: email || undefined,
+        },
+      });
+    }
+  }
+
   // ת״ז ריקה — מזהה זמני ייחודי (אילוץ @@unique על Trainee)
   if (!idNumber) {
     idNumber = `temp-${randomUUID()}`;
@@ -973,15 +1010,50 @@ async function upsertTraineeFromParticipant(data: {
     create: {
       fullName,
       idNumber,
-      email: data.email?.trim() || null,
-      phone: data.phone?.trim() || null,
+      email,
+      phone,
     },
     update: {
       fullName,
-      email: data.email?.trim() || undefined,
-      phone: data.phone?.trim() || undefined,
+      email: email || undefined,
+      phone: phone || undefined,
     },
   });
+}
+
+async function linkParticipantToTrainee(p: {
+  id: string;
+  fullName: string;
+  idNumber: string;
+  email?: string | null;
+  phone?: string | null;
+  traineeId?: string | null;
+}) {
+  if (p.traineeId) return p.traineeId;
+  const trainee = await upsertTraineeFromParticipant({
+    fullName: p.fullName,
+    idNumber: p.idNumber,
+    email: p.email,
+    phone: p.phone,
+  });
+  await prisma.participant.update({
+    where: { id: p.id },
+    data: { traineeId: trainee.id },
+  });
+  return trainee.id;
+}
+
+/** משלים מודרכים גלובליים למשתתפים חיצוניים שטרם נכנסו למאגר */
+export async function ensureExternalParticipantsInDirectory() {
+  const orphans = await prisma.participant.findMany({
+    where: { isExternal: true, traineeId: null },
+    take: 250,
+    orderBy: { createdAt: "desc" },
+  });
+  for (const p of orphans) {
+    await linkParticipantToTrainee(p);
+  }
+  return orphans.length;
 }
 
 /** הוספת משתתף פנימית — מספיק שדה אחד (שם / ת״ז / טלפון / אימייל) */
@@ -1084,9 +1156,13 @@ export async function addExternalParticipant(input: {
           : null,
     },
   })
+  if (isExternal) {
+    await linkParticipantToTrainee(created)
+  }
   revalidatePath("/")
   revalidatePath("/leads")
   revalidatePath(`/leads/${input.leadId}`)
+  revalidatePath("/clients")
   return { ok: true, data: { id: created.id } }
 }
 
@@ -1271,7 +1347,7 @@ export async function updateParticipantDetails(
       : isExternal
         ? null
         : undefined;
-  await prisma.participant.update({
+  const updated = await prisma.participant.update({
     where: { id: participantId },
     data: {
       fullName: data.fullName?.trim(),
@@ -1289,7 +1365,11 @@ export async function updateParticipantDetails(
         : {}),
     },
   });
+  if (isExternal) {
+    await linkParticipantToTrainee(updated);
+  }
   revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/clients");
   return { ok: true, data: { id: participantId } };
 }
 

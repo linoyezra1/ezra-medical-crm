@@ -384,12 +384,16 @@ export function mapTrainee(db: DbTraineeFull): Trainee {
   const fromParticipant = (db.participants || []).find(
     (p) => p.certificateUrl?.trim(),
   )?.certificateUrl
+  const isExternal = (db.participants || []).some((p) =>
+    Boolean((p as { isExternal?: boolean }).isExternal),
+  )
   return {
     id: db.id,
     fullName: db.fullName,
     idNumber: db.idNumber,
     phone: db.phone || undefined,
     email: db.email || undefined,
+    isExternal,
     certificateEmailSent: Boolean(db.certificateEmailSent),
     certificateCardPrinted: Boolean(db.certificateCardPrinted),
     certificateUrl: db.certificateUrl || fromParticipant || undefined,

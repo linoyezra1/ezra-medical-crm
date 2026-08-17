@@ -614,7 +614,8 @@ export function LeadForm({ existing }: Props) {
         {dupWarn && (
           <Card className="mb-3 gap-1 border-warning/40 bg-warning/10 p-3">
             <p className="text-sm font-semibold text-warning-foreground">
-              קיים כבר לקוח בשם {dupWarn.name}
+              קיים כבר לקוח בשם {dupWarn.name} — ניתן ליצור הדרכה נוספת, והיא
+              תשויך לרשומה הקיימת.
             </p>
             <a
               href={`/clients/${dupWarn.id}`}

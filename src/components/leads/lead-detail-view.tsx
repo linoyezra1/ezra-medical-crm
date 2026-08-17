@@ -157,9 +157,6 @@ export function LeadDetailView({
                     status={lead.status}
                     className="px-3.5 py-1.5 text-sm font-bold shadow-sm"
                   />
-                  <span className="inline-flex items-center rounded-full bg-primary px-3.5 py-1.5 text-sm font-extrabold text-primary-foreground shadow-sm">
-                    {formatCurrency(payments.expectedTotal)}
-                  </span>
                 </div>
                 <p className="truncate text-sm font-medium text-muted-foreground md:text-base">
                   {courseLabel}

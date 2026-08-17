@@ -48,6 +48,14 @@ function trainingLabel(t: Trainee) {
   )
 }
 
+function ExternalTag() {
+  return (
+    <span className="shrink-0 rounded bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-pink-700">
+      חיצוני
+    </span>
+  )
+}
+
 export function TraineesPanel() {
   const { trainees, updateTraineeLocal, refresh } = useApp()
   const [q, setQ] = useState("")
@@ -77,7 +85,8 @@ export function TraineesPanel() {
           (tr) =>
             (tr.organizerName || "").toLowerCase().includes(term) ||
             tr.leadName.toLowerCase().includes(term),
-        ),
+        ) ||
+        (t.isExternal && "חיצוני".includes(term)),
     )
   }, [trainees, q])
 
@@ -457,7 +466,10 @@ export function TraineesPanel() {
                           />
                         </td>
                         <td className="max-w-0 truncate px-2 py-2 font-medium">
-                          {t.fullName}
+                          <span className="inline-flex max-w-full items-center gap-1.5">
+                            <span className="truncate">{t.fullName}</span>
+                            {t.isExternal ? <ExternalTag /> : null}
+                          </span>
                         </td>
                         <td
                           className="max-w-0 truncate px-2 py-2 dir-ltr text-left"
@@ -553,7 +565,10 @@ export function TraineesPanel() {
                       className="min-w-0 flex-1 text-right"
                       onClick={() => setExpandedId(open ? null : t.id)}
                     >
-                      <p className="text-sm font-semibold">{t.fullName}</p>
+                      <p className="inline-flex max-w-full items-center gap-1.5 text-sm font-semibold">
+                        <span className="truncate">{t.fullName}</span>
+                        {t.isExternal ? <ExternalTag /> : null}
+                      </p>
                       <p
                         className="text-[11px] text-muted-foreground"
                         dir="ltr"

@@ -181,6 +181,8 @@ export interface Trainee {
   idNumber: string;
   phone?: string;
   email?: string;
+  /** שויך כמשתתף חיצוני לפחות בהדרכה אחת */
+  isExternal?: boolean;
   certificateEmailSent: boolean;
   certificateCardPrinted: boolean;
   certificateUrl?: string;

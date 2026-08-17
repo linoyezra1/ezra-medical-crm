@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { ensureExternalParticipantsInDirectory } from "@/lib/actions";
 import { DEFAULT_SETTINGS } from "@/lib/demo-data";
 import {
   mapClient,
@@ -88,6 +89,8 @@ export async function loadAppData(): Promise<AppData> {
         })),
       });
     }
+
+    await ensureExternalParticipantsInDirectory();
 
     const [
       leadsDb,
