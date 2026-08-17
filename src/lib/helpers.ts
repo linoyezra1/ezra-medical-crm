@@ -1,7 +1,7 @@
-import { formatCourseTypeLabel } from "./course-type";
+import { formatLeadCourseType } from "./course-type";
 import { COURSE_CATEGORIES } from "./constants";
 import { leadCalendarSessions, sessionLocationLabel } from "./payment";
-import type { CourseCatalogItem, Lead } from "./types";
+import type { CourseCatalogItem, Lead, Task } from "./types";
 import {
   buildStructuredSummary,
   buildSummaryVars,
@@ -43,6 +43,22 @@ export function formatCurrency(n: number): string {
   }).format(n || 0);
 }
 
+/** משימה פתוחה — לדשבורד וללוח זמנים (ארכיון נשאר בעמוד המשימות) */
+export function isOpenTask(
+  task: Pick<Task, "done"> & {
+    isCompleted?: boolean
+    completed?: boolean
+    status?: string
+  },
+): boolean {
+  if (task.done || task.isCompleted || task.completed) return false
+  const status = (task.status || "").toLowerCase()
+  if (status === "completed" || status === "done" || status === "archived") {
+    return false
+  }
+  return true
+}
+
 export function formatDate(date?: string): string {
   if (!date) return "-";
   return new Intl.DateTimeFormat("he-IL", {
@@ -68,6 +84,43 @@ export function formatDateWithWeekday(date?: string): string {
   const d = new Date(date.includes("T") ? date : `${date}T12:00:00`)
   if (Number.isNaN(d.getTime())) return formatDate(date)
   return `${WEEKDAYS_HE[d.getDay()]} | ${formatDate(date)}`
+}
+
+const WEEKDAY_NAMES_HE = [
+  "ראשון",
+  "שני",
+  "שלישי",
+  "רביעי",
+  "חמישי",
+  "שישי",
+  "שבת",
+]
+
+export function weekdayNameHe(date?: string): string {
+  if (!date) return ""
+  const d = new Date(date.includes("T") ? date : `${date}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return ""
+  return WEEKDAY_NAMES_HE[d.getDay()]
+}
+
+/** הודעת וואטסאפ למשתתף עם קישור זום */
+export function zoomInviteWhatsAppMessage(
+  fullName: string,
+  session: { date: string; time: string; zoomLink?: string },
+): string {
+  const day = weekdayNameHe(session.date)
+  const date = formatDate(session.date)
+  const link = session.zoomLink?.trim() || ""
+  return [
+    `שלום ${fullName},`,
+    `שובצת להדרכת עזרה ראשונה בזום ביום ${day} ${date} בשעה ${session.time}.`,
+    "מצורף קישור לזום:",
+    "",
+    link,
+    "",
+    "בברכה,",
+    "עזרה ורפואה",
+  ].join("\n")
 }
 
 /** @deprecated השתמשו ב־resolveInstructorFee מ־training-profit */
@@ -167,7 +220,7 @@ export function whatsappSummary(
     "",
     `שלום ${vars.contactName || ""},`.trim(),
     "",
-    `📘 ${vars.courseTitle || `קורס: ${formatCourseTypeLabel(lead.courseType, { other: lead.courseTypeOther }) || "קורס"}`}`,
+    `📘 ${vars.courseTitle || `קורס: ${formatLeadCourseType(lead) || "קורס"}`}`,
     lead.date ? `📅 תאריך: ${formatDate(lead.date)}` : "",
     lead.time ? `⏰ שעה: ${lead.time}` : "",
     vars.location ? `📍 מיקום: ${vars.location}` : "",
@@ -222,6 +275,13 @@ export function instructorAssignmentWhatsAppMessage(
     `👤 איש קשר: ${contact}`,
     `📞 טלפון איש קשר: ${lead.phone || "—"}`,
     `📍 כתובת: ${address || "—"}`,
+    ...(sessions.some((s) => s.isZoom && s.zoomLink?.trim())
+      ? [
+          `💻 קישור זום: ${
+            sessions.find((s) => s.zoomLink?.trim())?.zoomLink?.trim() || ""
+          }`,
+        ]
+      : []),
     "",
     "נא לאשר שקיבלת את ההדרכה",
     "",
@@ -300,9 +360,7 @@ function toIcsUtcStamp(d: Date): string {
 
 /** בונה תוכן קובץ iCalendar (.ics) — אירוע נפרד לכל מפגש */
 export function buildLeadIcsContent(lead: Lead): string {
-  const courseTitle =
-    formatCourseTypeLabel(lead.courseType, { other: lead.courseTypeOther }) ||
-    "הדרכה";
+  const courseTitle = formatLeadCourseType(lead) || "הדרכה";
   const contactName = lead.contactName?.trim() || lead.name;
   const price = Math.round(lead.totalPrice || 0);
   const description = [
@@ -333,13 +391,17 @@ export function buildLeadIcsContent(lead: Lead): string {
   const now = new Date();
   const events = slots.map((slot, idx) => {
     const isZoom = Boolean(slot.isZoom);
+    const zoomLink = slot.zoomLink?.trim() || "";
     const city = slot.city?.trim() || "";
     const sessionLabel =
       slots.length > 1 ? ` · מפגש ${idx + 1}` : "";
     const summary = isZoom
       ? `הדרכה - ${courseTitle} - זום${sessionLabel}`
       : `הדרכה - ${courseTitle} - ${city || "ללא עיר"}${sessionLabel}`;
-    const location = isZoom ? "זום" : sessionLocationLabel(slot);
+    const location = isZoom ? (zoomLink || "זום") : sessionLocationLabel(slot);
+    const eventDescription = zoomLink
+      ? `${description}\nקישור זום: ${zoomLink}`
+      : description;
 
     const date = slot.date || lead.date || formatInJerusalem(new Date()).date || "";
     const startTime = slot.time || lead.time || "09:00";
@@ -373,7 +435,8 @@ export function buildLeadIcsContent(lead: Lead): string {
       `DTEND;TZID=Asia/Jerusalem:${toIcsJerusalemWall(date, endTime)}`,
       `SUMMARY:${icsEscape(summary)}`,
       `LOCATION:${icsEscape(location)}`,
-      `DESCRIPTION:${icsEscape(description)}`,
+      `DESCRIPTION:${icsEscape(eventDescription)}`,
+      ...(zoomLink ? [`URL:${icsEscape(zoomLink)}`] : []),
       "END:VEVENT",
     ];
   });

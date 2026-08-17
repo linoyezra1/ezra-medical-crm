@@ -103,7 +103,7 @@ model Lead {
   paymentReceiptIssued Boolean @default(false)
   /** קורס פרטי (לו״ז ורוד) מול קבוצה */
   isPrivateCourse    Boolean @default(false)
-  /** מפגשים נוספים כ־JSON (legacy mirror): [{date,time,endTime?,isZoom?,city?,street?,houseNumber?}] */
+  /** מפגשים נוספים כ־JSON (legacy mirror): [{date,time,endTime?,isZoom?,zoomLink?,city?,street?,houseNumber?}] */
   sessionsJson       String?
   shippingStreet     String?
   shippingHouseNo    String?
@@ -153,6 +153,8 @@ model TrainingSession {
   startTime   String  // HH:mm
   endTime     String?
   isZoom      Boolean @default(false)
+  /** קישור פגישת זום (אופציונלי) */
+  zoomLink    String?
   city        String?
   street      String?
   houseNumber String?

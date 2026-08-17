@@ -14,6 +14,7 @@ import {
   Phone,
   UserPlus,
   Users,
+  Video,
   Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -89,6 +90,8 @@ export function LeadDetailView({
         },
       )
 
+  const zoomInvite = sessions.find((s) => s.zoomLink?.trim())
+  const zoomLink = zoomInvite?.zoomLink?.trim() || ""
   const wazeUrl =
     addressLine && addressLine !== "זום"
       ? `https://waze.com/ul?q=${encodeURIComponent(addressLine)}&navigate=yes`
@@ -216,6 +219,16 @@ export function LeadDetailView({
               >
                 <Pencil className="size-6" />
               </Link>
+              {zoomLink ? (
+                <IconAction
+                  href={zoomLink}
+                  label="זום"
+                  external
+                  className="bg-sky-50 text-sky-700 shadow-sm"
+                >
+                  <Video className="size-6" />
+                </IconAction>
+              ) : null}
             </div>
           </header>
 
@@ -381,12 +394,40 @@ function HomeTab({
         </div>
 
         <div className="flex items-start gap-3 rounded-2xl bg-secondary/50 p-3">
-          <MapPin className="mt-0.5 size-5 shrink-0 text-primary" />
+          {addressLine === "זום" ? (
+            <Video className="mt-0.5 size-5 shrink-0 text-sky-700" />
+          ) : (
+            <MapPin className="mt-0.5 size-5 shrink-0 text-primary" />
+          )}
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted-foreground">כתובת</p>
+            <p className="text-xs text-muted-foreground">
+              {addressLine === "זום" ? "מפגש בזום" : "כתובת"}
+            </p>
             <p className="text-sm font-medium leading-snug">
               {addressLine || "לא הוגדרה כתובת"}
             </p>
+            {lead.sessions
+              ?.filter((s) => s.isZoom || s.zoomLink?.trim())
+              .map((s, idx) => {
+                const href = s.zoomLink?.trim()
+                return (
+                  <p key={`${s.date}-${s.time}-${idx}`} className="mt-1 text-xs">
+                    {href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all font-medium text-sky-700 underline"
+                        dir="ltr"
+                      >
+                        {href}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">חסר קישור זום</span>
+                    )}
+                  </p>
+                )
+              })}
           </div>
           {wazeUrl && (
             <a

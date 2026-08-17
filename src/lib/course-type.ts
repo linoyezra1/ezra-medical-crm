@@ -166,9 +166,13 @@ export function formatCourseTypeLabel(
 }
 
 export function formatLeadCourseType(
-  lead: Pick<Lead, "courseType"> & { courseTypeOther?: string | null },
+  lead: Pick<Lead, "courseType"> & {
+    courseTypeOther?: string | null
+    isPrivateCourse?: boolean
+  },
   catalog?: CourseCatalogItem[] | null,
 ): string {
+  if (lead.isPrivateCourse) return "קורס פרטי"
   return formatCourseTypeLabel(lead.courseType, {
     other: lead.courseTypeOther,
     catalog,

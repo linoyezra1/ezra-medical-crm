@@ -15,6 +15,7 @@ import {
   Search,
   Trash2,
   UserPlus,
+  Video,
 } from "lucide-react"
 import { toast } from "sonner"
 import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
@@ -55,8 +56,9 @@ import {
   collectCourseTypeOptions,
   formatCourseTypeLabel,
 } from "@/lib/course-type"
-import { collectLeadCategoryOptions, formatCurrency, whatsappLink } from "@/lib/helpers"
+import { collectLeadCategoryOptions, formatCurrency, whatsappLink, zoomInviteWhatsAppMessage } from "@/lib/helpers"
 import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
+import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import type { Lead, Participant } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -84,6 +86,7 @@ function ParticipantMobileKebab({
   p,
   lmsBusy,
   onWhatsApp,
+  onSendZoom,
   onToggleAttended,
   onCreateLms,
   onEdit,
@@ -93,6 +96,7 @@ function ParticipantMobileKebab({
   p: Participant
   lmsBusy: string | null
   onWhatsApp: () => void
+  onSendZoom?: () => void
   onToggleAttended: () => void
   onCreateLms: () => void
   onEdit: () => void
@@ -154,6 +158,16 @@ function ParticipantMobileKebab({
               <MessageCircle className="size-5 shrink-0 text-emerald-700" />
               וואטסאפ
             </button>
+            {onSendZoom ? (
+              <button
+                type="button"
+                className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary"
+                onClick={() => run(onSendZoom)}
+              >
+                <Video className="size-5 shrink-0 text-sky-700" />
+                שלח קישור לזום
+              </button>
+            ) : null}
             {p.certificateUrl?.trim() ? (
               <a
                 href={p.certificateUrl.trim()}
@@ -252,6 +266,8 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
 
   const participants = lead.participants || []
   const attendedCount = participants.filter((p) => p.attended).length
+  const zoomSession = pickZoomSessionForInvite(lead)
+  const canSendZoom = Boolean(zoomSession)
 
   const filtered = useMemo(() => {
     const q = query.trim()
@@ -482,6 +498,29 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
     window.open(whatsappLink(p.phone, text), "_blank", "noopener,noreferrer")
   }
 
+  const sendZoomLink = (p: Participant) => {
+    if (!p.phone?.trim()) {
+      toast.error("חסר טלפון למשתתף")
+      return
+    }
+    const session = pickZoomSessionForInvite(lead)
+    if (!session) {
+      toast.error("ההדרכה אינה מוגדרת כמפגש זום")
+      return
+    }
+    const link = session.zoomLink?.trim()
+    if (!link) {
+      toast.error("יש להזין קישור זום בטופס ההדרכה")
+      return
+    }
+    const text = zoomInviteWhatsAppMessage(p.name, {
+      date: session.date,
+      time: session.time,
+      zoomLink: link,
+    })
+    window.open(whatsappLink(p.phone, text), "_blank", "noopener,noreferrer")
+  }
+
   const toolbar = participants.length > 0 && (
     <div className="mb-3 space-y-2">
       <div className="relative">
@@ -705,6 +744,17 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                             >
                               <MessageCircle className="size-3.5" />
                             </button>
+                            {canSendZoom ? (
+                              <button
+                                type="button"
+                                onClick={() => sendZoomLink(p)}
+                                className="flex size-8 items-center justify-center rounded-lg text-sky-700 hover:bg-sky-50"
+                                aria-label="שלח קישור לזום"
+                                title="שלח קישור לזום"
+                              >
+                                <Video className="size-3.5" />
+                              </button>
+                            ) : null}
                             {p.certificateUrl?.trim() ? (
                               <a
                                 href={p.certificateUrl.trim()}
@@ -814,6 +864,9 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       p={p}
                       lmsBusy={lmsBusy}
                       onWhatsApp={() => openWhatsApp(p)}
+                      onSendZoom={
+                        canSendZoom ? () => sendZoomLink(p) : undefined
+                      }
                       onToggleAttended={() =>
                         void toggleAttended(p, !p.attended)
                       }

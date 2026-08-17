@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
-import { formatDate, uid } from "@/lib/helpers"
+import { formatDate, isOpenTask, uid } from "@/lib/helpers"
 import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { jerusalemLocalToUtcDate } from "@/lib/timezone"
@@ -123,7 +123,11 @@ export function CalendarView() {
             ? `הדרכה - ${courseTitle} - זום`
             : courseTitle,
           sub: `${l.name} · ${
-            sessionLocationLabel(s) || l.address.city || ""
+            s.isZoom
+              ? s.zoomLink?.trim()
+                ? "זום"
+                : "זום · חסר קישור"
+              : sessionLocationLabel(s) || l.address.city || ""
           }${sessions.length > 1 ? ` · מפגש ${idx + 1}` : ""}`,
           isPrivate: Boolean(l.isPrivateCourse),
           sessionKey: `${l.id}-${s.date}-${s.time}-${idx}`,
@@ -131,7 +135,7 @@ export function CalendarView() {
       })
     }
     for (const t of tasks) {
-      if (!t.date) continue
+      if (!t.date || !isOpenTask(t)) continue
       items.push({
         kind: "task",
         id: t.id,
@@ -155,8 +159,8 @@ export function CalendarView() {
     return Array.from(map.entries())
   }, [leads, tasks])
 
-  const openTasks = tasks.filter((t) => !t.done)
-  const doneTasks = tasks.filter((t) => t.done)
+  const openTasks = tasks.filter((t) => isOpenTask(t))
+  const doneTasks = tasks.filter((t) => !isOpenTask(t))
 
   return (
     <div>
@@ -345,7 +349,9 @@ export function CalendarView() {
           </div>
           {doneTasks.length > 0 && (
             <div>
-              <p className="mb-2 px-1 text-xs font-semibold text-muted-foreground">הושלמו</p>
+              <p className="mb-2 px-1 text-xs font-semibold text-muted-foreground">
+                ארכיון משימות
+              </p>
               <div className="space-y-2">
                 {doneTasks.map((t) => (
                   <TaskRow

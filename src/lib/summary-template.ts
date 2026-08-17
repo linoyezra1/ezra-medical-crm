@@ -1,4 +1,4 @@
-import { formatCourseTypeLabel } from "./course-type";
+import { formatLeadCourseType } from "./course-type";
 import type { CourseCatalogItem, Lead } from "./types";
 
 function formatDate(date?: string): string {
@@ -57,10 +57,7 @@ export function buildSummaryVars(
       : lead.totalPrice || 0;
   const price = formatShekelAmount(displayPrice);
   const extra = formatShekelAmount(lead.extraParticipantPrice ?? 50);
-  const courseLabel = formatCourseTypeLabel(lead.courseType, {
-    other: lead.courseTypeOther,
-    catalog: course ? [course] : undefined,
-  });
+  const courseLabel = formatLeadCourseType(lead, course ? [course] : undefined);
   const courseTitleRaw = courseLabel || course?.title || lead.courseType || "";
   const courseTitleLine = courseTitleRaw ? `קורס: ${courseTitleRaw}` : "";
 
@@ -117,10 +114,7 @@ export function buildStructuredSummary(
   if (vars.courseTitle) {
     blocks.push("", `📘 ${vars.courseTitle}`);
   } else {
-    const fallback = formatCourseTypeLabel(lead.courseType, {
-      other: lead.courseTypeOther,
-      catalog: [course],
-    });
+    const fallback = formatLeadCourseType(lead, [course]);
     if (fallback) blocks.push("", `📘 קורס: ${fallback}`);
   }
   if (course.audience) {

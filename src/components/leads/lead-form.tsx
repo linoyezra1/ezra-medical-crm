@@ -241,6 +241,7 @@ export function LeadForm({ existing }: Props) {
         time: s?.time || (i === 0 ? form.time || "" : ""),
         endTime: s?.endTime || (i === 0 ? form.endTime || "" : ""),
         isZoom: Boolean(s?.isZoom),
+        zoomLink: s?.zoomLink || "",
         city: s?.city || (i === 0 ? form.address.city || "" : ""),
         street: s?.street || (i === 0 ? form.address.street || "" : ""),
         houseNumber:
@@ -265,6 +266,7 @@ export function LeadForm({ existing }: Props) {
       time: string
       endTime: string
       isZoom: boolean
+      zoomLink: string
       city: string
       street: string
       houseNumber: string
@@ -488,8 +490,12 @@ export function LeadForm({ existing }: Props) {
     if (saving) return
 
     const { category, categoryOther } = resolveCategory()
-    const courseResolved = resolveCourseTypeForSave(courseTypeSelect, courseTypeOther)
-    const catalog = findCourseCatalog(courseResolved.courseType, settings.courses)
+    const courseResolved = form.isPrivateCourse
+      ? { courseType: "", courseTypeOther: undefined as string | undefined }
+      : resolveCourseTypeForSave(courseTypeSelect, courseTypeOther)
+    const catalog = form.isPrivateCourse
+      ? null
+      : findCourseCatalog(courseResolved.courseType, settings.courses)
     const instructor = resolveInstructor()
     const unassigned = isInstructorUnassigned(instructor)
     const fee = isOwnerInstructor(instructor)
@@ -544,6 +550,7 @@ export function LeadForm({ existing }: Props) {
           time: s.time,
           endTime: s.endTime || undefined,
           isZoom: Boolean(s.isZoom),
+          zoomLink: s.isZoom ? s.zoomLink?.trim() || undefined : undefined,
           city: s.isZoom ? undefined : s.city || undefined,
           street: s.isZoom ? undefined : s.street || undefined,
           houseNumber: s.isZoom ? undefined : s.houseNumber || undefined,
@@ -632,7 +639,12 @@ export function LeadForm({ existing }: Props) {
             onCheckedChange={(v) => {
               const next = Boolean(v)
               set("isPrivateCourse", next)
-              if (next && wizardStep === "course") goToStep("details")
+              if (next) {
+                set("courseType", "")
+                set("courseTypeOther", undefined)
+                set("courseHours", undefined)
+                if (wizardStep === "course") goToStep("details")
+              }
             }}
           />
           <span className="font-semibold text-pink-800">קורס פרטי</span>
@@ -1132,12 +1144,28 @@ export function LeadForm({ existing }: Props) {
                   <Checkbox
                     checked={Boolean(slot.isZoom)}
                     onCheckedChange={(v) =>
-                      setSessionSlot(idx, { isZoom: Boolean(v) })
+                      setSessionSlot(idx, {
+                        isZoom: Boolean(v),
+                        zoomLink: Boolean(v) ? slot.zoomLink : "",
+                      })
                     }
                   />
                   <span className="font-medium">מפגש בזום</span>
                 </label>
-                {!slot.isZoom ? (
+                {slot.isZoom ? (
+                  <Field label="קישור לזום">
+                    <Input
+                      type="text"
+                      inputMode="url"
+                      placeholder="https://zoom.us/j/…"
+                      value={slot.zoomLink || ""}
+                      onChange={(e) =>
+                        setSessionSlot(idx, { zoomLink: e.target.value })
+                      }
+                      dir="ltr"
+                    />
+                  </Field>
+                ) : (
                   <div className="grid grid-cols-3 gap-2">
                     <Field label="עיר" className="col-span-1">
                       <Input
@@ -1164,7 +1192,7 @@ export function LeadForm({ existing }: Props) {
                       />
                     </Field>
                   </div>
-                ) : null}
+                )}
               </div>
             ))}
 

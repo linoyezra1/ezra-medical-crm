@@ -23,8 +23,10 @@ export function leadToDbPayload(
     phoneSecondary: merged.phoneSecondary?.trim() || null,
     email: merged.email || null,
     courseStatus: uiStatusToDb(merged.status),
-    courseType: merged.courseType,
-    courseTypeOther: merged.courseTypeOther || null,
+    courseType: merged.isPrivateCourse ? null : merged.courseType,
+    courseTypeOther: merged.isPrivateCourse
+      ? null
+      : merged.courseTypeOther || null,
     courseCategory: merged.category,
     courseCategoryOther: merged.categoryOther || null,
     pricingModel:

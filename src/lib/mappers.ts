@@ -89,6 +89,8 @@ function mapTrainingSessions(
       time: s.startTime,
       endTime: s.endTime || undefined,
       isZoom: Boolean(s.isZoom),
+      zoomLink:
+        (s as { zoomLink?: string | null }).zoomLink?.trim() || undefined,
       city: s.city || undefined,
       street: s.street || undefined,
       houseNumber: s.houseNumber || undefined,

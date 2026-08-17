@@ -83,6 +83,7 @@ export async function loadAppData(): Promise<AppData> {
           startTime: s.time,
           endTime: s.endTime || null,
           isZoom: Boolean(s.isZoom),
+          zoomLink: s.isZoom && s.zoomLink?.trim() ? s.zoomLink.trim() : null,
           city: s.city || lead.shippingCity || lead.city || null,
           street: s.street || lead.shippingStreet || null,
           houseNumber: s.houseNumber || lead.shippingHouseNo || null,

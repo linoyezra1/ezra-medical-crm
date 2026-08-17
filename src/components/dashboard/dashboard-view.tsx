@@ -23,7 +23,7 @@ import { ExternalParticipantDialog } from "@/components/leads/external-participa
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useApp } from "@/lib/store"
-import { formatCurrency, formatDate } from "@/lib/helpers"
+import { formatCurrency, formatDate, isOpenTask } from "@/lib/helpers"
 import { isLeadPaid } from "@/lib/payment"
 import { cn } from "@/lib/utils"
 
@@ -66,7 +66,9 @@ export function DashboardView() {
   const onDeck = activeLeads.filter((l) => l.status === "new").length
 
   const today = new Date().toISOString().slice(0, 10)
-  const todayTasks = tasks.filter((t) => !t.done && t.date <= today)
+  const todayTasks = tasks.filter(
+    (t) => isOpenTask(t) && (!t.date || t.date <= today),
+  )
 
   const socials = [
     { name: "טיקטוק", icon: Music2, url: settings.tiktokUrl?.trim() || "" },

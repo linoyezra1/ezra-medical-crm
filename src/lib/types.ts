@@ -291,6 +291,7 @@ export interface Lead {
     time: string;
     endTime?: string;
     isZoom?: boolean;
+    zoomLink?: string;
     city?: string;
     street?: string;
     houseNumber?: string;

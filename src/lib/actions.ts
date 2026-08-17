@@ -335,6 +335,7 @@ async function replaceTrainingSessions(
       startTime: s.time,
       endTime: s.endTime || null,
       isZoom: Boolean(s.isZoom),
+      zoomLink: s.isZoom && s.zoomLink?.trim() ? s.zoomLink.trim() : null,
       city: s.city || (!s.isZoom ? fallbackAddress?.city : null) || null,
       street: s.street || (!s.isZoom ? fallbackAddress?.street : null) || null,
       houseNumber:

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { CalendarClock, MapPin, User, Users } from "lucide-react"
+import { CalendarClock, MapPin, User, Users, Video } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import {
   LeadItemActionsUi,
@@ -246,9 +246,15 @@ function TrainingCard({ lead: l }: { lead: Lead }) {
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1">
-            <MapPin className="size-3" />
+            {l.sessions?.[0]?.isZoom ? (
+              <Video className="size-3 text-sky-700" />
+            ) : (
+              <MapPin className="size-3" />
+            )}
             {l.sessions?.[0]?.isZoom
-              ? "זום"
+              ? l.sessions[0].zoomLink
+                ? "זום"
+                : "זום · חסר קישור"
               : l.address.city || "-"}
           </span>
           <span className="flex items-center gap-1">

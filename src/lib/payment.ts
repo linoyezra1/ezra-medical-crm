@@ -1,3 +1,5 @@
+import { formatInJerusalem } from "@/lib/timezone"
+
 /** סטטוס תשלום שולם במלואו */
 export const PAID_PAYMENT_STATUS = "paid_in_full"
 
@@ -70,6 +72,7 @@ export type TrainingSessionSlot = {
   time: string // HH:mm
   endTime?: string
   isZoom?: boolean
+  zoomLink?: string
   city?: string
   street?: string
   houseNumber?: string
@@ -91,6 +94,8 @@ export function parseSessionsJson(
       if (!date || !time) continue
       const endTime = o.endTime ? String(o.endTime).trim() : undefined
       const isZoom = Boolean(o.isZoom)
+      const zoomLink =
+        o.zoomLink != null ? String(o.zoomLink).trim() : undefined
       const city = o.city != null ? String(o.city).trim() : undefined
       const street = o.street != null ? String(o.street).trim() : undefined
       const houseNumber =
@@ -100,6 +105,7 @@ export function parseSessionsJson(
         time,
         ...(endTime ? { endTime } : {}),
         ...(isZoom ? { isZoom: true } : {}),
+        ...(isZoom && zoomLink ? { zoomLink } : {}),
         ...(city ? { city } : {}),
         ...(street ? { street } : {}),
         ...(houseNumber ? { houseNumber } : {}),
@@ -118,6 +124,7 @@ export function serializeSessionsJson(sessions: TrainingSessionSlot[]): string {
       time: s.time,
       ...(s.endTime ? { endTime: s.endTime } : {}),
       ...(s.isZoom ? { isZoom: true } : {}),
+      ...(s.isZoom && s.zoomLink ? { zoomLink: s.zoomLink } : {}),
       ...(s.city ? { city: s.city } : {}),
       ...(s.street ? { street: s.street } : {}),
       ...(s.houseNumber ? { houseNumber: s.houseNumber } : {}),
@@ -189,5 +196,26 @@ export function leadSessionsAreAllZoom(lead: {
 export function leadHasAnyZoomSession(lead: {
   sessions?: TrainingSessionSlot[]
 }): boolean {
-  return Boolean(lead.sessions?.some((s) => s.isZoom))
+  return Boolean(lead.sessions?.some((s) => s.isZoom || Boolean(s.zoomLink?.trim())))
+}
+
+/** מפגש זום לשליחת קישור — מעדיף מפגש קרוב עם קישור */
+export function pickZoomSessionForInvite(lead: {
+  date?: string
+  time?: string
+  endTime?: string
+  sessions?: TrainingSessionSlot[]
+  sessionsCount?: number | null
+  address?: { city?: string; street?: string; houseNumber?: string }
+}): TrainingSessionSlot | null {
+  const sessions = leadCalendarSessions(lead)
+  const zoom = sessions.filter((s) => s.isZoom || Boolean(s.zoomLink?.trim()))
+  if (!zoom.length) return null
+  const withLink = zoom.filter((s) => Boolean(s.zoomLink?.trim()))
+  const pool = withLink.length ? withLink : zoom
+  const today = formatInJerusalem(new Date()).date || new Date().toISOString().slice(0, 10)
+  const upcoming = [...pool]
+    .filter((s) => s.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+  return upcoming[0] || pool[0] || null
 }
