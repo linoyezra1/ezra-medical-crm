@@ -9,6 +9,8 @@ import {
   formatCourseTypeLabel,
   resolveCourseTypeForSave,
   resolveParticipantCertificateCourseType,
+  isRefreshCourseType,
+  certificateScopeForSheet,
 } from "@/lib/course-type";
 import {
   ASSIGN_INSTRUCTOR_TASK_PREFIX,
@@ -1562,7 +1564,7 @@ export async function triggerRemoteCertificates(input: {
     return { ok: false, error: "יש לבחור לפחות משתתף אחד" };
   }
 
-  const templateType = String(input.templateType || "REGULAR").toUpperCase();
+  let templateType = String(input.templateType || "REGULAR").toUpperCase();
   if (!["REGULAR", "REFRESH", "SKIPPERS"].includes(templateType)) {
     return { ok: false, error: "סוג תעודה לא תקין" };
   }
@@ -1613,6 +1615,41 @@ export async function triggerRemoteCertificates(input: {
         ? "לא נמצאו משתתפים תואמים בהדרכה זו"
         : "לא נמצאו מודרכים/משתתפים תואמים לבחירה",
     };
+  }
+
+  const participantPayload = ownedParticipants.map((p) => {
+    const cert = resolveParticipantCertificateCourseType(p);
+    const scope = certificateScopeForSheet(
+      cert.courseType,
+      cert.courseTypeOther,
+    );
+    const label = formatCourseTypeLabel(cert.courseType, {
+      other: cert.courseTypeOther,
+    });
+    const courseTypeLabel =
+      scope.includes("רענון") ? scope : label === "קורס" ? "" : label;
+    return {
+      id: p.id,
+      isExternal: Boolean(p.isExternal),
+      isRefresh: isRefreshCourseType(cert.courseType, cert.courseTypeOther),
+      courseType:
+        p.isExternal && p.courseType?.trim()
+          ? p.courseType.trim()
+          : cert.courseType,
+      courseTypeLabel,
+      hoursScope: scope,
+      courseCategory:
+        p.isExternal && p.courseCategory?.trim()
+          ? p.courseCategory.trim()
+          : p.lead?.courseCategoryOther || p.lead?.courseCategory || "",
+    };
+  });
+
+  if (
+    templateType === "REGULAR" &&
+    participantPayload.some((p) => p.isRefresh)
+  ) {
+    templateType = "REFRESH";
   }
 
   // ייצוא חסרים לגיליון לפני ההנפקה
@@ -1669,22 +1706,7 @@ export async function triggerRemoteCertificates(input: {
     authPin: pin,
     pin,
     leadId: leadIdFilter || ownedParticipants[0]?.leadId || null,
-    participants: ownedParticipants.map((p) => {
-      const cert = resolveParticipantCertificateCourseType(p);
-      const label = formatCourseTypeLabel(cert.courseType, {
-        other: cert.courseTypeOther,
-      });
-      return {
-        id: p.id,
-        isExternal: Boolean(p.isExternal),
-        courseType: p.isExternal && p.courseType?.trim() ? p.courseType.trim() : cert.courseType,
-        courseTypeLabel: label === "קורס" ? "" : label,
-        courseCategory:
-          p.isExternal && p.courseCategory?.trim()
-            ? p.courseCategory.trim()
-            : p.lead?.courseCategoryOther || p.lead?.courseCategory || "",
-      };
-    }),
+    participants: participantPayload,
   };
 
   try {

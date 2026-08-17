@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
 import {
-  extractCourseHoursDigits,
+  certificateScopeForSheet,
   resolveParticipantCertificateCourseType,
 } from "@/lib/course-type"
 import { PAID_PAYMENT_STATUS } from "@/lib/payment"
@@ -105,12 +105,12 @@ function trainingDateLabel(
   return ""
 }
 
-/** היקף שעות לגיליון — ספרות בלבד (למשל «רענון 22» → «22»), ללא ברירת מחדל 44 */
+/** היקף שעות לגיליון / PDF — רענון כולל את המילה «רענון» */
 function hoursScopeForSheet(
   courseType?: string | null,
   courseTypeOther?: string | null,
 ): string {
-  return extractCourseHoursDigits(courseType, courseTypeOther)
+  return certificateScopeForSheet(courseType, courseTypeOther)
 }
 
 function participantRow(p: {
@@ -149,7 +149,7 @@ function participantRow(p: {
     courseDate, // C
     p.email || "", // D
     p.phone || "", // E
-    hoursScope, // F — למשל "22" ולא "22 שעות"
+    hoursScope, // F — «22» או «רענון 22» לפי סוג הקורס
     "", // G — מספר תעודה (מילוי בגיליון)
     "", // H — תוקף תעודה (מילוי בגיליון)
     "", // I — הודפס כרטיס (מילוי בגיליון)

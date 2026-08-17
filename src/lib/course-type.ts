@@ -124,6 +124,50 @@ export function extractCourseHoursDigits(
   return anyDigits?.[1] || ""
 }
 
+/** האם סוג הקורס הוא רענון (לתעודה / תבנית PDF) */
+export function isRefreshCourseType(
+  courseType?: string | null,
+  courseTypeOther?: string | null,
+): boolean {
+  const sources = [
+    formatCourseTypeLabel(courseType, { other: courseTypeOther }),
+    (courseTypeOther || "").trim(),
+    (courseType || "").trim(),
+  ]
+  return sources.some((s) => s.includes("רענון"))
+}
+
+/**
+ * ערך עמודה F בגיליון תעודות — מודפס ב-PDF.
+ * כשיש «רענון» בסוג הקורס: «רענון 22» · אחרת ספרות בלבד «22».
+ */
+export function certificateScopeForSheet(
+  courseType?: string | null,
+  courseTypeOther?: string | null,
+): string {
+  const sources = [
+    formatCourseTypeLabel(courseType, { other: courseTypeOther }),
+    (courseTypeOther || "").trim(),
+    (courseType || "").trim(),
+  ]
+
+  for (const s of sources) {
+    if (!s) continue
+    const normalized = s.replace(/\s+/g, " ").trim()
+    if (!normalized.includes("רענון")) continue
+
+    const refreshNum = normalized.match(/רענון\s+(\d+(?:\.\d+)?)/)
+    if (refreshNum?.[1]) return `רענון ${refreshNum[1]}`
+
+    const digits = extractCourseHoursDigits(courseType, courseTypeOther)
+    if (digits) return `רענון ${digits}`
+
+    return normalized
+  }
+
+  return extractCourseHoursDigits(courseType, courseTypeOther)
+}
+
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, "_")
 }
