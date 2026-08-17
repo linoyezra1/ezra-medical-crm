@@ -1,5 +1,9 @@
 import { isOwnerInstructor } from "@/lib/instructor"
-import { isLeadPaid, PAID_PAYMENT_STATUS } from "@/lib/payment"
+import {
+  isLeadPaid,
+  PAID_PAYMENT_STATUS,
+  TRAINING_SALE_PAID,
+} from "@/lib/payment"
 import type { InstructorProfile, Lead, Participant } from "@/lib/types"
 
 const INSTRUCTOR_EXPENSE_TYPES = new Set([
@@ -173,5 +177,124 @@ export function computeTrainingProfit(
     salesCost,
     totalExpenses,
     netProfit: revenue - totalExpenses,
+  }
+}
+
+function trainingSalesIncome(lead: Lead): number {
+  return (lead.trainingSales || []).reduce(
+    (s, x) => s + money(x.unitSellingPrice) * money(x.quantity),
+    0,
+  )
+}
+
+function paidTrainingSalesIncome(lead: Lead): number {
+  return (lead.trainingSales || [])
+    .filter((s) => s.paymentStatus === TRAINING_SALE_PAID)
+    .reduce(
+      (sum, x) => sum + money(x.unitSellingPrice) * money(x.quantity),
+      0,
+    )
+}
+
+/** עלות מדריך ששולמה/נרשמה — רשומת הוצאת מדריך או תעריף כשההדרכה שולמה */
+export function instructorCostPaid(
+  lead: Lead,
+  instructors: InstructorProfile[],
+): number {
+  const logged = (lead.expenses || []).filter((e) =>
+    isInstructorExpenseType(e.type),
+  )
+  if (logged.length) {
+    return logged.reduce((s, e) => s + money(e.amount), 0)
+  }
+  if (isLeadPaid(lead)) {
+    return resolveInstructorFee(lead, instructors)
+  }
+  return 0
+}
+
+/** האם נרשם לפחות תשלום אחד (הדרכה / משתתף / מכירת ציוד) */
+export function leadHasLoggedPayment(lead: Lead): boolean {
+  const pay = computeTrainingPaymentSummary(lead)
+  if (pay.collectedTotal > 0) return true
+  return (lead.trainingSales || []).some(
+    (s) => s.paymentStatus === TRAINING_SALE_PAID,
+  )
+}
+
+/**
+ * רווח נקי צפוי להדרכה:
+ * (מחיר בסיס + חיצוניים + מכירות ציוד) − עלות מדריך
+ */
+export function computeExpectedNetProfit(
+  lead: Lead,
+  instructors: InstructorProfile[],
+): number {
+  const pay = computeTrainingPaymentSummary(lead)
+  const salesIncome = trainingSalesIncome(lead)
+  const instructorFee = resolveInstructorFee(lead, instructors)
+  return pay.expectedTotal + salesIncome - instructorFee
+}
+
+/**
+ * רווח נקי ממומש:
+ * (תשלומים שנגבו + מכירות ציוד ששולמו) − עלות מדריך ששולמה
+ */
+export function computeRealizedNetProfit(
+  lead: Lead,
+  instructors: InstructorProfile[],
+): number {
+  if (!leadHasLoggedPayment(lead)) return 0
+  const pay = computeTrainingPaymentSummary(lead)
+  const paidSales = paidTrainingSalesIncome(lead)
+  const revenue = pay.collectedTotal + paidSales
+  return revenue - instructorCostPaid(lead, instructors)
+}
+
+export type DashboardKpis = {
+  pipeline: { count: number; expectedNetProfit: number }
+  booked: { count: number; expectedNetProfit: number }
+  realized: { netProfit: number; paidCoursesCount: number }
+}
+
+/** מדדי דשבורד — שלושת כרטיסי ה-KPI */
+export function computeDashboardKpis(
+  leads: Lead[],
+  instructors: InstructorProfile[],
+): DashboardKpis {
+  const active = leads.filter((l) => l.status !== "lost")
+  const pipelineLeads = active.filter((l) => l.status === "new")
+  const bookedLeads = active.filter((l) => l.status === "closed")
+
+  const pipelineExpected = pipelineLeads.reduce(
+    (s, l) => s + computeExpectedNetProfit(l, instructors),
+    0,
+  )
+  const bookedExpected = bookedLeads.reduce(
+    (s, l) => s + computeExpectedNetProfit(l, instructors),
+    0,
+  )
+
+  const paidCourseIds = new Set<string>()
+  let realizedTotal = 0
+  for (const lead of active) {
+    if (!leadHasLoggedPayment(lead)) continue
+    paidCourseIds.add(lead.id)
+    realizedTotal += computeRealizedNetProfit(lead, instructors)
+  }
+
+  return {
+    pipeline: {
+      count: pipelineLeads.length,
+      expectedNetProfit: pipelineExpected,
+    },
+    booked: {
+      count: bookedLeads.length,
+      expectedNetProfit: bookedExpected,
+    },
+    realized: {
+      netProfit: realizedTotal,
+      paidCoursesCount: paidCourseIds.size,
+    },
   }
 }

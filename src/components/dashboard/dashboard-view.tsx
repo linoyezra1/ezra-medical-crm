@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   ArrowLeft,
   CalendarClock,
@@ -11,8 +11,6 @@ import {
   Plus,
   Share2,
   Star,
-  TrendingDown,
-  TrendingUp,
   Video,
   Wallet,
 } from "lucide-react"
@@ -24,46 +22,17 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate, isOpenTask } from "@/lib/helpers"
-import { isLeadPaid } from "@/lib/payment"
+import { computeDashboardKpis } from "@/lib/training-profit"
 import { cn } from "@/lib/utils"
 
 export function DashboardView() {
-  const { leads, tasks, settings } = useApp()
+  const { leads, tasks, settings, instructors } = useApp()
   const [externalOpen, setExternalOpen] = useState(false)
 
-  const activeLeads = leads.filter((l) => l.status !== "lost")
-  // רווח בדשבורד — רק הדרכות ששולמו בפועל (ללא תלות בסטטוס ההדרכה)
-  const paidLeads = activeLeads.filter((l) => isLeadPaid(l))
-  const courseIncome = paidLeads.reduce((s, l) => s + l.totalPrice, 0)
-  const salesIncome = paidLeads.reduce(
-    (s, l) =>
-      s +
-      (l.trainingSales || []).reduce(
-        (a, sale) => a + sale.unitSellingPrice * sale.quantity,
-        0,
-      ),
-    0,
+  const kpis = useMemo(
+    () => computeDashboardKpis(leads, instructors),
+    [leads, instructors],
   )
-  const income = courseIncome + salesIncome
-  const courseExpenses = paidLeads.reduce(
-    (s, l) => s + l.expenses.reduce((a, e) => a + e.amount, 0),
-    0,
-  )
-  const salesCost = paidLeads.reduce(
-    (s, l) =>
-      s +
-      (l.trainingSales || []).reduce(
-        (a, sale) => a + sale.unitCostPrice * sale.quantity,
-        0,
-      ),
-    0,
-  )
-  const expenses = courseExpenses + salesCost
-  const netProfit = income - expenses
-  const closedCourses = activeLeads.filter((l) =>
-    ["closed", "pending_certificates", "completed"].includes(l.status),
-  ).length
-  const onDeck = activeLeads.filter((l) => l.status === "new").length
 
   const today = new Date().toISOString().slice(0, 10)
   const todayTasks = tasks.filter(
@@ -108,44 +77,59 @@ export function DashboardView() {
 
       <div className="space-y-5 p-4 md:mx-auto md:max-w-6xl md:p-6 lg:grid lg:max-w-none lg:grid-cols-12 lg:gap-6 lg:space-y-0">
         {/* מטריקות פיננסיות */}
-        <section className="grid grid-cols-2 gap-3 lg:col-span-12 lg:grid-cols-4">
-          <Card className="col-span-2 gap-0 border-none bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/20 lg:col-span-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm opacity-90">
-                <Wallet className="size-4" />
-                רווח נקי (החודש)
-              </div>
-              <ProfitHistoryDialog />
-            </div>
-            <div className="mt-1 text-3xl font-extrabold tracking-tight">
-              {formatCurrency(netProfit)}
-            </div>
-            <div className="mt-2 flex items-center gap-4 text-xs">
-              <span className="flex items-center gap-1">
-                <TrendingUp className="size-3.5" /> הכנסות {formatCurrency(income)}
-              </span>
-              <span className="flex items-center gap-1 opacity-90">
-                <TrendingDown className="size-3.5" /> הוצאות{" "}
-                {formatCurrency(expenses)}
-              </span>
-            </div>
-          </Card>
-
-          <StatCard
-            icon={CheckCircle2}
-            label="קורסים שנסגרו"
-            value={closedCourses}
-            tone="success"
-          />
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-12">
           <Link href="/leads?status=new" className="block">
-            <StatCard
+            <KpiCard
               icon={Flame}
               label="על הפרק"
-              value={onDeck}
+              primary={String(kpis.pipeline.count)}
+              subtitle={
+                <>
+                  רווח צפוי:{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(kpis.pipeline.expectedNetProfit)}
+                  </span>
+                </>
+              }
               tone="primary"
               clickable
             />
           </Link>
+
+          <Link href="/leads?status=closed" className="block">
+            <KpiCard
+              icon={CheckCircle2}
+              label="נסגרו ביומן"
+              primary={String(kpis.booked.count)}
+              subtitle={
+                <>
+                  רווח צפוי:{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(kpis.booked.expectedNetProfit)}
+                  </span>
+                </>
+              }
+              tone="success"
+              clickable
+            />
+          </Link>
+
+          <KpiCard
+            icon={Wallet}
+            label="רווח נקי"
+            primary={formatCurrency(kpis.realized.netProfit)}
+            subtitle={
+              <>
+                מתוך{" "}
+                <span className="font-semibold text-foreground">
+                  {kpis.realized.paidCoursesCount}
+                </span>{" "}
+                קורסים עם תקבולים
+              </>
+            }
+            tone="accent"
+            headerAction={<ProfitHistoryDialog />}
+          />
         </section>
 
         {/* משימות היום */}
@@ -258,37 +242,50 @@ export function DashboardView() {
   )
 }
 
-function StatCard({
+function KpiCard({
   icon: Icon,
   label,
-  value,
+  primary,
+  subtitle,
   tone,
   clickable,
+  headerAction,
 }: {
   icon: React.ElementType
   label: string
-  value: number
-  tone: "primary" | "success"
+  primary: string
+  subtitle: React.ReactNode
+  tone: "primary" | "success" | "accent"
   clickable?: boolean
+  headerAction?: React.ReactNode
 }) {
   const toneClass =
     tone === "success"
       ? "bg-success/10 text-success"
-      : "bg-primary/10 text-primary"
+      : tone === "accent"
+        ? "bg-primary/10 text-primary"
+        : "bg-primary/10 text-primary"
   return (
     <Card
       className={cn(
         "gap-0 p-4",
         clickable && "transition-colors hover:bg-secondary/40",
+        tone === "accent" && "border-primary/20 bg-primary/5",
       )}
     >
-      <div
-        className={`mb-2 flex size-9 items-center justify-center rounded-full ${toneClass}`}
-      >
-        <Icon className="size-5" />
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div
+          className={`flex size-9 shrink-0 items-center justify-center rounded-full ${toneClass}`}
+        >
+          <Icon className="size-5" />
+        </div>
+        {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
       </div>
-      <div className="text-2xl font-extrabold">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-2xl font-extrabold tracking-tight">{primary}</div>
+      <div className="mt-0.5 text-xs font-medium text-muted-foreground">
+        {label}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{subtitle}</p>
     </Card>
   )
 }
