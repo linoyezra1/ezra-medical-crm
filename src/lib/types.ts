@@ -113,6 +113,8 @@ export interface Participant {
   isExternal?: boolean;
   /** סוג קורס אישי לתעודה (חיצוני) */
   courseType?: string;
+  /** קטגוריה אישית לתעודה (חיצוני) */
+  courseCategory?: string;
   /** מחיר לתשלום אישי */
   agreedPrice?: number;
   paymentStatus?: string;

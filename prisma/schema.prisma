@@ -217,6 +217,8 @@ model Participant {
   isExternal      Boolean  @default(false)
   /** סוג קורס אישי לתעודה (חיצוני) */
   courseType      String?
+  /** קטגוריה אישית לתעודה (חיצוני) */
+  courseCategory  String?
   /** מחיר לתשלום אישי */
   agreedPrice     Float?
   paymentStatus   String?

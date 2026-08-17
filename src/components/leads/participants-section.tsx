@@ -55,7 +55,7 @@ import {
   collectCourseTypeOptions,
   formatCourseTypeLabel,
 } from "@/lib/course-type"
-import { formatCurrency, whatsappLink } from "@/lib/helpers"
+import { collectLeadCategoryOptions, formatCurrency, whatsappLink } from "@/lib/helpers"
 import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { useApp } from "@/lib/store"
 import type { Lead, Participant } from "@/lib/types"
@@ -245,6 +245,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
     feedback: "",
     isExternal: false,
     courseType: "",
+    courseCategory: "",
     agreedPrice: "",
   })
   const [issueOpen, setIssueOpen] = useState(false)
@@ -267,6 +268,11 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
   const courseOptions = useMemo(
     () => collectCourseTypeOptions(leads, settings.courses),
     [leads, settings.courses],
+  )
+
+  const categoryOptions = useMemo(
+    () => collectLeadCategoryOptions(leads),
+    [leads],
   )
 
   const allFilteredSelected =
@@ -372,6 +378,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
       feedback: p.feedback || "",
       isExternal: Boolean(p.isExternal),
       courseType: courseLabel === "קורס" ? p.courseType || "" : courseLabel,
+      courseCategory: p.courseCategory || "",
       agreedPrice: p.agreedPrice != null ? String(p.agreedPrice) : "",
     })
   }
@@ -393,6 +400,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
       feedback: editForm.feedback,
       isExternal: editForm.isExternal,
       courseType: editForm.isExternal ? editForm.courseType : null,
+      courseCategory: editForm.isExternal ? editForm.courseCategory : null,
       agreedPrice: editForm.isExternal ? agreedPrice : null,
     })
     if (!res.ok) {
@@ -833,6 +841,9 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                           })}
                         </p>
                       ) : null}
+                      {p.isExternal && p.courseCategory ? (
+                        <p>קטגוריה: {p.courseCategory}</p>
+                      ) : null}
                       <p>טלפון: {p.phone || "—"}</p>
                       <p>דוא״ל: {p.email || "—"}</p>
                       <p>דירוג: {p.satisfaction || "—"}</p>
@@ -930,6 +941,32 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                         </SelectItem>
                       ) : null}
                       {courseOptions.map((o) => (
+                        <SelectItem key={o} value={o}>
+                          {o}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="mb-1.5 block text-sm">קטגוריה</Label>
+                  <Select
+                    value={editForm.courseCategory || undefined}
+                    onValueChange={(v) =>
+                      setEditForm((f) => ({ ...f, courseCategory: v ?? "" }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="בחר קטגוריה" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {editForm.courseCategory &&
+                      !categoryOptions.includes(editForm.courseCategory) ? (
+                        <SelectItem value={editForm.courseCategory}>
+                          {editForm.courseCategory}
+                        </SelectItem>
+                      ) : null}
+                      {categoryOptions.map((o) => (
                         <SelectItem key={o} value={o}>
                           {o}
                         </SelectItem>

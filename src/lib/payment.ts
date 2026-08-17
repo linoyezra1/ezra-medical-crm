@@ -163,6 +163,20 @@ export function leadCalendarSessions(lead: {
   return []
 }
 
+/** מיקום מפגש ליומן / תצוגה — זום בלי כתובת רחוב */
+export function sessionLocationLabel(s: {
+  isZoom?: boolean
+  city?: string
+  street?: string
+  houseNumber?: string
+}): string {
+  if (s.isZoom) return "זום"
+  return [s.street, s.houseNumber, s.city]
+    .map((v) => (v || "").trim())
+    .filter(Boolean)
+    .join(" ")
+}
+
 /** האם כל המפגשים (או המפגש היחיד) הם זום */
 export function leadSessionsAreAllZoom(lead: {
   sessions?: TrainingSessionSlot[]

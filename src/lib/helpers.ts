@@ -1,4 +1,6 @@
 import { formatCourseTypeLabel } from "./course-type";
+import { COURSE_CATEGORIES } from "./constants";
+import { leadCalendarSessions, sessionLocationLabel } from "./payment";
 import type { CourseCatalogItem, Lead } from "./types";
 import {
   buildStructuredSummary,
@@ -194,13 +196,19 @@ export function instructorAssignmentWhatsAppMessage(
   opts: { courseLabel: string; registrationUrl: string },
 ): string {
   const contact = lead.contactName?.trim() || lead.name
-  const address = [
-    lead.address?.street,
-    lead.address?.houseNumber,
-    lead.address?.city,
-  ]
-    .filter(Boolean)
-    .join(" ")
+  const sessions = leadCalendarSessions(lead)
+  const physical = sessions.find((s) => !s.isZoom)
+  const address = physical
+    ? sessionLocationLabel(physical)
+    : sessions.length > 0 && sessions.every((s) => s.isZoom)
+      ? "זום"
+      : [
+          lead.address?.street,
+          lead.address?.houseNumber,
+          lead.address?.city,
+        ]
+          .filter(Boolean)
+          .join(" ")
   const timeLine = lead.time
     ? `${lead.time}${lead.endTime ? `–${lead.endTime}` : ""}`
     : "—"
@@ -224,6 +232,27 @@ export function instructorAssignmentWhatsAppMessage(
   ].join("\n")
 }
 
+export function uniqueSorted(values: Iterable<string>): string[] {
+  return Array.from(new Set(Array.from(values).map((v) => v.trim()).filter(Boolean))).sort(
+    (a, b) => a.localeCompare(b, "he"),
+  );
+}
+
+/** אפשרויות קטגוריה לדרופדאון (ליד / משתתף חיצוני) */
+export function collectLeadCategoryOptions(
+  leads: Array<Pick<Lead, "category"> & { categoryOther?: string | null }>,
+): string[] {
+  const fromDb: string[] = [];
+  for (const l of leads) {
+    if (l.category && l.category !== "אחר") fromDb.push(l.category);
+    if (l.categoryOther) fromDb.push(l.categoryOther);
+  }
+  const fromCatalog = COURSE_CATEGORIES.filter((c) => c.value !== "other").map(
+    (c) => c.label,
+  );
+  return uniqueSorted([...fromCatalog, ...fromDb]);
+}
+
 export function uid(prefix = "id"): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -238,17 +267,13 @@ export function missingForClose(lead: Partial<Lead>): string[] {
       ? sessions.every((s) => Boolean(s.isZoom))
       : false;
   if (!allZoom) {
-    // כתובת ברמת ליד או לפחות מפגש אחד לא-זום עם כתובת
-    const leadHasAddress = Boolean(
-      lead.address?.street?.trim() && lead.address?.city?.trim(),
-    );
     const sessionHasAddress =
       sessions?.some(
         (s) =>
           !s.isZoom &&
           Boolean(s.street?.trim() && s.city?.trim()),
       ) ?? false;
-    if (!leadHasAddress && !sessionHasAddress) {
+    if (!sessionHasAddress) {
       missing.push("כתובת");
     }
   }
@@ -273,30 +298,11 @@ function toIcsUtcStamp(d: Date): string {
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
 }
 
-/** בונה תוכן קובץ iCalendar (.ics) להוספה ליומן המכשיר */
+/** בונה תוכן קובץ iCalendar (.ics) — אירוע נפרד לכל מפגש */
 export function buildLeadIcsContent(lead: Lead): string {
-  const firstSession = lead.sessions?.[0];
-  const isZoom = Boolean(firstSession?.isZoom);
-  const city =
-    firstSession?.city?.trim() || lead.address?.city?.trim() || "";
   const courseTitle =
     formatCourseTypeLabel(lead.courseType, { other: lead.courseTypeOther }) ||
     "הדרכה";
-  const summary = isZoom
-    ? `הדרכה - ${courseTitle} - זום`
-    : `הדרכה - ${courseTitle} - ${city || "ללא עיר"}`;
-
-  const street = [
-    firstSession?.street || lead.address?.street,
-    firstSession?.houseNumber || lead.address?.houseNumber,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  const location = isZoom
-    ? "זום"
-    : [street, city].filter(Boolean).join(", ");
-
   const contactName = lead.contactName?.trim() || lead.name;
   const price = Math.round(lead.totalPrice || 0);
   const description = [
@@ -306,30 +312,71 @@ export function buildLeadIcsContent(lead: Lead): string {
     `הערות: ${lead.notes?.trim() || "-"}`,
   ].join(", ");
 
-  // שעון קיר מדויק כפי שהמשתמש הזין — ללא המרת אזור זמן של המכונה
-  const date = lead.date || formatInJerusalem(new Date()).date || ""
-  const startTime = lead.time || "09:00"
-  let endTime = lead.endTime
-  if (!endTime && date) {
-    const startMs = jerusalemLocalToUtcDate(date, startTime).getTime()
-    const durationHours =
-      lead.courseHours && lead.courseHours > 0 ? lead.courseHours : 4
-    const endParts = formatInJerusalem(new Date(startMs + durationHours * 60 * 60 * 1000))
-    endTime = endParts.time || "10:00"
-  } else if (!endTime) {
-    endTime = "10:00"
-  }
-  if (date && endTime && startTime) {
-    const startMs = jerusalemLocalToUtcDate(date, startTime).getTime()
-    const endMs = jerusalemLocalToUtcDate(date, endTime).getTime()
-    if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs <= startMs) {
-      const fixed = formatInJerusalem(new Date(startMs + 60 * 60 * 1000))
-      endTime = fixed.time || endTime
-    }
-  }
+  const sessions = leadCalendarSessions(lead);
+  const slots =
+    sessions.length > 0
+      ? sessions
+      : lead.date && lead.time
+        ? [
+            {
+              date: lead.date,
+              time: lead.time,
+              endTime: lead.endTime,
+              isZoom: false,
+              city: lead.address?.city,
+              street: lead.address?.street,
+              houseNumber: lead.address?.houseNumber,
+            },
+          ]
+        : [];
 
   const now = new Date();
-  const uid = `${lead.id || "lead"}-${date}${startTime}@ezra-crm`;
+  const events = slots.map((slot, idx) => {
+    const isZoom = Boolean(slot.isZoom);
+    const city = slot.city?.trim() || "";
+    const sessionLabel =
+      slots.length > 1 ? ` · מפגש ${idx + 1}` : "";
+    const summary = isZoom
+      ? `הדרכה - ${courseTitle} - זום${sessionLabel}`
+      : `הדרכה - ${courseTitle} - ${city || "ללא עיר"}${sessionLabel}`;
+    const location = isZoom ? "זום" : sessionLocationLabel(slot);
+
+    const date = slot.date || lead.date || formatInJerusalem(new Date()).date || "";
+    const startTime = slot.time || lead.time || "09:00";
+    let endTime = slot.endTime || lead.endTime;
+    if (!endTime && date) {
+      const startMs = jerusalemLocalToUtcDate(date, startTime).getTime();
+      const durationHours =
+        lead.courseHours && lead.courseHours > 0 ? lead.courseHours : 4;
+      const endParts = formatInJerusalem(
+        new Date(startMs + durationHours * 60 * 60 * 1000),
+      );
+      endTime = endParts.time || "10:00";
+    } else if (!endTime) {
+      endTime = "10:00";
+    }
+    if (date && endTime && startTime) {
+      const startMs = jerusalemLocalToUtcDate(date, startTime).getTime();
+      const endMs = jerusalemLocalToUtcDate(date, endTime).getTime();
+      if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs <= startMs) {
+        const fixed = formatInJerusalem(new Date(startMs + 60 * 60 * 1000));
+        endTime = fixed.time || endTime;
+      }
+    }
+
+    const uid = `${lead.id || "lead"}-${date}${startTime}-${idx}@ezra-crm`;
+    return [
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${toIcsUtcStamp(now)}`,
+      `DTSTART;TZID=Asia/Jerusalem:${toIcsJerusalemWall(date, startTime)}`,
+      `DTEND;TZID=Asia/Jerusalem:${toIcsJerusalemWall(date, endTime)}`,
+      `SUMMARY:${icsEscape(summary)}`,
+      `LOCATION:${icsEscape(location)}`,
+      `DESCRIPTION:${icsEscape(description)}`,
+      "END:VEVENT",
+    ];
+  });
 
   const lines = [
     "BEGIN:VCALENDAR",
@@ -337,15 +384,7 @@ export function buildLeadIcsContent(lead: Lead): string {
     "PRODID:-//Ezra Ve-Refuah CRM//HE",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    "BEGIN:VEVENT",
-    `UID:${uid}`,
-    `DTSTAMP:${toIcsUtcStamp(now)}`,
-    `DTSTART;TZID=Asia/Jerusalem:${toIcsJerusalemWall(date, startTime)}`,
-    `DTEND;TZID=Asia/Jerusalem:${toIcsJerusalemWall(date, endTime)}`,
-    `SUMMARY:${icsEscape(summary)}`,
-    `LOCATION:${icsEscape(location)}`,
-    `DESCRIPTION:${icsEscape(description)}`,
-    "END:VEVENT",
+    ...events.flat(),
     "END:VCALENDAR",
   ];
 
@@ -359,7 +398,7 @@ export function downloadLeadIcs(lead: Lead): void {
   const ics = buildLeadIcsContent(lead);
   const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const filename = `hadracha-${lead.date || "event"}.ics`;
+  const filename = `hadracha-${lead.date || lead.sessions?.[0]?.date || "event"}.ics`;
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
   const isIOS = /iPad|iPhone|iPod/i.test(ua);
 

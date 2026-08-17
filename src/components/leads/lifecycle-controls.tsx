@@ -21,7 +21,7 @@ import {
   missingForClose,
   requiresPhysicalAddress,
 } from "@/lib/helpers"
-import { isLeadPaid } from "@/lib/payment"
+import { isLeadPaid, leadCalendarSessions } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import {
   LEAD_STATUS_LABELS,
@@ -304,8 +304,8 @@ export function LifecycleControls({
             האם להוסיף את ההדרכה ליומן במכשיר?
           </p>
           <p className="text-xs text-muted-foreground">
-            ייפתח קובץ יומן (.ics) — באייפון/אנדרואיד אפשר לשמור ישירות ביומן
-            המכשיר.
+            ייפתח קובץ יומן (.ics) עם אירוע נפרד לכל מפגש — באייפון/אנדרואיד
+            אפשר לשמור ישירות ביומן המכשיר.
           </p>
           <DialogFooter className="flex-row gap-2">
             <Button
@@ -318,9 +318,14 @@ export function LifecycleControls({
             <Button
               className="flex-1"
               onClick={() => {
+                const n = leadCalendarSessions(lead).length
                 downloadLeadIcs(lead)
                 setGoogleCalOpen(false)
-                toast.success("קובץ היומן נפתח — שמרו את האירוע ביומן")
+                toast.success(
+                  n > 1
+                    ? `קובץ היומן כולל ${n} מפגשים — שמרו ביומן`
+                    : "קובץ היומן נפתח — שמרו את האירוע ביומן",
+                )
               }}
             >
               כן, הוסף ליומן

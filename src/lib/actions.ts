@@ -1037,6 +1037,7 @@ export async function addExternalParticipant(input: {
   idNumber?: string
   email?: string
   courseType?: string
+  courseCategory?: string
   agreedPrice?: number
   isExternal?: boolean
 }): Promise<ActionResult<{ id: string }>> {
@@ -1072,6 +1073,9 @@ export async function addExternalParticipant(input: {
       email: email || null,
       isExternal,
       courseType: courseSaved?.courseType || input.courseType?.trim() || null,
+      courseCategory: isExternal
+        ? input.courseCategory?.trim() || null
+        : null,
       agreedPrice:
         isExternal &&
         input.agreedPrice != null &&
@@ -1252,6 +1256,7 @@ export async function updateParticipantDetails(
     feedback?: string;
     isExternal?: boolean;
     courseType?: string | null;
+    courseCategory?: string | null;
     agreedPrice?: number | null;
   },
 ): Promise<ActionResult<{ id: string }>> {
@@ -1278,6 +1283,7 @@ export async function updateParticipantDetails(
       ...(isExternal
         ? {
             courseType: courseSaved?.courseType || data.courseType?.trim() || null,
+            courseCategory: data.courseCategory?.trim() || null,
             ...(agreedPrice !== undefined ? { agreedPrice } : {}),
           }
         : {}),
@@ -1313,6 +1319,7 @@ export async function fetchLeadParticipants(leadId: string) {
     certificateUrl: p.certificateUrl || undefined,
     isExternal: Boolean(p.isExternal),
     courseType: p.courseType || undefined,
+    courseCategory: p.courseCategory || undefined,
     agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
     paymentStatus: p.paymentStatus || undefined,
     paymentDate: p.paymentDate
@@ -1491,10 +1498,13 @@ export async function triggerRemoteCertificates(input: {
       leadId: true,
       isExternal: true,
       courseType: true,
+      courseCategory: true,
       lead: {
         select: {
           courseType: true,
           courseTypeOther: true,
+          courseCategory: true,
+          courseCategoryOther: true,
         },
       },
     },
@@ -1587,6 +1597,10 @@ export async function triggerRemoteCertificates(input: {
         isExternal: Boolean(p.isExternal),
         courseType: p.isExternal && p.courseType?.trim() ? p.courseType.trim() : cert.courseType,
         courseTypeLabel: label === "קורס" ? "" : label,
+        courseCategory:
+          p.isExternal && p.courseCategory?.trim()
+            ? p.courseCategory.trim()
+            : p.lead?.courseCategoryOther || p.lead?.courseCategory || "",
       };
     }),
   };

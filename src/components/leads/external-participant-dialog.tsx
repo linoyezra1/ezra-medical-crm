@@ -21,8 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { addExternalParticipant } from "@/lib/actions"
-import { collectCourseTypeOptions } from "@/lib/course-type"
-import { formatLeadCourseType } from "@/lib/course-type"
+import { collectCourseTypeOptions, formatLeadCourseType } from "@/lib/course-type"
+import { collectLeadCategoryOptions } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 
 type Props = {
@@ -38,6 +38,7 @@ const EMPTY_FORM = {
   leadId: "",
   isExternal: true,
   courseType: "",
+  courseCategory: "",
   agreedPrice: "",
 }
 
@@ -59,6 +60,11 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
     [settings.courses, leads],
   )
 
+  const categoryOptions = useMemo(
+    () => collectLeadCategoryOptions(leads),
+    [leads],
+  )
+
   const reset = () => setForm(EMPTY_FORM)
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -73,6 +79,7 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
       fullName: form.fullName,
       phone: form.phone,
       courseType: form.isExternal ? form.courseType : undefined,
+      courseCategory: form.isExternal ? form.courseCategory : undefined,
       agreedPrice:
         form.isExternal && form.agreedPrice
           ? Number(form.agreedPrice)
@@ -193,6 +200,26 @@ export function ExternalParticipantDialog({ open, onOpenChange }: Props) {
                   </SelectTrigger>
                   <SelectContent>
                     {courseOptions.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {o}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1.5 block text-sm">קטגוריה</Label>
+                <Select
+                  value={form.courseCategory || undefined}
+                  onValueChange={(v) =>
+                    setForm((f) => ({ ...f, courseCategory: v ?? "" }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="בחר קטגוריה" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryOptions.map((o) => (
                       <SelectItem key={o} value={o}>
                         {o}
                       </SelectItem>

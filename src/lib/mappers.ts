@@ -169,6 +169,8 @@ export function mapLead(db: DbLeadFull): Lead {
         (p as { isExternal?: boolean }).isExternal,
       ),
       courseType: (p as { courseType?: string | null }).courseType || undefined,
+      courseCategory:
+        (p as { courseCategory?: string | null }).courseCategory || undefined,
       agreedPrice:
         (p as { agreedPrice?: number | null }).agreedPrice != null
           ? Number((p as { agreedPrice?: number | null }).agreedPrice)

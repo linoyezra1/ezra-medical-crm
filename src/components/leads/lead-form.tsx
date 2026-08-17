@@ -428,16 +428,18 @@ export function LeadForm({ existing }: Props) {
     const e: Record<string, boolean> = {}
     if (!form.name.trim()) e.name = true
     if (!form.phone.trim()) e.phone = true
-    if (courseTypeSelect === COURSE_TYPE_OTHER) {
-      if (!courseTypeOther.trim()) {
-        e.courseTypeOther = true
-      } else if (!isAllowedCourseTypeValue(courseTypeOther)) {
+    if (!form.isPrivateCourse) {
+      if (courseTypeSelect === COURSE_TYPE_OTHER) {
+        if (!courseTypeOther.trim()) {
+          e.courseTypeOther = true
+        } else if (!isAllowedCourseTypeValue(courseTypeOther)) {
+          e.courseTypeOther = true
+          toast.error(COURSE_TYPE_FORMAT_ERROR)
+        }
+      } else if (!isAllowedCourseTypeValue(courseTypeSelect)) {
         e.courseTypeOther = true
         toast.error(COURSE_TYPE_FORMAT_ERROR)
       }
-    } else if (!isAllowedCourseTypeValue(courseTypeSelect)) {
-      e.courseTypeOther = true
-      toast.error(COURSE_TYPE_FORMAT_ERROR)
     }
     if (instructorSelect === OTHER && !instructorOther.trim()) {
       e.instructorOther = true
@@ -549,18 +551,15 @@ export function LeadForm({ existing }: Props) {
         date: sessionSlots[0]?.date || form.date,
         time: sessionSlots[0]?.time || form.time,
         endTime: sessionSlots[0]?.endTime || form.endTime,
-        address: {
-          ...form.address,
-          city: sessionSlots[0]?.isZoom
-            ? form.address.city
-            : sessionSlots[0]?.city || form.address.city,
-          street: sessionSlots[0]?.isZoom
-            ? form.address.street
-            : sessionSlots[0]?.street || form.address.street,
-          houseNumber: sessionSlots[0]?.isZoom
-            ? form.address.houseNumber
-            : sessionSlots[0]?.houseNumber || form.address.houseNumber,
-        },
+        address: (() => {
+          const physical = sessionSlots.find((s) => !s.isZoom)
+          return {
+            street: physical?.street || "",
+            houseNumber: physical?.houseNumber || "",
+            city: physical?.city || "",
+            zip: form.address.zip,
+          }
+        })(),
       }
 
       if (existing) {
@@ -626,15 +625,35 @@ export function LeadForm({ existing }: Props) {
           </Card>
         )}
 
+        <label className="mb-3 flex items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2.5 text-sm">
+          <Checkbox
+            checked={Boolean(form.isPrivateCourse)}
+            onCheckedChange={(v) => {
+              const next = Boolean(v)
+              set("isPrivateCourse", next)
+              if (next && wizardStep === "course") goToStep("details")
+            }}
+          />
+          <span className="font-semibold text-pink-800">קורס פרטי</span>
+        </label>
+
         <Tabs
           value={wizardStep}
           onValueChange={(v) => goToStep(v as FormStep)}
           dir="rtl"
           className="overflow-visible"
         >
-          <TabsList className="sticky top-[57px] z-20 grid w-full grid-cols-3">
+          <TabsList
+            className={
+              form.isPrivateCourse
+                ? "sticky top-[57px] z-20 grid w-full grid-cols-2"
+                : "sticky top-[57px] z-20 grid w-full grid-cols-3"
+            }
+          >
             <TabsTrigger value="details">פרטים</TabsTrigger>
-            <TabsTrigger value="course">קורס ותמחור</TabsTrigger>
+            {!form.isPrivateCourse ? (
+              <TabsTrigger value="course">קורס ותמחור</TabsTrigger>
+            ) : null}
             <TabsTrigger value="logistics">מיקום הדרכה</TabsTrigger>
           </TabsList>
         </Tabs>
@@ -728,6 +747,7 @@ export function LeadForm({ existing }: Props) {
             </Field>
           </section>
 
+          {!form.isPrivateCourse ? (
           <section
             data-step="course"
             ref={(el) => {
@@ -949,6 +969,7 @@ export function LeadForm({ existing }: Props) {
               </span>
             </Card>
           </section>
+          ) : null}
 
           <section
             data-step="logistics"
@@ -957,14 +978,6 @@ export function LeadForm({ existing }: Props) {
             }}
             className="mt-8 scroll-mt-28 space-y-4 overflow-visible border-t border-border pt-6"
           >
-            <label className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-sm">
-              <Checkbox
-                checked={Boolean(form.isPrivateCourse)}
-                onCheckedChange={(v) => set("isPrivateCourse", Boolean(v))}
-              />
-              <span className="font-semibold">קורס פרטי</span>
-            </label>
-
             <div className="space-y-2">
               <Label className="text-sm">מספר מפגשים</Label>
               <div className="grid grid-cols-4 gap-2">
@@ -1268,37 +1281,8 @@ export function LeadForm({ existing }: Props) {
               </Select>
             </Field>
 
-            <div className="grid grid-cols-3 gap-2">
-              <Field label="רחוב" className="col-span-2">
-                <Input
-                  value={form.address.street}
-                  onChange={(e) =>
-                    set("address", { ...form.address, street: e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="מס' בית">
-                <Input
-                  value={form.address.houseNumber}
-                  onChange={(e) =>
-                    set("address", {
-                      ...form.address,
-                      houseNumber: e.target.value,
-                    })
-                  }
-                />
-              </Field>
-            </div>
-            <Field label="עיר">
-              <Input
-                value={form.address.city}
-                onChange={(e) =>
-                  set("address", { ...form.address, city: e.target.value })
-                }
-              />
-            </Field>
-
-            {(form.category === "גני ילדים" ||
+            {!form.isPrivateCourse &&
+            (form.category === "גני ילדים" ||
               form.categoryOther === "גני ילדים" ||
               categorySelect === "גני ילדים") && (
               <Card className="flex-row items-center gap-3 p-4">
@@ -1324,7 +1308,13 @@ export function LeadForm({ existing }: Props) {
                 variant="outline"
                 className="flex-1 rounded-2xl py-6"
                 onClick={() =>
-                  goToStep(wizardStep === "logistics" ? "course" : "details")
+                  goToStep(
+                    wizardStep === "logistics"
+                      ? form.isPrivateCourse
+                        ? "details"
+                        : "course"
+                      : "details",
+                  )
                 }
               >
                 חזרה
@@ -1335,7 +1325,13 @@ export function LeadForm({ existing }: Props) {
                 type="button"
                 className="flex-1 rounded-2xl py-6 text-base"
                 onClick={() =>
-                  goToStep(wizardStep === "details" ? "course" : "logistics")
+                  goToStep(
+                    wizardStep === "details"
+                      ? form.isPrivateCourse
+                        ? "logistics"
+                        : "course"
+                      : "logistics",
+                  )
                 }
               >
                 המשך

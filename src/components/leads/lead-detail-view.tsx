@@ -36,9 +36,11 @@ import {
   downloadLeadIcs,
   whatsappLink,
 } from "@/lib/helpers"
+import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
 import { isInstructorUnassigned, isOwnerInstructor, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
+import { isLeadPaid } from "@/lib/payment"
 import { useApp } from "@/lib/store"
-import { computeTrainingProfit } from "@/lib/training-profit"
+import { computeTrainingProfit, computeTrainingPaymentSummary } from "@/lib/training-profit"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type { Lead } from "@/lib/types"
@@ -72,26 +74,37 @@ export function LeadDetailView({
   }
 
   const courseLabel = formatLeadCourseType(lead, settings.courses)
+  const payments = computeTrainingPaymentSummary(lead)
 
-  const addressLine = [
-    lead.address.street,
-    lead.address.houseNumber,
-    lead.address.city,
-  ]
-    .filter(Boolean)
-    .join(" ")
+  const sessions = leadCalendarSessions(lead)
+  const physical = sessions.find((s) => !s.isZoom)
+  const allZoom = sessions.length > 0 && sessions.every((s) => s.isZoom)
+  const addressLine = allZoom
+    ? "זום"
+    : sessionLocationLabel(
+        physical || {
+          city: lead.address.city,
+          street: lead.address.street,
+          houseNumber: lead.address.houseNumber,
+        },
+      )
 
-  const wazeUrl = addressLine
-    ? `https://waze.com/ul?q=${encodeURIComponent(addressLine)}&navigate=yes`
-    : null
+  const wazeUrl =
+    addressLine && addressLine !== "זום"
+      ? `https://waze.com/ul?q=${encodeURIComponent(addressLine)}&navigate=yes`
+      : null
 
   const syncCalendar = () => {
-    if (!lead.date || !lead.time) {
+    if (!sessions.length && (!lead.date || !lead.time)) {
       toast.error("יש להגדיר תאריך ושעה לפני הוספה ליומן")
       return
     }
     downloadLeadIcs(lead)
-    toast.success("קובץ היומן נפתח — שמרו את האירוע ביומן")
+    toast.success(
+      sessions.length > 1
+        ? `קובץ היומן כולל ${sessions.length} מפגשים — שמרו ביומן`
+        : "קובץ היומן נפתח — שמרו את האירוע ביומן",
+    )
   }
 
   return (
@@ -144,9 +157,18 @@ export function LeadDetailView({
                     status={lead.status}
                     className="px-3.5 py-1.5 text-sm font-bold shadow-sm"
                   />
+                  <span className="inline-flex items-center rounded-full bg-primary px-3.5 py-1.5 text-sm font-extrabold text-primary-foreground shadow-sm">
+                    {formatCurrency(payments.expectedTotal)}
+                  </span>
                 </div>
                 <p className="truncate text-sm font-medium text-muted-foreground md:text-base">
                   {courseLabel}
+                </p>
+                <p className="text-base font-extrabold text-foreground md:text-lg">
+                  הסכום הכולל של ההדרכה:{" "}
+                  <span className="text-primary">
+                    {formatCurrency(payments.expectedTotal)}
+                  </span>
                 </p>
               </div>
             </div>
@@ -367,7 +389,6 @@ function HomeTab({
             <p className="text-xs text-muted-foreground">כתובת</p>
             <p className="text-sm font-medium leading-snug">
               {addressLine || "לא הוגדרה כתובת"}
-              {lead.address.zip ? ` (${lead.address.zip})` : ""}
             </p>
           </div>
           {wazeUrl && (
@@ -470,9 +491,79 @@ function ParticipantsTab({
 function FinanceTab({ lead }: { lead: Lead }) {
   const { instructors } = useApp()
   const profit = computeTrainingProfit(lead, instructors)
+  const payments = computeTrainingPaymentSummary(lead)
 
   return (
     <>
+      <Card className="gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
+        <h2 className="text-sm font-bold text-foreground">סיכום תשלומים</h2>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl bg-secondary/60 px-2 py-2">
+            <p className="text-[10px] text-muted-foreground">צפוי</p>
+            <p className="text-sm font-extrabold">
+              {formatCurrency(payments.expectedTotal)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-emerald-50 px-2 py-2">
+            <p className="text-[10px] text-emerald-800">נגבה</p>
+            <p className="text-sm font-extrabold text-emerald-800">
+              {formatCurrency(payments.collectedTotal)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-amber-50 px-2 py-2">
+            <p className="text-[10px] text-amber-900">יתרה</p>
+            <p className="text-sm font-extrabold text-amber-900">
+              {formatCurrency(payments.remaining)}
+            </p>
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>התקדמות גבייה</span>
+            <span className="font-semibold">{payments.progressPct}%</span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full rounded-full bg-emerald-600 transition-[width]"
+              style={{ width: `${payments.progressPct}%` }}
+            />
+          </div>
+        </div>
+        <ul className="space-y-1.5 text-xs">
+          <li className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">תשלום הדרכה (בסיס)</span>
+            <span className="font-semibold">
+              {formatCurrency(payments.baseCollected)} /{" "}
+              {formatCurrency(payments.basePrice)}
+              {isLeadPaid(lead) ? (
+                <span className="mr-1 text-emerald-700"> · שולם</span>
+              ) : (
+                <span className="mr-1 text-amber-800"> · ממתין</span>
+              )}
+            </span>
+          </li>
+          {payments.externals.map((p) => (
+            <li
+              key={p.id}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="min-w-0 truncate text-muted-foreground">
+                {p.name} · חיצוני
+              </span>
+              <span className="shrink-0 font-semibold">
+                {formatCurrency(p.paid ? p.amount : 0)} /{" "}
+                {formatCurrency(p.amount)}
+                {p.paid ? (
+                  <span className="mr-1 text-emerald-700"> · שולם</span>
+                ) : (
+                  <span className="mr-1 text-amber-800"> · ממתין</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
       <Card className="gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 shadow-sm">
         <h2 className="text-sm font-bold text-foreground">סיכום רווח הדרכה</h2>
         <div className="grid grid-cols-2 gap-3 text-sm">

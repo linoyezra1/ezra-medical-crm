@@ -35,7 +35,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { formatDate, uid } from "@/lib/helpers"
-import { leadCalendarSessions } from "@/lib/payment"
+import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { jerusalemLocalToUtcDate } from "@/lib/timezone"
 import type { Lead, Task } from "@/lib/types"
@@ -123,7 +123,7 @@ export function CalendarView() {
             ? `הדרכה - ${courseTitle} - זום`
             : courseTitle,
           sub: `${l.name} · ${
-            s.isZoom ? "זום" : s.city || l.address.city || ""
+            sessionLocationLabel(s) || l.address.city || ""
           }${sessions.length > 1 ? ` · מפגש ${idx + 1}` : ""}`,
           isPrivate: Boolean(l.isPrivateCourse),
           sessionKey: `${l.id}-${s.date}-${s.time}-${idx}`,

@@ -1,6 +1,7 @@
 import { addHours, subHours } from "date-fns";
 import { prisma } from "@/lib/db";
 import { SCHEDULED_STATUSES } from "@/lib/constants";
+import { parseSessionsJson, sessionLocationLabel } from "@/lib/payment";
 import type { Lead } from "@/generated/prisma/client";
 
 export type ConflictHit = {
@@ -125,16 +126,19 @@ export async function validateStatusTransition(
 /** Stub: logs calendar payload until Google OAuth is configured */
 export async function syncGoogleCalendar(lead: Lead): Promise<string | null> {
   const settings = await prisma.settings.findUnique({ where: { id: "default" } });
+  const sessions = parseSessionsJson(lead.sessionsJson);
   if (!settings?.calendarEnabled) {
     console.info("[calendar] sync skipped (disabled)", {
-      title: `הדרכה - ${lead.courseType ?? "קורס"} - ${lead.city ?? ""}`,
-      location: `${lead.location ?? ""}, ${lead.city ?? ""} | איש קשר: ${lead.fullName} (${lead.phone})`,
-      start: lead.scheduledStart,
-      end: lead.scheduledEnd,
+      title: `הדרכה - ${lead.courseType ?? "קורס"}`,
+      sessions: sessions.map((s) => ({
+        date: s.date,
+        time: s.time,
+        endTime: s.endTime,
+        location: sessionLocationLabel(s),
+      })),
     });
     return lead.googleCalendarEventId;
   }
-  // Placeholder event id until Google Calendar API credentials are wired
   const eventId = lead.googleCalendarEventId ?? `local-${lead.id}`;
   return eventId;
 }
