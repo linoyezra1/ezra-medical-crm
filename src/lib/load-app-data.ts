@@ -131,6 +131,7 @@ export async function loadAppData(): Promise<AppData> {
       prisma.trainee.findMany({
         include: {
           participants: {
+            orderBy: { createdAt: "asc" },
             include: {
               lead: {
                 select: {

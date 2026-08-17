@@ -41,11 +41,11 @@ import type { Trainee } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 function trainingLabel(t: Trainee) {
-  return (
-    t.trainings[0]?.organizerName ||
-    t.trainings[0]?.leadName ||
-    "—"
-  )
+  if (!t.trainings.length) return "—"
+  const latest = t.trainings[t.trainings.length - 1]
+  const name = latest.organizerName || latest.leadName || "—"
+  if (t.trainings.length === 1) return name
+  return `${t.trainings.length} הדרכות · ${name}`
 }
 
 function ExternalTag() {
@@ -310,17 +310,15 @@ export function TraineesPanel() {
       >
         <Trash2 className="size-3.5" />
       </button>
-      {t.trainings.length === 0 && (
-        <button
-          type="button"
-          onClick={() => openAssign([t.id])}
-          className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
-          aria-label="שיוך להדרכה"
-          title="שיוך להדרכה"
-        >
-          <Link2 className="size-3.5" />
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => openAssign([t.id])}
+        className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+        aria-label="שיוך להדרכה"
+        title="שיוך להדרכה נוספת"
+      >
+        <Link2 className="size-3.5" />
+      </button>
       {t.phone && (
         <>
           <a
@@ -356,16 +354,20 @@ export function TraineesPanel() {
           <FileCheck className="size-3.5" />
         </a>
       ) : null}
-      {t.trainings[0]?.leadId && (
+      {t.trainings.length > 0 ? (
         <Link
-          href={`/leads/${t.trainings[0].leadId}`}
+          href={`/leads/${t.trainings[t.trainings.length - 1]?.leadId}`}
           className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"
-          aria-label="פתח הדרכה"
-          title="פתח הדרכה"
+          aria-label="פתח הדרכה אחרונה"
+          title={
+            t.trainings.length > 1
+              ? `פתח הדרכה (${t.trainings.length} שיוכים)`
+              : "פתח הדרכה"
+          }
         >
           <ExternalLink className="size-3.5" />
         </Link>
-      )}
+      ) : null}
     </div>
   )
 

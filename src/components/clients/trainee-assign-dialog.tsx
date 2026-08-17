@@ -65,8 +65,8 @@ export function TraineeAssignDialog({
         <DialogHeader>
           <DialogTitle className="text-right">שיוך להדרכה</DialogTitle>
           <p className="text-xs text-muted-foreground">
-            {traineeIds.length} מודרכים נבחרו · מוצגות הדרכות בסטטוס ״סגרנו
-            נרשם ביומן״ או ״ממתין לתעודות״
+            {traineeIds.length} מודרכים נבחרו · ניתן לשייך גם מודרך שכבר משויך
+            להדרכה אחרת · מוצגות הדרכות פעילות (למעט אבוד/מבוטל)
           </p>
         </DialogHeader>
 

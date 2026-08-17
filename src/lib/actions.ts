@@ -1810,9 +1810,7 @@ export type TraineeImportPayloadRow = {
   notes?: string;
 };
 
-const ASSIGNABLE_DB_STATUSES = ["closed", "certificates_pending"] as const;
-
-function normalizeMatch(s: string) {
+import { ASSIGNABLE_LEAD_DB_STATUSES } from "@/lib/trainee-import";
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
@@ -1825,7 +1823,9 @@ async function findAssignableLeadId(opts: {
     const lead = await prisma.lead.findUnique({ where: { id: opts.leadId } });
     if (
       lead &&
-      (ASSIGNABLE_DB_STATUSES as readonly string[]).includes(lead.courseStatus)
+      (ASSIGNABLE_LEAD_DB_STATUSES as readonly string[]).includes(
+        lead.courseStatus,
+      )
     ) {
       return lead.id;
     }
@@ -1836,7 +1836,7 @@ async function findAssignableLeadId(opts: {
   if (!organizer) return null;
 
   const candidates = await prisma.lead.findMany({
-    where: { courseStatus: { in: [...ASSIGNABLE_DB_STATUSES] } },
+    where: { courseStatus: { in: [...ASSIGNABLE_LEAD_DB_STATUSES] } },
     select: {
       id: true,
       fullName: true,
@@ -1906,7 +1906,7 @@ export async function createTraineeManual(data: {
     if (!leadId) {
       return {
         ok: false,
-        error: "ההדרכה שנבחרה אינה זמינה לשיוך (נדרש סטטוס סגור/ממתין לתעודות)",
+        error: "ההדרכה שנבחרה אינה זמינה לשיוך (ליד אבוד/מבוטל או לא נמצא)",
       };
     }
 
@@ -2086,7 +2086,7 @@ export async function assignTraineesToLead(
   if (!resolved) {
     return {
       ok: false,
-      error: "ההדרכה אינה זמינה לשיוך (נדרש סטטוס סגור/ממתין לתעודות)",
+      error: "ההדרכה אינה זמינה לשיוך (ליד אבוד/מבוטל או לא נמצא)",
     };
   }
 
