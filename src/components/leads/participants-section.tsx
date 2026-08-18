@@ -56,7 +56,14 @@ import {
   collectCourseTypeOptions,
   formatCourseTypeLabel,
 } from "@/lib/course-type"
-import { collectLeadCategoryOptions, formatCurrency, whatsappLink, zoomInviteWhatsAppMessage } from "@/lib/helpers"
+import {
+  collectLeadCategoryOptions,
+  formatCurrency,
+  formatDate,
+  weekdayNameHe,
+  whatsappLink,
+  zoomInviteWhatsAppMessage,
+} from "@/lib/helpers"
 import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
@@ -246,6 +253,8 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
   const [lmsBusy, setLmsBusy] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [zoomDialogParticipant, setZoomDialogParticipant] =
+    useState<Participant | null>(null)
   const [lmsCredentials, setLmsCredentials] = useState<
     Record<string, LmsCredentialMeta>
   >({})
@@ -268,6 +277,47 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
   const attendedCount = participants.filter((p) => p.attended).length
   const zoomSession = pickZoomSessionForInvite(lead)
   const canSendZoom = Boolean(zoomSession)
+
+  const sendZoomWhatsApp = (p: Participant) => {
+    if (!p.phone?.trim()) {
+      toast.error("חסר טלפון למשתתף")
+      return
+    }
+    const session = pickZoomSessionForInvite(lead)
+    if (!session) {
+      toast.error("ההדרכה אינה מוגדרת כמפגש זום")
+      return
+    }
+    const link = session.zoomLink?.trim()
+    if (!link) {
+      toast.error("יש להזין קישור זום בטופס ההדרכה")
+      return
+    }
+    const text = zoomInviteWhatsAppMessage(p.name, {
+      date: session.date,
+      time: session.time,
+      zoomLink: link,
+    })
+    window.open(
+      whatsappLink(p.phone, text),
+      "_blank",
+      "noopener,noreferrer",
+    )
+  }
+
+  const openZoomSend = (p: Participant) => {
+    // Case B: אין אימייל למשתתף -> שליחה ישירה בוואטסאפ
+    if (!p.email?.trim()) {
+      sendZoomWhatsApp(p)
+      return
+    }
+    // Case A: יש אימייל -> פותחים דיאלוג רב ערוצי
+    setZoomDialogParticipant(p)
+  }
+
+  const zoomDialogOpen = Boolean(zoomDialogParticipant)
+
+  const zoomDialogSession = canSendZoom ? zoomSession : null
 
   const filtered = useMemo(() => {
     const q = query.trim()
@@ -499,26 +549,8 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
   }
 
   const sendZoomLink = (p: Participant) => {
-    if (!p.phone?.trim()) {
-      toast.error("חסר טלפון למשתתף")
-      return
-    }
-    const session = pickZoomSessionForInvite(lead)
-    if (!session) {
-      toast.error("ההדרכה אינה מוגדרת כמפגש זום")
-      return
-    }
-    const link = session.zoomLink?.trim()
-    if (!link) {
-      toast.error("יש להזין קישור זום בטופס ההדרכה")
-      return
-    }
-    const text = zoomInviteWhatsAppMessage(p.name, {
-      date: session.date,
-      time: session.time,
-      zoomLink: link,
-    })
-    window.open(whatsappLink(p.phone, text), "_blank", "noopener,noreferrer")
+    // kept for backward references below in the component
+    sendZoomWhatsApp(p)
   }
 
   const toolbar = participants.length > 0 && (
@@ -747,7 +779,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                             {canSendZoom ? (
                               <button
                                 type="button"
-                                onClick={() => sendZoomLink(p)}
+                                onClick={() => openZoomSend(p)}
                                 className="flex size-8 items-center justify-center rounded-lg text-sky-700 hover:bg-sky-50"
                                 aria-label="שלח קישור לזום"
                                 title="שלח קישור לזום"
@@ -865,7 +897,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       lmsBusy={lmsBusy}
                       onWhatsApp={() => openWhatsApp(p)}
                       onSendZoom={
-                        canSendZoom ? () => sendZoomLink(p) : undefined
+                        canSendZoom ? () => openZoomSend(p) : undefined
                       }
                       onToggleAttended={() =>
                         void toggleAttended(p, !p.attended)
@@ -1067,6 +1099,177 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
         open={Boolean(payParticipant)}
         onOpenChange={(o) => !o && setPayParticipant(null)}
       />
+
+      <SendZoomLinkDialog
+        open={zoomDialogOpen}
+        onOpenChange={(o) => {
+          if (!o) setZoomDialogParticipant(null)
+        }}
+        participant={zoomDialogParticipant}
+        session={zoomDialogSession}
+        courseTitle={lead.courseType || "קורס עזרה ראשונה"}
+      />
     </CollapsibleSection>
+  )
+}
+
+function SendZoomLinkDialog({
+  open,
+  onOpenChange,
+  participant,
+  session,
+  courseTitle,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  participant: Participant | null
+  session: { date: string; time: string; zoomLink?: string } | null
+  courseTitle: string
+}) {
+  const participantPhone = participant?.phone?.trim() || ""
+  const participantEmail = participant?.email?.trim() || ""
+
+  const zoomLink = session?.zoomLink?.trim()
+  const message = participant && zoomLink && session
+    ? zoomInviteWhatsAppMessage(participant.name, {
+        date: session.date,
+        time: session.time,
+        zoomLink,
+      })
+    : ""
+
+  const appsScriptUrl =
+    process.env.NEXT_PUBLIC_APPS_SCRIPT_URL?.trim() ||
+    process.env.NEXT_PUBLIC_LMS_WEBHOOK_URL?.trim() ||
+    process.env.NEXT_PUBLIC_LMS_GOOGLE_APPS_SCRIPT_URL?.trim() ||
+    ""
+
+  const [emailBusy, setEmailBusy] = useState(false)
+
+  const sendWhatsApp = () => {
+    if (!participant) return
+    if (!participantPhone) {
+      toast.error("חסר טלפון למשתתף")
+      return
+    }
+    if (!message.trim()) {
+      toast.error("יש להזין קישור זום בטופס ההדרכה")
+      return
+    }
+    window.open(
+      whatsappLink(participantPhone, message),
+      "_blank",
+      "noopener,noreferrer",
+    )
+    onOpenChange(false)
+  }
+
+  const sendEmail = () => {
+    void (async () => {
+      if (!participant) return
+      if (!participantEmail) {
+        toast.error("אין כתובת מייל למשתתף זה")
+        return
+      }
+      if (!appsScriptUrl) {
+        toast.error("חסר URL ל-Webhook של Google Apps Script")
+        return
+      }
+      if (!message.trim() || !zoomLink || !session) {
+        toast.error("יש להזין קישור זום בטופס ההדרכה")
+        return
+      }
+
+      setEmailBusy(true)
+      try {
+        const payload = {
+          action: "SEND_ZOOM_LINK",
+          pin: "214215444",
+          email: participantEmail,
+          fullName: (participant as unknown as { fullName?: string }).fullName || participant.name,
+          zoomLink: zoomLink || "",
+          date: formatDate(session.date),
+          dayOfWeek: weekdayNameHe(session.date),
+          startTime: session.time,
+          courseTitle: courseTitle || "קורס עזרה ראשונה",
+        }
+
+        await fetch(appsScriptUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+
+        toast.success("קישור הזום נשלח בהצלחה למייל!")
+        onOpenChange(false)
+      } catch {
+        toast.error("שגיאה בשליחת קישור הזום למייל")
+      } finally {
+        setEmailBusy(false)
+      }
+    })()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[calc(100%-2rem)] rounded-2xl sm:max-w-md">
+        <DialogHeader className="text-right">
+          <DialogTitle>שלח קישור לזום</DialogTitle>
+          <p className="text-xs text-muted-foreground">
+            {participant?.name || ""}
+          </p>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          <Button
+            type="button"
+            className="h-auto w-full justify-start gap-3 rounded-xl py-3"
+            onClick={sendWhatsApp}
+          >
+            <MessageCircle className="size-5 shrink-0 text-emerald-700" />
+            <span className="flex flex-col items-start gap-0.5">
+              <span className="font-semibold">שלח בוואטסאפ</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                שימוש בטלפון הרשום למשתתף
+              </span>
+            </span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto w-full justify-start gap-3 rounded-xl py-3"
+            disabled={!participantEmail}
+            onClick={sendEmail}
+            title={
+              !participantEmail ? "אין כתובת מייל למשתתף זה" : undefined
+            }
+          >
+            ✉️
+            <span className="flex flex-col items-start gap-0.5">
+              <span className="font-semibold">שלח במייל</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                {emailBusy
+                  ? "שולח…"
+                  : participantEmail
+                    ? participantEmail
+                    : "אין כתובת מייל למשתתף זה"}
+              </span>
+            </span>
+          </Button>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            className="w-full rounded-xl"
+            onClick={() => onOpenChange(false)}
+          >
+            סגור
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
