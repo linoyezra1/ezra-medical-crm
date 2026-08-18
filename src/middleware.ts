@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { INSTRUCTOR_SESSION_COOKIE } from "@/lib/instructor-auth-server"
+import { INSTRUCTOR_SESSION_COOKIE } from "@/lib/instructor-session-cookie"
 
 const PUBLIC_PATHS = new Set(["/instructor/login"])
 

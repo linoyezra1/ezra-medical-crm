@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils"
 type QuickActionId =
   | "share_instructor"
   | "send_booklet"
+  | "presentation_44_pdf"
   | "booklet_print"
   | "exam_v1"
   | "exam_v2"
@@ -77,6 +78,12 @@ const ACTIONS: QuickActionDef[] = [
     label: "שלח חוברת",
     description: "שליחת חוברת PDF בוואטסאפ",
     icon: BookOpen,
+  },
+  {
+    id: "presentation_44_pdf",
+    label: "מצגת קורס 44 PDF",
+    description: "פתיחת קובץ המצגת ישירות",
+    icon: Presentation,
   },
   {
     id: "booklet_print",
@@ -136,6 +143,10 @@ export function QuickActionsView() {
     }
     if (action.id === "send_booklet") {
       openBookletWhatsApp()
+      return
+    }
+    if (action.id === "presentation_44_pdf") {
+      window.open(courseMaterialUrl("presentation44Pdf"), "_blank", "noopener,noreferrer")
       return
     }
     setPendingAction(action)

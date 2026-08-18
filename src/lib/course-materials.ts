@@ -5,6 +5,7 @@
 export const COURSE_MATERIAL_FILES = {
   booklet44Pdf: "חוברת 44 PDF.pdf",
   booklet44WordPrint: "חוברת 44 WORD להדפסה בשחור לבן.docx",
+  presentation44Pdf: "מצגת קורס 44 PDF.pdf",
   exam44v1: "מבחן 44 גרסה 1.pdf",
   exam44v2: "מבחן 44 גרסה 2.pdf",
   participantsTable: "פורמט טבלת משתתפים.xlsx",
