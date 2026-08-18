@@ -16,10 +16,10 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
-import { SendBookletDialog } from "@/components/leads/send-booklet-dialog"
 import { BankAccountPickerDialog } from "@/components/quick-actions/bank-account-picker-dialog"
 import { TrainingPickerDialog } from "@/components/quick-actions/training-picker-dialog"
 import {
+  booklet44WhatsAppMessage,
   courseMaterialUrl,
   type CourseMaterialKey,
 } from "@/lib/course-materials"
@@ -75,7 +75,7 @@ const ACTIONS: QuickActionDef[] = [
   {
     id: "send_booklet",
     label: "שלח חוברת",
-    description: "שליחת חוברת PDF במייל או וואטסאפ",
+    description: "שליחת חוברת PDF בוואטסאפ",
     icon: BookOpen,
   },
   {
@@ -128,14 +128,23 @@ export function QuickActionsView() {
     null,
   )
   const [bankAccountOpen, setBankAccountOpen] = useState(false)
-  const [bookletLead, setBookletLead] = useState<Lead | null>(null)
 
   const startAction = (action: QuickActionDef) => {
     if (action.id === "send_bank_details") {
       setBankAccountOpen(true)
       return
     }
+    if (action.id === "send_booklet") {
+      openBookletWhatsApp()
+      return
+    }
     setPendingAction(action)
+  }
+
+  const openBookletWhatsApp = () => {
+    const fileUrl = courseMaterialUrl("booklet44Pdf")
+    const text = booklet44WhatsAppMessage("", fileUrl)
+    window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
   }
 
   const openBankWhatsApp = (bankKey: BankAccountKey) => {
@@ -172,7 +181,7 @@ export function QuickActionsView() {
         break
       }
       case "send_booklet":
-        setBookletLead(lead)
+        openBookletWhatsApp()
         break
       case "booklet_print":
         sendStatic("booklet44WordPrint", "חוברת להדפסה (Word)")
@@ -268,16 +277,6 @@ export function QuickActionsView() {
           if (action) void runAction(action, lead)
         }}
       />
-
-      {bookletLead ? (
-        <SendBookletDialog
-          lead={bookletLead}
-          open={Boolean(bookletLead)}
-          onOpenChange={(open) => {
-            if (!open) setBookletLead(null)
-          }}
-        />
-      ) : null}
     </div>
   )
 }

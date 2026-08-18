@@ -45,8 +45,9 @@ export function booklet44WhatsAppMessage(
   contactName: string,
   fileUrl: string,
 ): string {
-  const name = contactName.trim() || "שלום"
-  return `היי ${name}, מצורף קישור להורדת חוברת הדרכה לקורס 44 שעות: ${fileUrl}`
+  const name = contactName.trim()
+  const greeting = name ? `היי ${name}, ` : "היי, "
+  return `${greeting}מצורף קישור להורדת חוברת הדרכה לקורס 44 שעות: ${fileUrl}`
 }
 
 export function booklet44Mailto(params: {
