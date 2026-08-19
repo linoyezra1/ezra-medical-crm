@@ -398,7 +398,18 @@ export function mapSettings(
 type DbTraineeFull = DbTrainee & {
   participants?: (Participant & {
     certificateUrl?: string | null
-    lead?: Pick<DbLead, "id" | "fullName" | "courseType" | "courseTypeOther"> | null;
+    courseType?: string | null
+    courseCategory?: string | null
+    isExternal?: boolean | null
+    lead?: Pick<
+      DbLead,
+      | "id"
+      | "fullName"
+      | "courseType"
+      | "courseTypeOther"
+      | "courseCategory"
+      | "courseCategoryOther"
+    > | null;
   })[];
 };
 
@@ -426,7 +437,16 @@ export function mapTrainee(db: DbTraineeFull): Trainee {
       leadName: p.lead?.fullName || "הדרכה",
       organizerName: p.organizerName || undefined,
       courseDate: p.courseDate || undefined,
-      courseType: p.lead?.courseTypeOther || p.lead?.courseType || undefined,
+      courseType:
+        (p.courseType || "").trim() ||
+        p.lead?.courseTypeOther ||
+        p.lead?.courseType ||
+        undefined,
+      courseCategory:
+        (p.courseCategory || "").trim() ||
+        p.lead?.courseCategoryOther ||
+        p.lead?.courseCategory ||
+        undefined,
     })),
     createdAt: db.createdAt.toISOString(),
     updatedAt: db.updatedAt.toISOString(),

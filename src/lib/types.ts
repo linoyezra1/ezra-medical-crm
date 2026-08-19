@@ -178,6 +178,7 @@ export interface TraineeTrainingRef {
   organizerName?: string;
   courseDate?: string;
   courseType?: string;
+  courseCategory?: string;
 }
 
 export interface Trainee {

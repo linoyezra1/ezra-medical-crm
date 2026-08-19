@@ -10,6 +10,7 @@ import {
   resolveCourseTypeForSave,
   resolveParticipantCertificateCourseType,
   isRefreshCourseType,
+  isBlsCourseType,
   certificateScopeForSheet,
 } from "@/lib/course-type";
 import {
@@ -1636,11 +1637,16 @@ export async function triggerRemoteCertificates(input: {
       other: cert.courseTypeOther,
     });
     const courseTypeLabel =
-      scope.includes("רענון") ? scope : label === "קורס" ? "" : label;
+      scope.includes("רענון") || scope.toUpperCase() === "BLS"
+        ? scope
+        : label === "קורס"
+          ? ""
+          : label;
     return {
       id: p.id,
       isExternal: Boolean(p.isExternal),
       isRefresh: isRefreshCourseType(cert.courseType, cert.courseTypeOther),
+      isBls: isBlsCourseType(cert.courseType, cert.courseTypeOther),
       courseType:
         p.isExternal && p.courseType?.trim()
           ? p.courseType.trim()
@@ -1659,6 +1665,12 @@ export async function triggerRemoteCertificates(input: {
     participantPayload.some((p) => p.isRefresh)
   ) {
     templateType = "REFRESH";
+  }
+  if (
+    templateType === "REGULAR" &&
+    participantPayload.some((p) => p.isBls)
+  ) {
+    templateType = "BLS";
   }
 
   // ייצוא חסרים לגיליון לפני ההנפקה

@@ -35,7 +35,8 @@ import {
   syncCertificatesFromSheetsAction,
   updateTrainee,
 } from "@/lib/actions"
-import { formatPhone, whatsappLink } from "@/lib/helpers"
+import { formatCourseTypeLabel } from "@/lib/course-type"
+import { formatLeadCategory, formatPhone, whatsappLink } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Trainee } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -46,6 +47,23 @@ function trainingLabel(t: Trainee) {
   const name = latest.organizerName || latest.leadName || "—"
   if (t.trainings.length === 1) return name
   return `${t.trainings.length} הדרכות · ${name}`
+}
+
+function latestTraining(t: Trainee) {
+  if (!t.trainings.length) return undefined
+  return t.trainings[t.trainings.length - 1]
+}
+
+function traineeCourseTypeLabel(t: Trainee) {
+  const raw = latestTraining(t)?.courseType
+  if (!raw) return "—"
+  return formatCourseTypeLabel(raw) || raw
+}
+
+function traineeCategoryLabel(t: Trainee) {
+  const raw = latestTraining(t)?.courseCategory
+  if (!raw) return "—"
+  return formatLeadCategory(raw)
 }
 
 function ExternalTag() {
@@ -445,17 +463,23 @@ export function TraineesPanel() {
                         aria-label="בחר הכל"
                       />
                     </th>
-                    <th className="w-[13%] px-2 py-2 font-semibold">שם מודרך</th>
-                    <th className="w-[9%] px-2 py-2 font-semibold">ת״ז</th>
-                    <th className="w-[10%] px-2 py-2 font-semibold">טלפון</th>
-                    <th className="w-[12%] px-2 py-2 font-semibold">אימייל</th>
-                    <th className="w-[12%] px-2 py-2 font-semibold">
+                    <th className="w-[11%] px-2 py-2 font-semibold">שם מודרך</th>
+                    <th className="w-[8%] px-2 py-2 font-semibold">ת״ז</th>
+                    <th className="w-[9%] px-2 py-2 font-semibold">טלפון</th>
+                    <th className="w-[10%] px-2 py-2 font-semibold">אימייל</th>
+                    <th className="w-[10%] px-2 py-2 font-semibold">
                       הדרכה שיוך
                     </th>
-                    <th className="w-[7%] px-2 py-2 font-semibold">תעודה</th>
-                    <th className="w-[7%] px-2 py-2 font-semibold">כרטיס</th>
-                    <th className="w-[12%] px-2 py-2 font-semibold">הערות</th>
-                    <th className="w-[14%] px-2 py-2 font-semibold">פעולות</th>
+                    <th className="w-[9%] px-2 py-2 font-semibold">
+                      סוג קורס
+                    </th>
+                    <th className="w-[9%] px-2 py-2 font-semibold">
+                      קטגוריה
+                    </th>
+                    <th className="w-[6%] px-2 py-2 font-semibold">תעודה</th>
+                    <th className="w-[6%] px-2 py-2 font-semibold">כרטיס</th>
+                    <th className="w-[9%] px-2 py-2 font-semibold">הערות</th>
+                    <th className="w-[12%] px-2 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -505,6 +529,18 @@ export function TraineesPanel() {
                         </td>
                         <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
                           {via}
+                        </td>
+                        <td
+                          className="max-w-0 truncate px-2 py-2 text-muted-foreground"
+                          title={traineeCourseTypeLabel(t)}
+                        >
+                          {traineeCourseTypeLabel(t)}
+                        </td>
+                        <td
+                          className="max-w-0 truncate px-2 py-2 text-muted-foreground"
+                          title={traineeCategoryLabel(t)}
+                        >
+                          {traineeCategoryLabel(t)}
                         </td>
                         <td className="px-2 py-2">
                           <div className="flex justify-center">
@@ -592,6 +628,12 @@ export function TraineesPanel() {
                       <p className="mt-1 text-[11px] text-primary">
                         הדרכה דרך: {via}
                       </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        סוג קורס: {traineeCourseTypeLabel(t)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        קטגוריה: {traineeCategoryLabel(t)}
+                      </p>
                       {t.email ? (
                         <p
                           className="mt-0.5 truncate text-[11px] text-muted-foreground"
@@ -609,6 +651,12 @@ export function TraineesPanel() {
 
                   {open && (
                     <div className="mt-3 space-y-2 border-t border-border pt-3">
+                      <p className="text-[11px] text-muted-foreground">
+                        סוג קורס: {traineeCourseTypeLabel(t)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        קטגוריה: {traineeCategoryLabel(t)}
+                      </p>
                       <label className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Checkbox
                           checked={t.certificateEmailSent}
@@ -640,6 +688,12 @@ export function TraineesPanel() {
                         >
                           הדרכה דרך: {tr.organizerName || tr.leadName}
                           {tr.courseDate ? ` · ${tr.courseDate}` : ""}
+                          {tr.courseType
+                            ? ` · ${formatCourseTypeLabel(tr.courseType)}`
+                            : ""}
+                          {tr.courseCategory
+                            ? ` · ${formatLeadCategory(tr.courseCategory)}`
+                            : ""}
                         </p>
                       ))}
                     </div>

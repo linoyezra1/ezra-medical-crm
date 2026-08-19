@@ -141,6 +141,8 @@ export async function loadAppData(): Promise<AppData> {
                   fullName: true,
                   courseType: true,
                   courseTypeOther: true,
+                  courseCategory: true,
+                  courseCategoryOther: true,
                 },
               },
             },

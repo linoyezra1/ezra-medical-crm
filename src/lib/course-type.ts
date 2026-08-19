@@ -123,6 +123,19 @@ export function isRefreshCourseType(
   return sources.some((s) => s.includes("רענון"))
 }
 
+/** האם סוג הקורס הוא BLS (לתעודה / תבנית PDF) */
+export function isBlsCourseType(
+  courseType?: string | null,
+  courseTypeOther?: string | null,
+): boolean {
+  const sources = [
+    formatCourseTypeLabel(courseType, { other: courseTypeOther }),
+    (courseTypeOther || "").trim(),
+    (courseType || "").trim(),
+  ]
+  return sources.some((s) => /^BLS$/i.test(s.replace(/\s+/g, " ").trim()))
+}
+
 /**
  * ערך עמודה F בגיליון תעודות — מודפס ב-PDF.
  * כשיש «רענון» בסוג הקורס: «רענון 22» · אחרת ספרות בלבד «22».

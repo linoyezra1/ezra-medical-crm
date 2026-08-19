@@ -3,6 +3,7 @@ export const CERTIFICATE_TEMPLATE_TYPES = [
   { value: "REGULAR", label: "קורס רגיל" },
   { value: "REFRESH", label: "קורס רענון" },
   { value: "SKIPPERS", label: "משיטים" },
+  { value: "BLS", label: "BLS" },
 ] as const
 
 export type CertificateTemplateType =
