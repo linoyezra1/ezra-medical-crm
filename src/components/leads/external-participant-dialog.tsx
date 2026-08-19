@@ -20,8 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { addExternalParticipant, addParticipant } from "@/lib/actions"
-import { collectCourseTypeOptions, formatLeadCourseType } from "@/lib/course-type"
+import { addExternalParticipant, addParticipant, ensureCustomCourseTypeOption } from "@/lib/actions"
+import {
+  COURSE_TYPE_FORMAT_ERROR,
+  COURSE_TYPE_OTHER,
+  collectCourseTypeOptions,
+  formatLeadCourseType,
+  isAllowedCourseTypeValue,
+} from "@/lib/course-type"
 import { collectLeadCategoryOptions } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 
@@ -45,6 +51,7 @@ const EMPTY_FORM = {
   leadId: "",
   isExternal: true,
   courseType: "",
+  courseTypeOther: "",
   courseCategory: "",
   agreedPrice: "",
 }
@@ -104,11 +111,26 @@ export function ExternalParticipantDialog({
     setSaving(true)
     let res: { ok: boolean; error?: string }
     if (form.isExternal) {
+      let courseType = form.courseType
+      if (courseType === COURSE_TYPE_OTHER) {
+        courseType = form.courseTypeOther.trim()
+        if (!courseType) {
+          setSaving(false)
+          toast.error("יש למלא סוג קורס")
+          return
+        }
+        if (!isAllowedCourseTypeValue(courseType)) {
+          setSaving(false)
+          toast.error(COURSE_TYPE_FORMAT_ERROR)
+          return
+        }
+        await ensureCustomCourseTypeOption(courseType)
+      }
       res = await addExternalParticipant({
         leadId: form.leadId,
         fullName: form.fullName,
         phone: form.phone,
-        courseType: form.courseType,
+        courseType,
         courseCategory: form.courseCategory,
         agreedPrice:
           form.agreedPrice ? Number(form.agreedPrice) : undefined,
@@ -246,9 +268,24 @@ export function ExternalParticipantDialog({
                         {o}
                       </SelectItem>
                     ))}
+                    <SelectItem value={COURSE_TYPE_OTHER}>
+                      {COURSE_TYPE_OTHER}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {form.courseType === COURSE_TYPE_OTHER ? (
+                <div>
+                  <Label className="mb-1.5 block text-sm">סוג קורס חדש</Label>
+                  <Input
+                    value={form.courseTypeOther}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, courseTypeOther: e.target.value }))
+                    }
+                    placeholder='לדוגמה: 22, רענון 8, BLS'
+                  />
+                </div>
+              ) : null}
               <div>
                 <Label className="mb-1.5 block text-sm">קטגוריה</Label>
                 <Select

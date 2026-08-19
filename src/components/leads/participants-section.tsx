@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/sheet"
 import {
   fetchLeadParticipants,
+  ensureCustomCourseTypeOption,
   refreshWixParticipantsAction,
   removeParticipant,
   sendLmsAccessToSheets,
@@ -55,8 +56,11 @@ import {
   updateParticipantDetails,
 } from "@/lib/actions"
 import {
+  COURSE_TYPE_FORMAT_ERROR,
+  COURSE_TYPE_OTHER,
   collectCourseTypeOptions,
   formatCourseTypeLabel,
+  isAllowedCourseTypeValue,
 } from "@/lib/course-type"
 import {
   collectLeadCategoryOptions,
@@ -286,6 +290,7 @@ export function ParticipantsSection({
     feedback: "",
     isExternal: false,
     courseType: "",
+    courseTypeOther: "",
     courseCategory: "",
     agreedPrice: "",
   })
@@ -455,6 +460,7 @@ export function ParticipantsSection({
     const courseLabel = p.courseType
       ? formatCourseTypeLabel(p.courseType, { catalog: settings.courses })
       : ""
+    const inList = Boolean(courseLabel && courseOptions.includes(courseLabel))
     setEditP(p)
     setEditForm({
       fullName: p.name,
@@ -463,7 +469,12 @@ export function ParticipantsSection({
       email: p.email || "",
       feedback: p.feedback || "",
       isExternal: Boolean(p.isExternal),
-      courseType: courseLabel === "קורס" ? p.courseType || "" : courseLabel,
+      courseType: inList
+        ? courseLabel
+        : courseLabel
+          ? COURSE_TYPE_OTHER
+          : "",
+      courseTypeOther: inList ? "" : courseLabel,
       courseCategory: p.courseCategory || "",
       agreedPrice: p.agreedPrice != null ? String(p.agreedPrice) : "",
     })
@@ -478,6 +489,20 @@ export function ParticipantsSection({
       toast.error("מחיר לא תקין")
       return
     }
+    let courseType = editForm.isExternal ? editForm.courseType : null
+    if (editForm.isExternal && editForm.courseType === COURSE_TYPE_OTHER) {
+      const custom = editForm.courseTypeOther.trim()
+      if (!custom) {
+        toast.error("יש למלא סוג קורס")
+        return
+      }
+      if (!isAllowedCourseTypeValue(custom)) {
+        toast.error(COURSE_TYPE_FORMAT_ERROR)
+        return
+      }
+      await ensureCustomCourseTypeOption(custom)
+      courseType = custom
+    }
     const res = await updateParticipantDetails(editP.id, lead.id, {
       fullName: editForm.fullName,
       idNumber: editForm.idNumber,
@@ -485,7 +510,7 @@ export function ParticipantsSection({
       email: editForm.email,
       feedback: editForm.feedback,
       isExternal: editForm.isExternal,
-      courseType: editForm.isExternal ? editForm.courseType : null,
+      courseType,
       courseCategory: editForm.isExternal ? editForm.courseCategory : null,
       agreedPrice: editForm.isExternal ? agreedPrice : null,
     })
@@ -1048,22 +1073,32 @@ export function ParticipantsSection({
                       <SelectValue placeholder="בחר סוג קורס" />
                     </SelectTrigger>
                     <SelectContent>
-                      {editForm.courseType &&
-                      !courseOptions.includes(editForm.courseType) ? (
-                        <SelectItem value={editForm.courseType}>
-                          {formatCourseTypeLabel(editForm.courseType, {
-                            catalog: settings.courses,
-                          })}
-                        </SelectItem>
-                      ) : null}
                       {courseOptions.map((o) => (
                         <SelectItem key={o} value={o}>
                           {o}
                         </SelectItem>
                       ))}
+                      <SelectItem value={COURSE_TYPE_OTHER}>
+                        {COURSE_TYPE_OTHER}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+                {editForm.courseType === COURSE_TYPE_OTHER ? (
+                  <div>
+                    <Label className="mb-1.5 block text-sm">סוג קורס חדש</Label>
+                    <Input
+                      value={editForm.courseTypeOther}
+                      onChange={(e) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          courseTypeOther: e.target.value,
+                        }))
+                      }
+                      placeholder='לדוגמה: 22, רענון 8, BLS'
+                    />
+                  </div>
+                ) : null}
                 <div>
                   <Label className="mb-1.5 block text-sm">קטגוריה</Label>
                   <Select
