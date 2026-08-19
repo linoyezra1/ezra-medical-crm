@@ -23,22 +23,12 @@ function getWixTabName(): string {
 }
 
 /**
- * Columns in the Wix registration sheet (A–L, 0-indexed):
- *  A [0]: Timestamp
- *  B [1]: Full Name
- *  C [2]: ID Number
- *  D [3]: Course Date
- *  E [4]: Email
- *  F [5]: Phone
- *  G [6]: Course Type / notes
- *  H [7]: Organizer
- *  I [8]: Satisfied
- *  J [9]: Buy kit
- *  K [10]: Feedback
- *  L [11]: trainingId
+ * סדר עמודות בגיליון Wix (A–L):
+ * חותמת | שם מלא | תעודת זהות | תאריך קורס | מייל | טלפון |
+ * הערות פנימיות / סוג קורס | שם מארגן הקורס | האם היית מרוצה מההדרכה |
+ * תיק עזרה ראשונה | משוב על ההדרכה | trainingId
  */
-const WIX_COL = {
-  timestamp: 0,
+const WIX_DEFAULT_COL = {
   fullName: 1,
   idNumber: 2,
   courseDate: 3,
@@ -51,6 +41,45 @@ const WIX_COL = {
   feedback: 10,
   trainingId: 11,
 } as const
+
+type WixField = keyof typeof WIX_DEFAULT_COL
+
+const WIX_HEADER_ALIASES: Record<WixField, string[]> = {
+  fullName: ["שם מלא", "fullname", "full name"],
+  idNumber: ["תעודת זהות", "תז", "ת.ז", "id number", "idnumber"],
+  courseDate: ["תאריך קורס", "course date"],
+  email: ["מייל", "אימייל", "email"],
+  phone: ["טלפון", "phone"],
+  courseType: ["הערותפניומיות סוג קורס", "הערות פנימיות", "סוג קורס", "הערות"],
+  organizer: ["שם מארגן הקורס", "שם מארגן", "מארגן"],
+  satisfied: ["האם היית מרוצה מההדרכה", "מרוצה", "שביעות רצון"],
+  buyKit: ["תיק עזרה ראשונה", "תיק"],
+  feedback: ["משוב על ההדרכה", "משוב"],
+  trainingId: ["trainingid", "training id", "מזהה הדרכה"],
+}
+
+function normalizeHeader(value: string): string {
+  return value.replace(/\s+/g, " ").trim().toLowerCase()
+}
+
+function resolveWixColumns(headerRow: unknown[] | undefined): Record<WixField, number> {
+  const cols: Record<WixField, number> = { ...WIX_DEFAULT_COL }
+  if (!headerRow?.length) return cols
+
+  const headers = headerRow.map((cell) => normalizeHeader(String(cell || "")))
+  for (const field of Object.keys(WIX_HEADER_ALIASES) as WixField[]) {
+    const aliases = WIX_HEADER_ALIASES[field]
+    const idx = headers.findIndex((h) =>
+      aliases.some((alias) => h === alias || h.includes(alias)),
+    )
+    if (idx >= 0) cols[field] = idx
+  }
+  return cols
+}
+
+function cell(row: unknown[], index: number): string {
+  return String(row[index] ?? "").trim()
+}
 
 export type WixSyncResult = {
   ok: true
@@ -79,12 +108,18 @@ export async function refreshParticipantsFromWix(
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${tab}!A2:L`,
+      range: `${tab}!A:L`,
     })
     const allRows = res.data.values || []
+    if (allRows.length < 2) {
+      return { ok: true, added: 0, skipped: 0 }
+    }
 
-    const wixRows = allRows.filter(
-      (row) => String(row[WIX_COL.trainingId] || "").trim() === String(trainingId),
+    const cols = resolveWixColumns(allRows[0])
+    const dataRows = allRows.slice(1)
+
+    const wixRows = dataRows.filter(
+      (row) => cell(row, cols.trainingId) === String(trainingId),
     )
 
     if (!wixRows.length) {
@@ -107,16 +142,16 @@ export async function refreshParticipantsFromWix(
     let skipped = 0
 
     for (const row of wixRows) {
-      const fullName = String(row[WIX_COL.fullName] || "").trim()
-      const idNumber = String(row[WIX_COL.idNumber] || "").trim().replace(/[-\s]/g, "")
-      const courseDate = String(row[WIX_COL.courseDate] || "").trim() || null
-      const email = String(row[WIX_COL.email] || "").trim()
-      const phone = cleanPhone(String(row[WIX_COL.phone] || ""))
-      const courseType = String(row[WIX_COL.courseType] || "").trim() || null
-      const organizerName = String(row[WIX_COL.organizer] || "").trim() || null
-      const satisfaction = String(row[WIX_COL.satisfied] || "").trim() || null
-      const kitInterest = String(row[WIX_COL.buyKit] || "").trim() || null
-      const feedback = String(row[WIX_COL.feedback] || "").trim() || null
+      const fullName = cell(row, cols.fullName)
+      const idNumber = cell(row, cols.idNumber).replace(/[-\s]/g, "")
+      const courseDate = cell(row, cols.courseDate) || null
+      const email = cell(row, cols.email)
+      const phone = cleanPhone(cell(row, cols.phone))
+      const courseType = cell(row, cols.courseType) || null
+      const organizerName = cell(row, cols.organizer) || null
+      const satisfaction = cell(row, cols.satisfied) || null
+      const kitInterest = cell(row, cols.buyKit) || null
+      const feedback = cell(row, cols.feedback) || null
 
       if (!fullName && !idNumber && !phone) {
         skipped++
