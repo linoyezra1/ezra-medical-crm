@@ -54,6 +54,7 @@ export const DEFAULT_COURSE_TYPE_LABELS = [
   "רענון 8",
   "רענון 22",
   "רענון 44",
+  "BLS",
   "התנהלות בטוחה",
   "רענון עזרה ראשונה +התנהלות בטוחה",
   // תאימות לאחור לתצוגה / קטלוג קיים
@@ -69,7 +70,7 @@ export const DEFAULT_COURSE_TYPE_LABELS = [
  * או «רענון עזרה ראשונה +התנהלות בטוחה» (+ פורמטי שעות/סלג קיימים).
  */
 export const COURSE_TYPE_FORMAT_ERROR =
-  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים הבאים: מספר בלבד (למשל: 22), 'רענון' + מספר (למשל: רענון 22), 'התנהלות בטוחה', או 'רענון עזרה ראשונה +התנהלות בטוחה'."
+  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים הבאים: מספר בלבד (למשל: 22), 'רענון' + מספר (למשל: רענון 22), 'BLS', 'התנהלות בטוחה', או 'רענון עזרה ראשונה +התנהלות בטוחה'."
 
 export function isAllowedCourseTypeValue(raw: string): boolean {
   const v = raw.trim().replace(/\s+/g, " ")
@@ -79,6 +80,7 @@ export function isAllowedCourseTypeValue(raw: string): boolean {
   if (/^\d+_hours$/i.test(v)) return true
   if (/^hours[_-]?\d+(\.\d+)?$/i.test(v)) return true
   if (/^רענון\s+\d+(\.\d+)?$/.test(v)) return true
+  if (/^BLS$/i.test(v)) return true
   if (v === "התנהלות בטוחה") return true
   if (/^רענון עזרה ראשונה\s*\+\s*התנהלות בטוחה$/.test(v)) return true
   return false
@@ -154,6 +156,7 @@ export function certificateScopeForSheet(
   for (const s of sources) {
     if (!s) continue
     const normalized = s.replace(/\s+/g, " ").trim()
+    if (/^BLS$/i.test(normalized)) return "BLS"
     if (!normalized.includes("רענון")) continue
 
     const refreshNum = normalized.match(/רענון\s+(\d+(?:\.\d+)?)/)

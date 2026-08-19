@@ -50,6 +50,7 @@ import {
   refreshWixParticipantsAction,
   removeParticipant,
   sendLmsAccessToSheets,
+  sendZoomLinkEmailAction,
   setParticipantAttended,
   updateParticipantDetails,
 } from "@/lib/actions"
@@ -1150,12 +1151,6 @@ function SendZoomLinkDialog({
       })
     : ""
 
-  const appsScriptUrl =
-    process.env.NEXT_PUBLIC_APPS_SCRIPT_URL?.trim() ||
-    process.env.NEXT_PUBLIC_LMS_WEBHOOK_URL?.trim() ||
-    process.env.NEXT_PUBLIC_LMS_GOOGLE_APPS_SCRIPT_URL?.trim() ||
-    ""
-
   const [emailBusy, setEmailBusy] = useState(false)
 
   const sendWhatsApp = () => {
@@ -1183,10 +1178,6 @@ function SendZoomLinkDialog({
         toast.error("אין כתובת מייל למשתתף זה")
         return
       }
-      if (!appsScriptUrl) {
-        toast.error("חסר URL ל-Webhook של Google Apps Script")
-        return
-      }
       if (!message.trim() || !zoomLink || !session) {
         toast.error("יש להזין קישור זום בטופס ההדרכה")
         return
@@ -1194,9 +1185,7 @@ function SendZoomLinkDialog({
 
       setEmailBusy(true)
       try {
-        const payload = {
-          action: "SEND_ZOOM_LINK",
-          pin: "214215444",
+        const res = await sendZoomLinkEmailAction({
           email: participantEmail,
           fullName: (participant as unknown as { fullName?: string }).fullName || participant.name,
           zoomLink: zoomLink || "",
@@ -1204,15 +1193,11 @@ function SendZoomLinkDialog({
           dayOfWeek: weekdayNameHe(session.date),
           startTime: session.time,
           courseTitle: courseTitle || "קורס עזרה ראשונה",
-        }
-
-        await fetch(appsScriptUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
         })
-
+        if (!res.ok) {
+          toast.error(res.error)
+          return
+        }
         toast.success("קישור הזום נשלח בהצלחה למייל!")
         onOpenChange(false)
       } catch {

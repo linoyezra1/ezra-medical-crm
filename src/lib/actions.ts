@@ -2849,6 +2849,39 @@ export async function sendLmsAccessToSheets(
   }
 }
 
+/** שליחת קישור זום למייל דרך Google Apps Script */
+export async function sendZoomLinkEmailAction(data: {
+  email: string;
+  fullName: string;
+  zoomLink: string;
+  date: string;
+  dayOfWeek: string;
+  startTime: string;
+  courseTitle: string;
+}): Promise<ActionResult<{ sent: boolean }>> {
+  const webhookUrl =
+    process.env.LMS_GOOGLE_APPS_SCRIPT_URL?.trim() ||
+    process.env.GOOGLE_APPS_SCRIPT_WEBHOOK_URL?.trim();
+  if (!webhookUrl) {
+    return { ok: false, error: "חסר URL ל-Google Apps Script Webhook" };
+  }
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "SEND_ZOOM_LINK",
+        pin: "214215444",
+        ...data,
+      }),
+    });
+    return { ok: true, data: { sent: true } };
+  } catch (err) {
+    console.error("[sendZoomLinkEmailAction]", err);
+    return { ok: false, error: "שגיאה בשליחת קישור הזום למייל" };
+  }
+}
+
 /** רענון משתתפים מגיליון Wix — מסנן לפי trainingId ומונע כפילויות */
 export async function refreshWixParticipantsAction(
   leadId: string,
