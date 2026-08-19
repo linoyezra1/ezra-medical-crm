@@ -1,9 +1,16 @@
 import { prisma } from "@/lib/db"
 import {
   getSheetsClient,
-  getSpreadsheetId,
   isGoogleSheetsConfigured,
 } from "@/lib/google-sheets/client"
+
+const DEFAULT_WIX_SPREADSHEET_ID =
+  "1vy5gL9PjLQ8scNHvHPHxAtCLfWDRZm0Lr4BfdBK3Nz4"
+const DEFAULT_WIX_TAB_NAME = "WIX"
+
+function getWixSpreadsheetId(): string {
+  return process.env.WIX_SPREADSHEET_ID?.trim() || DEFAULT_WIX_SPREADSHEET_ID
+}
 
 /**
  * Wix registration sheet tab name (separate from certificates tab).
@@ -11,8 +18,8 @@ import {
  * Returned with single-quote wrapping for Google Sheets API compatibility.
  */
 function getWixTabName(): string {
-  const raw = process.env.WIX_SHEET_TAB_NAME?.trim() || "WIX"
-  return `'${raw}'`
+  const raw = process.env.WIX_SHEET_TAB_NAME?.trim() || DEFAULT_WIX_TAB_NAME
+  return `'${raw.replace(/'/g, "")}'`
 }
 
 /**
@@ -54,7 +61,7 @@ export async function refreshParticipantsFromWix(
 
   try {
     const sheets = await getSheetsClient()
-    const spreadsheetId = getSpreadsheetId()
+    const spreadsheetId = getWixSpreadsheetId()
     const tab = getWixTabName()
 
     const res = await sheets.spreadsheets.values.get({
