@@ -35,12 +35,14 @@ import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
 import {
   exportLeadParticipantsToSheets,
+  markNonAttendedInSheets,
   syncCertificateFlagsFromSheets,
   syncCertificateHoursForParticipantIds,
   tryAutoCompleteTrainingIfReady,
   exportTraineesToCertificateSheet,
 } from "@/lib/google-sheets/certificates";
 import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client";
+import { refreshParticipantsFromWix } from "@/lib/google-sheets/wix-sync";
 import {
   dbStatusToUi,
   previousLeadStatus,
@@ -1316,9 +1318,16 @@ export async function setParticipantAttended(
     traineeId = trainee.id;
   }
 
+  if (!attended) {
+    traineeId = null;
+    markNonAttendedInSheets(participantId).catch((e) =>
+      console.error("[markNonAttendedInSheets]", e),
+    );
+  }
+
   await prisma.participant.update({
     where: { id: participantId },
-    data: { attended, traineeId: traineeId || null },
+    data: { attended, traineeId },
   });
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/clients");
@@ -2838,4 +2847,15 @@ export async function sendLmsAccessToSheets(
       error: message,
     };
   }
+}
+
+/** רענון משתתפים מגיליון Wix — מסנן לפי trainingId ומונע כפילויות */
+export async function refreshWixParticipantsAction(
+  leadId: string,
+): Promise<ActionResult<{ added: number; skipped: number }>> {
+  const res = await refreshParticipantsFromWix(leadId);
+  if (!res.ok) return { ok: false, error: res.error };
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/clients");
+  return { ok: true, data: { added: res.added, skipped: res.skipped } };
 }

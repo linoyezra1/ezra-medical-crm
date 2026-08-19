@@ -32,21 +32,32 @@ export function externalParticipantsWithPrice(lead: Lead): Participant[] {
   )
 }
 
+/** משתתפים פנימיים עם תשלום אישי רשום */
+export function internalParticipantsWithPayment(lead: Lead): Participant[] {
+  return (lead.participants || []).filter(
+    (p) => !p.isExternal && money(p.agreedPrice) > 0 && isParticipantPaid(p),
+  )
+}
+
+export type ParticipantPaymentEntry = {
+  id: string
+  name: string
+  amount: number
+  paid: boolean
+}
+
 export type TrainingPaymentSummary = {
   basePrice: number
   externalExpected: number
   expectedTotal: number
   baseCollected: number
   externalCollected: number
+  internalCollected: number
   collectedTotal: number
   remaining: number
   progressPct: number
-  externals: Array<{
-    id: string
-    name: string
-    amount: number
-    paid: boolean
-  }>
+  externals: ParticipantPaymentEntry[]
+  internals: ParticipantPaymentEntry[]
 }
 
 /**
@@ -68,9 +79,18 @@ export function computeTrainingPaymentSummary(
   const externalCollected = externals
     .filter((p) => p.paid)
     .reduce((s, p) => s + p.amount, 0)
+
+  const internals = internalParticipantsWithPayment(lead).map((p) => ({
+    id: p.id,
+    name: p.name,
+    amount: money(p.agreedPrice),
+    paid: true,
+  }))
+  const internalCollected = internals.reduce((s, p) => s + p.amount, 0)
+
   const baseCollected = isLeadPaid(lead) ? basePrice : 0
   const expectedTotal = basePrice + externalExpected
-  const collectedTotal = baseCollected + externalCollected
+  const collectedTotal = baseCollected + externalCollected + internalCollected
   const remaining = Math.max(0, expectedTotal - collectedTotal)
   const progressPct =
     expectedTotal > 0
@@ -82,10 +102,12 @@ export function computeTrainingPaymentSummary(
     expectedTotal,
     baseCollected,
     externalCollected,
+    internalCollected,
     collectedTotal,
     remaining,
     progressPct,
     externals,
+    internals,
   }
 }
 
@@ -171,7 +193,7 @@ export function computeTrainingProfit(
     .filter((e) => !isInstructorExpenseType(e.type))
     .reduce((s, e) => s + (e.amount || 0), 0)
 
-  const revenue = pay.basePrice + pay.externalCollected + salesIncome
+  const revenue = pay.basePrice + pay.externalCollected + pay.internalCollected + salesIncome
   const totalExpenses =
     instructorFee + otherExpenses + salesCost + salesCommissions
   return {

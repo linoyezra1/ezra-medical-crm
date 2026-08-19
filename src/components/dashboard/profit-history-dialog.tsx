@@ -158,7 +158,7 @@ export function ProfitHistoryDialog({
                             </div>
                             <div className="mt-2 grid grid-cols-3 gap-1 text-[11px]">
                               <div>
-                                <p className="text-muted-foreground">מחיר</p>
+                                <p className="text-muted-foreground">נגבה</p>
                                 <p className="font-semibold">
                                   {formatCurrency(tx.revenue)}
                                 </p>
@@ -183,6 +183,11 @@ export function ProfitHistoryDialog({
                                 </p>
                               </div>
                             </div>
+                            {tx.remaining > 0 && (
+                              <p className="mt-1 text-[10px] text-amber-800">
+                                יתרה לגבייה: {formatCurrency(tx.remaining)}
+                              </p>
+                            )}
                           </Link>
                         ))}
                       </div>

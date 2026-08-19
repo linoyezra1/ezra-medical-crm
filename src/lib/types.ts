@@ -122,6 +122,7 @@ export interface Participant {
   paymentMethod?: string;
   paymentReceivedBy?: string;
   paymentReceiptIssued?: boolean;
+  source?: string;
 }
 
 export interface TrainingSale {

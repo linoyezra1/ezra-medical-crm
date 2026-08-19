@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/sheet"
 import {
   fetchLeadParticipants,
+  refreshWixParticipantsAction,
   removeParticipant,
   sendLmsAccessToSheets,
   setParticipantAttended,
@@ -74,6 +75,14 @@ function ExternalTag() {
   return (
     <span className="shrink-0 rounded bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-pink-700">
       חיצוני
+    </span>
+  )
+}
+
+function WixTag() {
+  return (
+    <span className="shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-indigo-700">
+      Wix
     </span>
   )
 }
@@ -352,6 +361,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
     const poll = async () => {
       try {
         setPolling(true)
+        await refreshWixParticipantsAction(lead.id).catch(() => {})
         const rows = await fetchLeadParticipants(lead.id)
         if (!cancelled) setLeadParticipants(lead.id, rows)
       } catch {
@@ -710,6 +720,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                             )}
                             <span className="truncate">{p.name}</span>
                             {p.isExternal ? <ExternalTag /> : null}
+                            {p.source === "Wix" ? <WixTag /> : null}
                             {p.isExternal && p.agreedPrice != null ? (
                               <span className="shrink-0 text-[10px] font-semibold text-pink-700">
                                 {formatCurrency(p.agreedPrice)}
@@ -889,6 +900,7 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                           {p.name} – {p.idNumber}
                         </span>
                         {p.isExternal ? <ExternalTag /> : null}
+                        {p.source === "Wix" ? <WixTag /> : null}
                       </p>
                     </button>
 

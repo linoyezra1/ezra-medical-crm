@@ -10,6 +10,7 @@ import {
   GraduationCap,
   LayoutGrid,
   LayoutDashboard,
+  Receipt,
   Settings,
   UserRound,
   Users,
@@ -35,6 +36,7 @@ const NAV = [
 
 const MORE = [
   { href: "/quick-actions", label: "פעולות מהירות", icon: Zap },
+  { href: "/payment-history", label: "היסטוריית תשלומים", icon: Receipt },
   { href: "/equipment", label: "ניהול מלאי", icon: Boxes },
   { href: "/calendar", label: "יומן ומשימות", icon: CalendarDays },
   { href: "/instructors", label: "ניהול מדריכים", icon: UserRound },

@@ -72,10 +72,15 @@ export function TraineesPanel() {
   const [issueOpen, setIssueOpen] = useState(false)
   const [issueParticipantIds, setIssueParticipantIds] = useState<string[]>([])
 
+  const activeTrainees = useMemo(
+    () => trainees.filter((t) => t.trainings.length > 0),
+    [trainees],
+  )
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
-    if (!term) return trainees
-    return trainees.filter(
+    if (!term) return activeTrainees
+    return activeTrainees.filter(
       (t) =>
         t.fullName.toLowerCase().includes(term) ||
         t.idNumber.includes(term) ||
@@ -196,12 +201,18 @@ export function TraineesPanel() {
   }
 
   const openIssueCertificates = () => {
-    const selected = trainees.filter((t) => selectedIds.has(t.id))
+    const selected = activeTrainees.filter((t) => selectedIds.has(t.id))
     if (!selected.length) {
       toast.error("יש לסמן מודרכים להפקת תעודות")
       return
     }
-    // משויכים: participantId · לא משויכים: trainee.id (מיוצא לשיטס כמזהה)
+    const noTraining = selected.filter((t) => t.trainings.length === 0)
+    if (noTraining.length) {
+      toast.error(
+        `המודרך ${noTraining[0].fullName} לא נכח בהדרכה, לכן לא ניתן להנפיק תעודה`,
+      )
+      return
+    }
     const sheetIds = [
       ...new Set(
         selected.map((t) => t.trainings[0]?.participantId || t.id),

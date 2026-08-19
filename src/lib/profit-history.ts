@@ -1,6 +1,10 @@
 import { formatCourseTypeLabel } from "@/lib/course-type"
-import { isLeadPaid } from "@/lib/payment"
-import { computeTrainingProfit } from "@/lib/training-profit"
+import {
+  computeTrainingPaymentSummary,
+  computeTrainingProfit,
+  leadHasLoggedPayment,
+  type TrainingPaymentSummary,
+} from "@/lib/training-profit"
 import { formatInJerusalem } from "@/lib/timezone"
 import type {
   CourseCatalogItem,
@@ -18,6 +22,7 @@ export type ProfitTransaction = {
   revenue: number
   expenses: number
   netProfit: number
+  remaining: number
   clientId: string
   clientName: string
 }
@@ -33,9 +38,9 @@ export type ProfitMonthGroup = {
 
 const REVENUE_EQUIPMENT_STATUSES = new Set(["order", "invoice", "paid"])
 
-/** הדרכות שנכללות ברווח — רק אם שולמו */
+/** הדרכות שנכללות ברווח — כל הדרכה עם תשלום בפועל */
 function isRevenueLead(lead: Lead): boolean {
-  return isLeadPaid(lead)
+  return leadHasLoggedPayment(lead)
 }
 
 function toDateKey(isoOrDate: string | undefined, fallback: string): string {
@@ -138,7 +143,14 @@ export function buildProfitTransactions(
     if (!isRevenueLead(lead)) continue
 
     const date = toDateKey(lead.date, lead.updatedAt || lead.createdAt)
+    const pay = computeTrainingPaymentSummary(lead)
     const profit = computeTrainingProfit(lead, instructors)
+
+    const paidSalesIncome = (lead.trainingSales || [])
+      .filter((s) => s.paymentStatus === "paid")
+      .reduce((s, x) => s + (x.unitSellingPrice || 0) * (x.quantity || 0), 0)
+    const cashRevenue = pay.collectedTotal + paidSalesIncome
+    const cashExpenses = profit.totalExpenses
 
     rows.push({
       id: lead.id,
@@ -146,9 +158,10 @@ export function buildProfitTransactions(
       date,
       monthKey: date.slice(0, 7),
       itemLabel: courseItemLabel(lead, courses),
-      revenue: profit.revenue,
-      expenses: profit.totalExpenses,
-      netProfit: profit.netProfit,
+      revenue: cashRevenue,
+      expenses: cashExpenses,
+      netProfit: cashRevenue - cashExpenses,
+      remaining: pay.remaining,
       clientId: lead.clientId,
       clientName: lead.name,
     })
@@ -168,6 +181,7 @@ export function buildProfitTransactions(
       revenue,
       expenses: 0,
       netProfit: revenue,
+      remaining: 0,
       clientId: deal.clientId,
       clientName: deal.contactName || "לקוח ציוד",
     })

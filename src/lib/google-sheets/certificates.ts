@@ -31,6 +31,7 @@ export const CERTIFICATE_SHEET_HEADERS = [
   "תאריך ייצוא", // L
   "מזהה משתתף (ID)", // M — CRM_PARTICIPANT_ID
   "קישור PDF לתעודה", // N — certificateUrl
+  "נוכחות", // O — attended
 ] as const
 
 /** אינדקסים 0-based לפי מבנה הגיליון */
@@ -49,11 +50,12 @@ const COL = {
   exportTimestamp: 11, // L
   crmId: 12, // M — CRM_PARTICIPANT_ID
   pdfUrl: 13, // N — קישור PDF
+  attended: 14, // O — נוכחות
 } as const
 
-const SHEET_RANGE_HEADER = "A1:N1"
-const SHEET_RANGE_DATA = "A2:N"
-const SHEET_RANGE_APPEND = "A:N"
+const SHEET_RANGE_HEADER = "A1:O1"
+const SHEET_RANGE_DATA = "A2:O"
+const SHEET_RANGE_APPEND = "A:O"
 /** עמודת מזהה משתתף למניעת כפילויות */
 const SHEET_RANGE_CRM_IDS = "M:M"
 
@@ -158,6 +160,7 @@ function participantRow(p: {
     exportTimestamp, // L
     p.id, // M — CRM_PARTICIPANT_ID
     "", // N — קישור PDF (מילוי בגיליון / Apps Script)
+    "TRUE", // O — נוכחות
   ]
 }
 
@@ -245,6 +248,49 @@ export async function exportLeadParticipantsToSheets(
     return {
       ok: false,
       error: err instanceof Error ? err.message : "שגיאה בייצוא ל-Google Sheets",
+    }
+  }
+}
+
+/**
+ * סימון משתתף כ"לא נכח" בגיליון (עמודה O) לפי CRM ID בעמודה M.
+ * לא מוחק את השורה — רק מעדכן את עמודת הנוכחות.
+ */
+export async function markNonAttendedInSheets(
+  participantId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isGoogleSheetsConfigured()) return { ok: true }
+  try {
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${tab}!M:M`,
+    })
+    const rows = res.data.values || []
+    let rowIndex = -1
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i]?.[0] || "").trim() === participantId) {
+        rowIndex = i + 1
+        break
+      }
+    }
+    if (rowIndex < 0) return { ok: true }
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tab}!O${rowIndex}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [["לא נכח"]] },
+    })
+    return { ok: true }
+  } catch (err) {
+    console.error("[markNonAttendedInSheets]", err)
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "שגיאה בעדכון גיליון",
     }
   }
 }

@@ -197,6 +197,8 @@ export function mapLead(db: DbLeadFull): Lead {
       paymentReceiptIssued: Boolean(
         (p as { paymentReceiptIssued?: boolean }).paymentReceiptIssued,
       ),
+      source:
+        (p as { source?: string | null }).source || "manual",
     })),
     expenses: (db.expenses || []).map((e) => ({
       id: e.id,

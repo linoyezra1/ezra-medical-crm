@@ -236,6 +236,8 @@ model Participant {
   paymentMethod   String?
   paymentReceivedBy String?
   paymentReceiptIssued Boolean @default(false)
+  /** מקור הרשמה: manual | Wix */
+  source          String   @default("manual")
   createdAt       DateTime @default(now())
   trainingSales   TrainingSale[]
 

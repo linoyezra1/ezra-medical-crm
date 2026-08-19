@@ -612,6 +612,20 @@ function FinanceTab({ lead }: { lead: Lead }) {
               </span>
             </li>
           ))}
+          {payments.internals.map((p) => (
+            <li
+              key={p.id}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="min-w-0 truncate text-muted-foreground">
+                {p.name} · תשלום אישי
+              </span>
+              <span className="shrink-0 font-semibold">
+                {formatCurrency(p.amount)}
+                <span className="mr-1 text-emerald-700"> · נגבה</span>
+              </span>
+            </li>
+          ))}
         </ul>
       </Card>
 
