@@ -45,24 +45,8 @@ const LABEL_TO_SLUG: Record<string, string> = {
   "החייאת תינוקות (גן)": "infant_kindergarten",
 }
 
-/** תוויות ברירת מחדל שתמיד יופיעו ברשימה */
-export const DEFAULT_COURSE_TYPE_LABELS = [
-  "8",
-  "22",
-  "44",
-  "60",
-  "רענון 8",
-  "רענון 22",
-  "רענון 44",
-  "BLS",
-  "התנהלות בטוחה",
-  "רענון עזרה ראשונה +התנהלות בטוחה",
-  // תאימות לאחור לתצוגה / קטלוג קיים
-  "8 שעות",
-  "22 שעות",
-  "44 שעות",
-  "60 שעות",
-] as const
+/** תוויות ברירת מחדל — ריק; סוגים חדשים נוספים דרך «אחר» */
+export const DEFAULT_COURSE_TYPE_LABELS: readonly string[] = []
 
 /**
  * אימות סוג קורס — רק:
@@ -285,7 +269,8 @@ export function findCourseCatalog(
 
 /**
  * רשימת אפשרויות ייחודיות לדרופדאון:
- * ברירות מחדל + קטלוג + ערכים שנשמרו בלידים
+ * סוגים מותאמים שנשמרו (דרך «אחר») + קטלוג שאינו ברירת מחדל.
+ * לא מזריקים יותר רשימת סוגים קבועה.
  */
 export function collectCourseTypeOptions(
   leads: Array<Pick<Lead, "courseType"> & { courseTypeOther?: string | null }>,
@@ -293,23 +278,37 @@ export function collectCourseTypeOptions(
 ): string[] {
   const set = new Set<string>()
 
-  for (const label of DEFAULT_COURSE_TYPE_LABELS) {
-    set.add(label)
-  }
-
   for (const c of catalog || []) {
+    if (isSeededCourseSlug(c.type)) continue
     const label = formatCourseTypeLabel(c.type, { catalog })
     if (label && label !== COURSE_TYPE_OTHER) set.add(label)
   }
 
   for (const lead of leads) {
+    const raw = (lead.courseType || "").trim()
+    if (isSeededCourseSlug(raw) || raw === "other" || raw === COURSE_TYPE_OTHER) {
+      const other = (lead.courseTypeOther || "").trim()
+      if (other && !isSeededCourseSlug(other)) set.add(other)
+      continue
+    }
     const label = formatLeadCourseType(lead, catalog)
-    if (label && label !== COURSE_TYPE_OTHER && label !== "קורס" && label !== "לא צוין") {
+    if (
+      label &&
+      label !== COURSE_TYPE_OTHER &&
+      label !== "קורס" &&
+      label !== "לא צוין"
+    ) {
       set.add(label)
     }
   }
 
   return Array.from(set).sort((a, b) => a.localeCompare(b, "he"))
+}
+
+function isSeededCourseSlug(raw: string): boolean {
+  const v = raw.trim()
+  if (!v) return false
+  return Boolean(SLUG_TO_LABEL[v] || SLUG_TO_LABEL[v.toLowerCase()])
 }
 
 /**

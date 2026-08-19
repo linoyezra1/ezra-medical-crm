@@ -35,7 +35,7 @@ import {
   resolvedInstructorName,
   type InstructorAssignValue,
 } from "@/components/instructors/instructor-select-field"
-import { ensureInstructor } from "@/lib/actions"
+import { ensureCustomCourseTypeOption, ensureInstructor } from "@/lib/actions"
 import {
   calcTotal,
   cleanPhone,
@@ -102,7 +102,7 @@ export function LeadForm({ existing }: Props) {
     : "44"
   const initialCourseSelect =
     !existing
-      ? "44"
+      ? COURSE_TYPE_OTHER
       : existing.courseType === "other" ||
           existing.courseType === COURSE_TYPE_OTHER ||
           !courseTypeOptions.includes(initialCourseLabel)
@@ -474,6 +474,14 @@ export function LeadForm({ existing }: Props) {
         }
         instructorName = ensured.data.name
         instructorId = ensured.data.id
+      }
+
+      if (
+        !form.isPrivateCourse &&
+        courseResolved.courseType &&
+        courseResolved.courseType !== COURSE_TYPE_OTHER
+      ) {
+        await ensureCustomCourseTypeOption(courseResolved.courseType)
       }
 
       const payload: Lead = {

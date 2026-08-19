@@ -2571,6 +2571,24 @@ export async function upsertCourseAsset(data: {
   return { ok: true as const };
 }
 
+/** שומר סוג קורס מותאם לרשימת ההצעות (בלי לדרוס תבניות קיימות) */
+export async function ensureCustomCourseTypeOption(courseType: string) {
+  const type = courseType.trim();
+  if (!type || type === "other" || type === "אחר") {
+    return { ok: true as const };
+  }
+  const existing = await prisma.courseAsset.findUnique({
+    where: { courseType: type },
+  });
+  if (existing) return { ok: true as const };
+  await prisma.courseAsset.create({
+    data: { courseType: type, title: type },
+  });
+  revalidatePath("/");
+  revalidatePath("/leads");
+  return { ok: true as const };
+}
+
 /** @deprecated יצירת LMS היא ברמת מודרך — השתמשו ב־/api/lms/create-user */
 export async function createLmsUser(
   _leadId: string,

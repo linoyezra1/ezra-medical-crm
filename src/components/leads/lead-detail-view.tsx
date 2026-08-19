@@ -6,13 +6,13 @@ import { useState } from "react"
 import {
   ArrowRight,
   CalendarPlus,
-  ChevronDown,
   CreditCard,
   FileSpreadsheet,
   LayoutDashboard,
   MapPin,
   Pencil,
   Phone,
+  Send,
   UserPlus,
   Users,
   Video,
@@ -219,7 +219,7 @@ export function LeadDetailView({
                 external
                 className="bg-white/80 text-primary shadow-sm"
               >
-                <ChevronDown className="size-6" />
+                <Send className="size-6" />
               </IconAction>
               <IconAction
                 href={whatsappLink(lead.phone)}
