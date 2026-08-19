@@ -179,7 +179,7 @@ function participantRow(p: {
 }
 
 function crmIdRowMap(
-  columnM: unknown[][] | undefined,
+  columnM: unknown[][] | null | undefined,
 ): Map<string, number> {
   const map = new Map<string, number>()
   for (let i = 0; i < (columnM || []).length; i++) {
