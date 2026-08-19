@@ -6,6 +6,7 @@ import { useState } from "react"
 import {
   ArrowRight,
   CalendarPlus,
+  ChevronDown,
   CreditCard,
   FileSpreadsheet,
   LayoutDashboard,
@@ -35,9 +36,11 @@ import {
 import { exportLeadCertificatesToSheetsAction } from "@/lib/actions"
 import {
   formatCurrency,
+  formatDate,
   formatDateWithWeekday,
   formatLeadCategory,
   downloadLeadIcs,
+  weekdayNameHe,
   whatsappLink,
 } from "@/lib/helpers"
 import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
@@ -96,6 +99,28 @@ export function LeadDetailView({
 
   const zoomInvite = sessions.find((s) => s.zoomLink?.trim())
   const zoomLink = zoomInvite?.zoomLink?.trim() || ""
+  const primarySession = sessions[0]
+  const sessionDate = primarySession?.date || lead.date
+  const sessionTime = primarySession?.time || lead.time
+  const sessionIsZoom = Boolean(primarySession?.isZoom) || allZoom
+  const locationText = sessionIsZoom
+    ? "בזום"
+    : sessionLocationLabel(
+        primarySession || {
+          city: lead.address.city,
+          street: lead.address.street,
+          houseNumber: lead.address.houseNumber,
+        },
+      )
+  const trainingDetailsWhatsApp = [
+    "פרטי הדרכה:",
+    sessionDate ? formatDate(sessionDate) : "",
+    sessionDate ? weekdayNameHe(sessionDate) : "",
+    sessionTime ? `ב${sessionTime}` : "",
+    locationText || "",
+  ]
+    .filter((line) => line !== "")
+    .join("\n")
   const wazeUrl =
     addressLine && addressLine !== "זום"
       ? `https://waze.com/ul?q=${encodeURIComponent(addressLine)}&navigate=yes`
@@ -187,6 +212,14 @@ export function LeadDetailView({
                 className="bg-white/80 text-primary shadow-sm"
               >
                 <Phone className="size-6" />
+              </IconAction>
+              <IconAction
+                href={whatsappLink(lead.phone, trainingDetailsWhatsApp)}
+                label="שליחת פרטי הדרכה"
+                external
+                className="bg-white/80 text-primary shadow-sm"
+              >
+                <ChevronDown className="size-6" />
               </IconAction>
               <IconAction
                 href={whatsappLink(lead.phone)}
