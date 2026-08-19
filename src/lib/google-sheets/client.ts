@@ -85,6 +85,12 @@ export function getSheetTabName(): string {
   return process.env.GOOGLE_SHEETS_TAB_NAME?.trim() || "תעודות"
 }
 
+/** טווח A1 עם שם טאב בעברית / תווים מיוחדים */
+export function sheetA1(tab: string, a1: string): string {
+  const name = (tab || "תעודות").replace(/'/g, "''")
+  return `'${name}'!${a1}`
+}
+
 export async function getSheetsClient(): Promise<sheets_v4.Sheets> {
   const sa = loadServiceAccount()
   if (!sa) {

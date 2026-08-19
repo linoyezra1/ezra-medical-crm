@@ -191,7 +191,7 @@ export function TraineesPanel() {
       return
     }
     toast.success(
-      `סנכרון הושלם: עודכנו ${res.data.updated} מודרכים` +
+      `סנכרון הושלם: יוצאו ${res.data.exported} חדשים · עודכנו ${res.data.updated} מודרכים` +
         (res.data.autoCompleted
           ? ` · ${res.data.autoCompleted} הדרכות הושלמו אוטומטית`
           : ""),

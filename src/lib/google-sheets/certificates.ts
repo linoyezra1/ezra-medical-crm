@@ -9,12 +9,14 @@ import {
   getSheetsClient,
   getSpreadsheetId,
   isGoogleSheetsConfigured,
+  sheetA1,
 } from "@/lib/google-sheets/client"
 import { formatInJerusalem } from "@/lib/timezone"
 
 /**
- * כותרות עמודות בגיליון «תעודות» — 14 עמודות בסדר קבוע (A–N)
+ * כותרות עמודות בגיליון «תעודות» — 15 עמודות בסדר קבוע (A–O)
  * G–H / N ממולאים בגיליון או ע״י Apps Script
+ * O = נוכחות (TRUE / לא נכח)
  */
 export const CERTIFICATE_SHEET_HEADERS = [
   "שם מלא", // A
@@ -79,13 +81,13 @@ async function ensureHeaderRow() {
   const sheets = await getSheetsClient()
   const spreadsheetId = getSpreadsheetId()
   const tab = getSheetTabName()
-  const range = `${tab}!${SHEET_RANGE_HEADER}`
+  const range = sheetA1(tab, SHEET_RANGE_HEADER)
   const existing = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range,
   })
   const row = existing.data.values?.[0]
-  // אם יש כבר שורת כותרת עם לפחות 13 תאים — לא דורסים (הגיליון עשוי להיות מוגדר ידנית)
+  // אם יש כבר שורת כותרת מלאה (A–O) — לא דורסים
   if (row && row.length >= CERTIFICATE_SHEET_HEADERS.length) return
 
   await sheets.spreadsheets.values.update({
@@ -115,6 +117,17 @@ function hoursScopeForSheet(
   return certificateScopeForSheet(courseType, courseTypeOther)
 }
 
+function attendanceCell(attended: boolean): string {
+  return attended ? "TRUE" : "לא נכח"
+}
+
+function isNonAttendedCell(value: unknown): boolean {
+  const s = String(value ?? "")
+    .trim()
+    .toLowerCase()
+  return s === "לא נכח" || s === "false" || s === "no" || s === "0"
+}
+
 function participantRow(p: {
   id: string
   fullName: string
@@ -123,6 +136,7 @@ function participantRow(p: {
   email: string | null
   organizerName: string | null
   courseDate: string | null
+  attended?: boolean | null
   isExternal?: boolean | null
   courseType?: string | null
   trainee?: {
@@ -160,14 +174,35 @@ function participantRow(p: {
     exportTimestamp, // L
     p.id, // M — CRM_PARTICIPANT_ID
     "", // N — קישור PDF (מילוי בגיליון / Apps Script)
-    "TRUE", // O — נוכחות
+    attendanceCell(Boolean(p.attended)), // O — נוכחות
   ]
 }
 
-/** ייצוא משתתפי הדרכה לגיליון (append בלבד, ללא כפילויות לפי CRM_PARTICIPANT_ID בעמודה M) */
+function crmIdRowMap(
+  columnM: unknown[][] | undefined,
+): Map<string, number> {
+  const map = new Map<string, number>()
+  for (let i = 0; i < (columnM || []).length; i++) {
+    const id = String(columnM?.[i]?.[0] || "").trim()
+    if (
+      !id ||
+      id.includes("מזהה משתתף") ||
+      id === "CRM_PARTICIPANT_ID"
+    ) {
+      continue
+    }
+    if (!map.has(id)) map.set(id, i + 1)
+  }
+  return map
+}
+
+/** ייצוא נוכחים לגיליון + עדכון עמודת נוכחות לשורות קיימות */
 export async function exportLeadParticipantsToSheets(
   leadId: string,
-): Promise<{ ok: true; exported: number } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; exported: number; attendanceUpdated: number }
+  | { ok: false; error: string }
+> {
   if (!isGoogleSheetsConfigured()) {
     return {
       ok: false,
@@ -202,47 +237,61 @@ export async function exportLeadParticipantsToSheets(
       orderBy: { createdAt: "asc" },
     })
 
-    if (!participants.length) return { ok: true, exported: 0 }
+    if (!participants.length) {
+      return { ok: true, exported: 0, attendanceUpdated: 0 }
+    }
 
-    // מזהים שכבר בגיליון — עמודה M
     const existing = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${tab}!${SHEET_RANGE_CRM_IDS}`,
+      range: sheetA1(tab, SHEET_RANGE_CRM_IDS),
     })
-    const existingIds = new Set(
-      (existing.data.values || [])
-        .flat()
-        .map((v) => String(v || "").trim())
-        .filter(
-          (v) =>
-            v &&
-            !v.includes("מזהה משתתף") &&
-            v !== "CRM_PARTICIPANT_ID",
-        ),
-    )
+    const rowById = crmIdRowMap(existing.data.values)
 
-    // כפילויות רק לפי עמודה M בגיליון — לא לפי sheetsExportedAt ב-DB
-    // (מחיקה מהגיליון מאפשרת ייצוא מחדש אוטומטית)
-    const toExport = participants.filter((p) => !existingIds.has(p.id))
-    if (!toExport.length) return { ok: true, exported: 0 }
+    const rowIndexFor = (p: { id: string; traineeId: string | null }) =>
+      rowById.get(p.id) || (p.traineeId ? rowById.get(p.traineeId) : undefined)
 
-    const values = toExport.map((p) => participantRow(p))
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: `${tab}!${SHEET_RANGE_APPEND}`,
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values },
-    })
+    const attendanceUpdates: { range: string; values: string[][] }[] = []
+    for (const p of participants) {
+      const rowIndex = rowIndexFor(p)
+      if (!rowIndex) continue
+      attendanceUpdates.push({
+        range: sheetA1(tab, `O${rowIndex}`),
+        values: [[attendanceCell(Boolean(p.attended))]],
+      })
+    }
+    if (attendanceUpdates.length) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          valueInputOption: "USER_ENTERED",
+          data: attendanceUpdates,
+        },
+      })
+    }
 
-    // חותמת אופציונלית לביקורת בלבד — לא משמשת לחסימת ייצוא
-    const now = new Date()
-    await prisma.participant.updateMany({
-      where: { id: { in: toExport.map((p) => p.id) } },
-      data: { sheetsExportedAt: now },
-    })
+    // כל מי שעדיין לא בגיליון (גם נרשם חדש שטרם סומן נוכחות)
+    const toExport = participants.filter((p) => !rowIndexFor(p))
+    if (toExport.length) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: sheetA1(tab, SHEET_RANGE_APPEND),
+        valueInputOption: "USER_ENTERED",
+        insertDataOption: "INSERT_ROWS",
+        requestBody: { values: toExport.map((p) => participantRow(p)) },
+      })
 
-    return { ok: true, exported: toExport.length }
+      const now = new Date()
+      await prisma.participant.updateMany({
+        where: { id: { in: toExport.map((p) => p.id) } },
+        data: { sheetsExportedAt: now },
+      })
+    }
+
+    return {
+      ok: true,
+      exported: toExport.length,
+      attendanceUpdated: attendanceUpdates.length,
+    }
   } catch (err) {
     console.error("[exportLeadParticipantsToSheets]", err)
     return {
@@ -253,11 +302,12 @@ export async function exportLeadParticipantsToSheets(
 }
 
 /**
- * סימון משתתף כ"לא נכח" בגיליון (עמודה O) לפי CRM ID בעמודה M.
- * לא מוחק את השורה — רק מעדכן את עמודת הנוכחות.
+ * עדכון נוכחות בגיליון (עמודה O) לפי CRM ID בעמודה M.
+ * אם הנוכח עדיין לא בגיליון — לא יוצר שורה (הייצוא המלא עושה זאת).
  */
-export async function markNonAttendedInSheets(
+export async function setAttendanceInSheets(
   participantId: string,
+  attended: boolean,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!isGoogleSheetsConfigured()) return { ok: true }
   try {
@@ -267,27 +317,101 @@ export async function markNonAttendedInSheets(
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${tab}!M:M`,
+      range: sheetA1(tab, "M:M"),
     })
-    const rows = res.data.values || []
-    let rowIndex = -1
-    for (let i = 0; i < rows.length; i++) {
-      if (String(rows[i]?.[0] || "").trim() === participantId) {
-        rowIndex = i + 1
-        break
-      }
-    }
-    if (rowIndex < 0) return { ok: true }
+    const rowIndex = crmIdRowMap(res.data.values).get(participantId)
+    if (!rowIndex) return { ok: true }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${tab}!O${rowIndex}`,
+      range: sheetA1(tab, `O${rowIndex}`),
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [["לא נכח"]] },
+      requestBody: { values: [[attendanceCell(attended)]] },
     })
     return { ok: true }
   } catch (err) {
-    console.error("[markNonAttendedInSheets]", err)
+    console.error("[setAttendanceInSheets]", err)
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "שגיאה בעדכון גיליון",
+    }
+  }
+}
+
+/** תאימות לשם הישן */
+export async function markNonAttendedInSheets(
+  participantId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return setAttendanceInSheets(participantId, false)
+}
+
+/** עדכון O, ואם נוכח ועדיין לא בגיליון — מוסיף שורה */
+export async function syncParticipantAttendanceToSheets(
+  participantId: string,
+  attended: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isGoogleSheetsConfigured()) return { ok: true }
+  try {
+    await ensureHeaderRow()
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+
+    const p = await prisma.participant.findUnique({
+      where: { id: participantId },
+      include: {
+        trainee: {
+          select: {
+            certificateEmailSent: true,
+            certificateCardPrinted: true,
+          },
+        },
+        lead: {
+          select: {
+            fullName: true,
+            scheduledStart: true,
+            courseType: true,
+            courseTypeOther: true,
+          },
+        },
+      },
+    })
+    if (!p) return { ok: true }
+
+    const colM = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: sheetA1(tab, "M:M"),
+    })
+    const rowById = crmIdRowMap(colM.data.values)
+    const rowIndex =
+      rowById.get(participantId) ||
+      (p.traineeId ? rowById.get(p.traineeId) : undefined)
+    if (rowIndex) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: sheetA1(tab, `O${rowIndex}`),
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [[attendanceCell(attended)]] },
+      })
+      return { ok: true }
+    }
+
+    if (!attended) return { ok: true }
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: sheetA1(tab, SHEET_RANGE_APPEND),
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [participantRow({ ...p, attended: true })] },
+    })
+    await prisma.participant.update({
+      where: { id: participantId },
+      data: { sheetsExportedAt: new Date() },
+    })
+    return { ok: true }
+  } catch (err) {
+    console.error("[syncParticipantAttendanceToSheets]", err)
     return {
       ok: false,
       error: err instanceof Error ? err.message : "שגיאה בעדכון גיליון",
@@ -301,7 +425,7 @@ async function fetchExistingCrmIdsInSheet(): Promise<Set<string>> {
   const tab = getSheetTabName()
   const existing = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${tab}!${SHEET_RANGE_CRM_IDS}`,
+    range: sheetA1(tab, SHEET_RANGE_CRM_IDS),
   })
   return new Set(
     (existing.data.values || [])
@@ -343,7 +467,6 @@ export async function exportTraineesToCertificateSheet(
       where: { id: { in: ids } },
       include: {
         participants: {
-          take: 1,
           orderBy: { createdAt: "desc" },
           include: {
             lead: {
@@ -362,7 +485,11 @@ export async function exportTraineesToCertificateSheet(
     if (!trainees.length) return { ok: true, exported: 0 }
 
     const existingIds = await fetchExistingCrmIdsInSheet()
-    const toExport = trainees.filter((t) => !existingIds.has(t.id))
+    const toExport = trainees.filter(
+      (t) =>
+        !existingIds.has(t.id) &&
+        !t.participants.some((p) => existingIds.has(p.id)),
+    )
     if (!toExport.length) return { ok: true, exported: 0 }
 
     const values = toExport.map((t) => {
@@ -386,14 +513,15 @@ export async function exportTraineesToCertificateSheet(
         "",
         p?.organizerName || lead?.fullName || "",
         new Date().toISOString(),
-        t.id, // M — מזהה מודרך (גם ללא שיוך להדרכה)
+        p?.id || t.id, // M — מזהה משתתף אם יש, אחרת מודרך
         "", // N — קישור PDF
+        "TRUE", // O — נוכחות
       ]
     })
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${tab}!${SHEET_RANGE_APPEND}`,
+      range: sheetA1(tab, SHEET_RANGE_APPEND),
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values },
@@ -405,6 +533,74 @@ export async function exportTraineesToCertificateSheet(
     return {
       ok: false,
       error: err instanceof Error ? err.message : "שגיאה בייצוא מודרכים ל-Google Sheets",
+    }
+  }
+}
+
+/** מוסיף לגיליון נוכחים שעדיין לא יוצאו (למשל מסך מודרכים) */
+export async function exportMissingAttendedToSheets(): Promise<
+  { ok: true; exported: number } | { ok: false; error: string }
+> {
+  if (!isGoogleSheetsConfigured()) {
+    return {
+      ok: false,
+      error: "Google Sheets לא מוגדר (חסרים משתני סביבה)",
+    }
+  }
+  try {
+    await ensureHeaderRow()
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+
+    const participants = await prisma.participant.findMany({
+      where: { attended: true },
+      include: {
+        trainee: {
+          select: {
+            certificateEmailSent: true,
+            certificateCardPrinted: true,
+          },
+        },
+        lead: {
+          select: {
+            fullName: true,
+            scheduledStart: true,
+            courseType: true,
+            courseTypeOther: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    })
+    if (!participants.length) return { ok: true, exported: 0 }
+
+    const existingIds = await fetchExistingCrmIdsInSheet()
+    const toExport = participants.filter(
+      (p) =>
+        !existingIds.has(p.id) &&
+        !(p.traineeId && existingIds.has(p.traineeId)),
+    )
+    if (!toExport.length) return { ok: true, exported: 0 }
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: sheetA1(tab, SHEET_RANGE_APPEND),
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: toExport.map((p) => participantRow(p)) },
+    })
+    await prisma.participant.updateMany({
+      where: { id: { in: toExport.map((p) => p.id) } },
+      data: { sheetsExportedAt: new Date() },
+    })
+    return { ok: true, exported: toExport.length }
+  } catch (err) {
+    console.error("[exportMissingAttendedToSheets]", err)
+    return {
+      ok: false,
+      error:
+        err instanceof Error ? err.message : "שגיאה בייצוא מודרכים חסרים לגיליון",
     }
   }
 }
@@ -449,7 +645,7 @@ export async function syncCertificateHoursForParticipantIds(
     const tab = getSheetTabName()
     const existing = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${tab}!${SHEET_RANGE_DATA}`,
+      range: sheetA1(tab, SHEET_RANGE_DATA),
     })
     const data = existing.data.values || []
     const updates: { range: string; values: string[][] }[] = []
@@ -460,7 +656,7 @@ export async function syncCertificateHoursForParticipantIds(
       const current = String(row[COL.hours] || "").trim()
       if (current === hours) return
       updates.push({
-        range: `${tab}!F${i + 2}`,
+        range: sheetA1(tab, `F${i + 2}`),
         values: [[hours]],
       })
     })
@@ -505,7 +701,7 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${tab}!${SHEET_RANGE_DATA}`,
+      range: sheetA1(tab, SHEET_RANGE_DATA),
     })
     const rows = res.data.values || []
     let updated = 0
@@ -515,6 +711,7 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
       // M (index 12) — מזהה משתתף / מודרך
       const crmId = String(row[COL.crmId] || "").trim()
       if (!crmId) continue
+      if (isNonAttendedCell(row[COL.attended])) continue
 
       // I / J — דגלי תעודה · N — קישור PDF
       const cardPrinted = truthyCell(row[COL.cardPrinted])

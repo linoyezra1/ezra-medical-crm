@@ -214,7 +214,7 @@ export function LeadDetailView({
                 <Phone className="size-6" />
               </IconAction>
               <IconAction
-                href={whatsappLink(lead.phone, trainingDetailsWhatsApp)}
+                href={whatsappLink("", trainingDetailsWhatsApp)}
                 label="שליחת פרטי הדרכה"
                 external
                 className="bg-white/80 text-primary shadow-sm"
@@ -527,10 +527,15 @@ function ParticipantsTab({
       toast.error(res.error)
       return
     }
+    const parts: string[] = []
+    if (res.data.exported > 0) {
+      parts.push(`יוצאו ${res.data.exported} נוכחים`)
+    }
+    if (res.data.attendanceUpdated > 0) {
+      parts.push(`עודכנה נוכחות ל-${res.data.attendanceUpdated}`)
+    }
     toast.success(
-      res.data.exported > 0
-        ? `יוצאו ${res.data.exported} משתתפים ל-Google Sheets`
-        : "אין משתתפים חדשים לייצוא",
+      parts.length ? parts.join(" · ") : "אין משתתפים חדשים לייצוא",
     )
   }
 

@@ -35,7 +35,8 @@ import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
 import {
   exportLeadParticipantsToSheets,
-  markNonAttendedInSheets,
+  exportMissingAttendedToSheets,
+  syncParticipantAttendanceToSheets,
   syncCertificateFlagsFromSheets,
   syncCertificateHoursForParticipantIds,
   tryAutoCompleteTrainingIfReady,
@@ -1320,15 +1321,19 @@ export async function setParticipantAttended(
 
   if (!attended) {
     traineeId = null;
-    markNonAttendedInSheets(participantId).catch((e) =>
-      console.error("[markNonAttendedInSheets]", e),
-    );
   }
 
   await prisma.participant.update({
     where: { id: participantId },
     data: { attended, traineeId },
   });
+
+  if (isGoogleSheetsConfigured()) {
+    syncParticipantAttendanceToSheets(participantId, attended).catch((e) =>
+      console.error("[syncParticipantAttendanceToSheets]", e),
+    );
+  }
+
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/clients");
   return { ok: true, data: { attended } };
@@ -1515,10 +1520,16 @@ export async function updateTrainee(
   return { ok: true, data: { id } };
 }
 
-/** סנכרון ידני של דגלי תעודות מ-Google Sheets → CRM */
+/** סנכרון ידני: קודם מוסיף נוכחים חסרים לגיליון, אחר כך דגלים מ-Sheets → CRM */
 export async function syncCertificatesFromSheetsAction(): Promise<
-  ActionResult<{ updated: number; autoCompleted: number }>
+  ActionResult<{ updated: number; autoCompleted: number; exported: number }>
 > {
+  let exported = 0;
+  if (isGoogleSheetsConfigured()) {
+    const push = await exportMissingAttendedToSheets();
+    if (!push.ok) return { ok: false, error: push.error };
+    exported = push.exported;
+  }
   const res = await syncCertificateFlagsFromSheets();
   if (!res.ok) return { ok: false, error: res.error };
   revalidatePath("/clients");
@@ -1527,19 +1538,25 @@ export async function syncCertificatesFromSheetsAction(): Promise<
   revalidatePath("/calendar");
   return {
     ok: true,
-    data: { updated: res.updated, autoCompleted: res.autoCompleted },
+    data: { updated: res.updated, autoCompleted: res.autoCompleted, exported },
   };
 }
 
 /** ייצוא ידני של משתתפי הדרכה ל-Google Sheets */
 export async function exportLeadCertificatesToSheetsAction(
   leadId: string,
-): Promise<ActionResult<{ exported: number }>> {
+): Promise<ActionResult<{ exported: number; attendanceUpdated: number }>> {
   const res = await exportLeadParticipantsToSheets(leadId);
   if (!res.ok) return { ok: false, error: res.error };
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/clients");
-  return { ok: true, data: { exported: res.exported } };
+  return {
+    ok: true,
+    data: {
+      exported: res.exported,
+      attendanceUpdated: res.attendanceUpdated,
+    },
+  };
 }
 
 /**
@@ -1589,6 +1606,7 @@ export async function triggerRemoteCertificates(input: {
     select: {
       id: true,
       leadId: true,
+      traineeId: true,
       isExternal: true,
       courseType: true,
       courseCategory: true,
@@ -1613,9 +1631,25 @@ export async function triggerRemoteCertificates(input: {
         })
       : [];
 
+  const linkedFromTrainees =
+    ownedTrainees.length > 0
+      ? await prisma.participant.findMany({
+          where: { traineeId: { in: ownedTrainees.map((t) => t.id) } },
+          select: { id: true },
+        })
+      : [];
+
   const webhookIds = [
-    ...ownedParticipants.map((p) => p.id),
-    ...ownedTrainees.map((t) => t.id),
+    ...new Set(
+      [
+        ...ownedParticipants.map((p) => p.id),
+        ...ownedParticipants
+          .map((p) => p.traineeId)
+          .filter((id): id is string => Boolean(id)),
+        ...ownedTrainees.map((t) => t.id),
+        ...linkedFromTrainees.map((p) => p.id),
+      ].filter(Boolean),
+    ),
   ];
   if (!webhookIds.length) {
     return {
