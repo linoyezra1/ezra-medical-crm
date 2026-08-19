@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   BadgeCheck,
   CheckCheck,
@@ -256,9 +256,17 @@ function ParticipantMobileKebab({
   )
 }
 
-export function ParticipantsSection({ lead }: { lead: Lead }) {
+export function ParticipantsSection({
+  lead,
+  active = true,
+}: {
+  lead: Lead
+  /** רענון אוטומטי פעם אחת בכל כניסה לטאב */
+  active?: boolean
+}) {
   const { setLeadParticipants, refresh, settings, leads } = useApp()
   const [polling, setPolling] = useState(false)
+  const wasActive = useRef(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [lmsBusy, setLmsBusy] = useState<string | null>(null)
   const [query, setQuery] = useState("")
@@ -357,27 +365,28 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
     (p) => selectedIds.has(p.id) && !p.hasLmsAccess,
   )
 
-  useEffect(() => {
-    let cancelled = false
-    const poll = async () => {
-      try {
-        setPolling(true)
-        await refreshWixParticipantsAction(lead.id).catch(() => {})
-        const rows = await fetchLeadParticipants(lead.id)
-        if (!cancelled) setLeadParticipants(lead.id, rows)
-      } catch {
-        /* ignore */
-      } finally {
-        if (!cancelled) setPolling(false)
-      }
-    }
-    void poll()
-    const id = window.setInterval(poll, 5000)
-    return () => {
-      cancelled = true
-      window.clearInterval(id)
+  const refreshParticipants = useCallback(async () => {
+    try {
+      setPolling(true)
+      await refreshWixParticipantsAction(lead.id).catch(() => {})
+      const rows = await fetchLeadParticipants(lead.id)
+      setLeadParticipants(lead.id, rows)
+    } catch {
+      /* ignore */
+    } finally {
+      setPolling(false)
     }
   }, [lead.id, setLeadParticipants])
+
+  useEffect(() => {
+    if (!active) {
+      wasActive.current = false
+      return
+    }
+    if (wasActive.current) return
+    wasActive.current = true
+    void refreshParticipants()
+  }, [active, refreshParticipants])
 
   const toggleSelected = (id: string, next: boolean) => {
     setSelectedIds((prev) => {
@@ -651,12 +660,21 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
       defaultOpen
       alwaysOpen
       action={
-        <RefreshCw
-          className={cn(
-            "size-3.5 text-muted-foreground",
-            polling && "animate-spin text-primary",
-          )}
-        />
+        <button
+          type="button"
+          onClick={() => void refreshParticipants()}
+          disabled={polling}
+          aria-label="רענון משתתפים"
+          title="רענון משתתפים"
+          className="rounded-md p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-60"
+        >
+          <RefreshCw
+            className={cn(
+              "size-3.5",
+              polling && "animate-spin text-primary",
+            )}
+          />
+        </button>
       }
     >
       {toolbar}

@@ -262,6 +262,7 @@ export function LeadDetailView({
           <TabsContent value="participants" className="m-0 space-y-4 p-4 md:p-6">
             <ParticipantsTab
               lead={lead}
+              active={detailTab === "participants"}
               onCollect={() => setCollectOpen(true)}
             />
           </TabsContent>
@@ -476,9 +477,11 @@ function HomeTab({
 
 function ParticipantsTab({
   lead,
+  active,
   onCollect,
 }: {
   lead: Lead
+  active: boolean
   onCollect: () => void
 }) {
   const [exporting, setExporting] = useState(false)
@@ -534,7 +537,7 @@ function ParticipantsTab({
         </Button>
       </Card>
 
-      <ParticipantsSection lead={lead} />
+      <ParticipantsSection lead={lead} active={active} />
     </>
   )
 }

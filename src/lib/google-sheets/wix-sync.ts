@@ -23,20 +23,33 @@ function getWixTabName(): string {
 }
 
 /**
- * Expected columns in the Wix registration sheet (A–L):
- *  A: שם מלא
- *  B: תעודת זהות
- *  C: טלפון
- *  D: אימייל
- *  E–K: (optional extra fields)
- *  L: trainingId (hidden value from dropdown)
+ * Columns in the Wix registration sheet (A–L, 0-indexed):
+ *  A [0]: Timestamp
+ *  B [1]: Full Name
+ *  C [2]: ID Number
+ *  D [3]: Course Date
+ *  E [4]: Email
+ *  F [5]: Phone
+ *  G [6]: Course Type / notes
+ *  H [7]: Organizer
+ *  I [8]: Satisfied
+ *  J [9]: Buy kit
+ *  K [10]: Feedback
+ *  L [11]: trainingId
  */
 const WIX_COL = {
-  fullName: 0,
-  idNumber: 1,
-  phone: 2,
-  email: 3,
-  trainingId: 11, // column L (0-indexed)
+  timestamp: 0,
+  fullName: 1,
+  idNumber: 2,
+  courseDate: 3,
+  email: 4,
+  phone: 5,
+  courseType: 6,
+  organizer: 7,
+  satisfied: 8,
+  buyKit: 9,
+  feedback: 10,
+  trainingId: 11,
 } as const
 
 export type WixSyncResult = {
@@ -96,8 +109,14 @@ export async function refreshParticipantsFromWix(
     for (const row of wixRows) {
       const fullName = String(row[WIX_COL.fullName] || "").trim()
       const idNumber = String(row[WIX_COL.idNumber] || "").trim().replace(/[-\s]/g, "")
-      const phone = cleanPhone(String(row[WIX_COL.phone] || ""))
+      const courseDate = String(row[WIX_COL.courseDate] || "").trim() || null
       const email = String(row[WIX_COL.email] || "").trim()
+      const phone = cleanPhone(String(row[WIX_COL.phone] || ""))
+      const courseType = String(row[WIX_COL.courseType] || "").trim() || null
+      const organizerName = String(row[WIX_COL.organizer] || "").trim() || null
+      const satisfaction = String(row[WIX_COL.satisfied] || "").trim() || null
+      const kitInterest = String(row[WIX_COL.buyKit] || "").trim() || null
+      const feedback = String(row[WIX_COL.feedback] || "").trim() || null
 
       if (!fullName && !idNumber && !phone) {
         skipped++
@@ -120,6 +139,12 @@ export async function refreshParticipantsFromWix(
           idNumber,
           phone: phone || null,
           email: email || null,
+          courseDate,
+          organizerName,
+          courseType,
+          satisfaction,
+          kitInterest,
+          feedback,
           source: "Wix",
         },
       })
