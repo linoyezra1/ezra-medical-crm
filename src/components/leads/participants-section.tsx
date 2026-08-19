@@ -944,8 +944,6 @@ export function ParticipantsSection({ lead }: { lead: Lead }) {
                       ) : null}
                       <p>טלפון: {p.phone || "—"}</p>
                       <p>דוא״ל: {p.email || "—"}</p>
-                      <p>דירוג: {p.satisfaction || "—"}</p>
-                      <p>משוב: {p.feedback || "—"}</p>
                       {p.attended && (
                         <p className="font-medium text-emerald-700">
                           ✓ נוכח — במאגר מודרכים

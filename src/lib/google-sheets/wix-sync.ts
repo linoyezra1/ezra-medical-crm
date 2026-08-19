@@ -7,10 +7,12 @@ import {
 
 /**
  * Wix registration sheet tab name (separate from certificates tab).
- * Env var: WIX_SHEET_TAB_NAME, default "הרשמות Wix"
+ * Env var: WIX_SHEET_TAB_NAME, default "WIX"
+ * Returned with single-quote wrapping for Google Sheets API compatibility.
  */
 function getWixTabName(): string {
-  return process.env.WIX_SHEET_TAB_NAME?.trim() || "הרשמות Wix"
+  const raw = process.env.WIX_SHEET_TAB_NAME?.trim() || "WIX"
+  return `'${raw}'`
 }
 
 /**
