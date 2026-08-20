@@ -905,6 +905,7 @@ export async function tryAutoCompleteTrainingIfReady(
           quantity: true,
           unitSellingPrice: true,
           paymentStatus: true,
+          createdAt: true,
           inventoryItem: { select: { name: true } },
         },
       },
@@ -936,6 +937,7 @@ export async function tryAutoCompleteTrainingIfReady(
       unitSellingPrice: Number(s.unitSellingPrice) || 0,
       unitCostPrice: 0,
       paymentStatus: s.paymentStatus || undefined,
+      createdAt: s.createdAt?.toISOString?.() ?? new Date().toISOString(),
     })),
   })
   if (!settled) return false

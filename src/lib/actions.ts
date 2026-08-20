@@ -351,6 +351,7 @@ async function syncUnpaidPaymentTask(lead: {
       quantity: true,
       unitSellingPrice: true,
       paymentStatus: true,
+      createdAt: true,
       inventoryItem: { select: { name: true } },
     },
   });
@@ -374,6 +375,7 @@ async function syncUnpaidPaymentTask(lead: {
       unitSellingPrice: Number(s.unitSellingPrice) || 0,
       unitCostPrice: 0,
       paymentStatus: s.paymentStatus || undefined,
+      createdAt: s.createdAt?.toISOString?.() ?? new Date().toISOString(),
     })),
   });
 
@@ -667,6 +669,7 @@ export async function updateLead(
         quantity: true,
         unitSellingPrice: true,
         paymentStatus: true,
+        createdAt: true,
         inventoryItem: { select: { name: true } },
       },
     });
@@ -696,6 +699,7 @@ export async function updateLead(
         unitSellingPrice: Number(s.unitSellingPrice) || 0,
         unitCostPrice: 0,
         paymentStatus: s.paymentStatus || undefined,
+        createdAt: s.createdAt?.toISOString?.() ?? new Date().toISOString(),
       })),
     });
     if (!settled) {
