@@ -48,6 +48,12 @@ export function leadToDbPayload(
         : null,
     notes: merged.notes || null,
     kindergartenApproved: Boolean(merged.kindergartenApproval),
+    kindergartenManagerName:
+      merged.kindergartenManagerName?.trim() || null,
+    kindergartenManagerPhone:
+      merged.kindergartenManagerPhone?.trim() || null,
+    institutionSymbol: merged.institutionSymbol?.trim() || null,
+    basicTrainingDate: merged.basicTrainingDate?.trim() || null,
     collectCertificateShipping: Boolean(merged.collectCertificateShipping),
     shippingStreet: merged.address?.street ?? "",
     shippingHouseNo: merged.address?.houseNumber ?? "",

@@ -32,6 +32,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
   formatLeadCourseType,
+  isKindergartenRefreshCourseType,
+  KINDERGARTEN_REFRESH_COURSE_LABEL,
 } from "@/lib/course-type"
 import { exportLeadCertificatesToSheetsAction } from "@/lib/actions"
 import {
@@ -42,6 +44,7 @@ import {
   downloadLeadIcs,
   weekdayNameHe,
   whatsappLink,
+  yossiAmarKindergartenWhatsAppMessage,
 } from "@/lib/helpers"
 import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
 import { isInstructorUnassigned, isOwnerInstructor, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
@@ -227,6 +230,24 @@ export function LeadDetailView({
               >
                 <Send className="size-6" />
               </IconAction>
+              {(isKindergartenRefreshCourseType(
+                lead.courseType,
+                lead.courseTypeOther,
+              ) ||
+                lead.kindergartenManagerName ||
+                lead.institutionSymbol) && (
+                <IconAction
+                  href={whatsappLink(
+                    "",
+                    yossiAmarKindergartenWhatsAppMessage(lead),
+                  )}
+                  label="שלח פרטים ליוסי עמר"
+                  external
+                  className="bg-amber-50 text-amber-900 shadow-sm"
+                >
+                  <Send className="size-6" />
+                </IconAction>
+              )}
               <IconAction
                 href={whatsappLink(lead.phone)}
                 label="וואטסאפ"
@@ -445,6 +466,43 @@ function HomeTab({
             value={formatLeadCategory(lead.category)}
           />
         </div>
+
+        {(isKindergartenRefreshCourseType(
+          lead.courseType,
+          lead.courseTypeOther,
+        ) ||
+          lead.kindergartenManagerName ||
+          lead.kindergartenManagerPhone ||
+          lead.institutionSymbol ||
+          lead.basicTrainingDate) && (
+          <div className="rounded-2xl border border-amber-200/70 bg-amber-50/40 p-3">
+            <p className="mb-2 text-xs font-bold text-amber-950">
+              פרטי מעון — {KINDERGARTEN_REFRESH_COURSE_LABEL}
+            </p>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <Info
+                label="מנהלת הגן/מעון"
+                value={lead.kindergartenManagerName || "—"}
+              />
+              <Info
+                label="טלפון מנהלת"
+                value={lead.kindergartenManagerPhone || "—"}
+              />
+              <Info
+                label="סמל מוסד"
+                value={lead.institutionSymbol || "—"}
+              />
+              <Info
+                label="תאריך הכשרה בסיסית"
+                value={
+                  lead.basicTrainingDate
+                    ? formatDate(lead.basicTrainingDate)
+                    : "—"
+                }
+              />
+            </div>
+          </div>
+        )}
 
         <div className="flex items-start gap-3 rounded-2xl bg-secondary/50 p-3">
           {addressLine === "זום" ? (

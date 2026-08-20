@@ -261,6 +261,12 @@ export interface Lead {
   notes?: string;
   quoteSentAt?: string;
   kindergartenApproval?: boolean;
+  /** פרטי מעון — לרענון עזרה ראשונה+התנהלות בטוחה */
+  kindergartenManagerName?: string;
+  kindergartenManagerPhone?: string;
+  institutionSymbol?: string;
+  /** YYYY-MM-DD */
+  basicTrainingDate?: string;
   /** האם טופס המשתתפים הציבורי דורש כתובת למשלוח תעודה */
   collectCertificateShipping?: boolean;
   participants: Participant[];

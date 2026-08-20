@@ -1,4 +1,4 @@
-import { formatLeadCourseType } from "./course-type";
+import { formatLeadCourseType, KINDERGARTEN_REFRESH_COURSE_LABEL } from "./course-type";
 import { COURSE_CATEGORIES } from "./constants";
 import {
   leadCalendarSessions,
@@ -245,6 +245,69 @@ export function whatsappLink(phone: string, text?: string): string {
   return message
     ? `https://wa.me/${intl}?text=${encodeURIComponent(message)}`
     : `https://wa.me/${intl}`;
+}
+
+/** הודעת וואטסאפ ליוסי עמר — רענון מעון / התנהלות בטוחה */
+export function yossiAmarKindergartenWhatsAppMessage(lead: Lead): string {
+  const org = lead.name?.trim() || KINDERGARTEN_REFRESH_COURSE_LABEL
+  const manager = lead.kindergartenManagerName?.trim() || "לא צוין"
+  const managerPhone = lead.kindergartenManagerPhone?.trim() || "לא צוין"
+  const symbol = lead.institutionSymbol?.trim() || "לא צוין"
+  const basicDate = lead.basicTrainingDate?.trim()
+    ? formatDate(lead.basicTrainingDate)
+    : "לא צוין"
+
+  const sessions = leadCalendarSessions(lead)
+  const physical = sessions.find((s) => !s.isZoom)
+  const location =
+    physical
+      ? sessionLocationLabel(physical)
+      : sessions.length > 0 && sessions.every((s) => s.isZoom)
+        ? "זום"
+        : [
+            lead.address?.street,
+            lead.address?.houseNumber,
+            lead.address?.city,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim() ||
+          lead.location?.trim() ||
+          "לא צוין"
+
+  const meetingBlocks = sessions.map((s, i) => {
+    const title =
+      i === 0 ? "מפגש ראשון" : i === 1 ? "מפגש שני" : `מפגש ${i + 1}`
+    const day = WEEKDAYS_HE[
+      (() => {
+        const d = new Date(
+          s.date.includes("T") ? s.date : `${s.date}T12:00:00`,
+        )
+        return Number.isNaN(d.getTime()) ? 0 : d.getDay()
+      })()
+    ]
+    const dateLabel = formatDate(s.date)
+    const timeRange = s.endTime
+      ? `${s.time}-${s.endTime}`
+      : s.time || "—"
+    return [`*${title}*`, `${day}, ${dateLabel}`, timeRange].join("\n")
+  })
+
+  return [
+    `*${org}*`,
+    KINDERGARTEN_REFRESH_COURSE_LABEL,
+    "",
+    `*שם מנהלת המעון:* ${manager}`,
+    `*טלפון:* ${managerPhone}`,
+    `*מיקום:* ${location}`,
+    `*סמל מוסד:* ${symbol}`,
+    `*תאריך בסיס:* ${basicDate}`,
+    "",
+    meetingBlocks.join("\n\n"),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim()
 }
 
 /** הודעת שיתוף פרטי הדרכה למדריך (ללא מספר יעד — בחירה ב‑WhatsApp) */

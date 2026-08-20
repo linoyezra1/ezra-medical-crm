@@ -30,7 +30,10 @@ export type TraineeImportRow = {
   interestedInFirstAidKit: string
   /** Optional explicit lead assignment from preview */
   leadId: string
+  /** Blocking issues — row cannot be saved */
   errors: string[]
+  /** Non-blocking issues — warn but still allow save (e.g. missing ת״ז) */
+  warnings: string[]
 }
 
 /** Columns that must never be mapped (explicit ignore list) */
@@ -194,15 +197,17 @@ export function normalizeKitInterest(raw: string): string {
 }
 
 export function validateImportRow(
-  row: Omit<TraineeImportRow, "errors" | "key"> & { key?: string },
-): string[] {
+  row: Omit<TraineeImportRow, "errors" | "warnings" | "key"> & { key?: string },
+): { errors: string[]; warnings: string[] } {
   const errors: string[] = []
+  const warnings: string[] = []
   if (!row.fullName.trim()) errors.push("חסר שם מלא")
-  if (!row.idNumber.trim()) errors.push("חסרה ת״ז")
-  else if (!/^\d{5,12}$/.test(row.idNumber.trim().replace(/[-\s]/g, ""))) {
-    errors.push("ת״ז לא תקינה")
+  if (!row.idNumber.trim()) {
+    warnings.push("חסרה ת״ז")
+  } else if (!/^\d{5,12}$/.test(row.idNumber.trim().replace(/[-\s]/g, ""))) {
+    warnings.push("ת״ז לא תקינה")
   }
-  return errors
+  return { errors, warnings }
 }
 
 export function emptyImportRow(key: string): TraineeImportRow {
@@ -219,7 +224,8 @@ export function emptyImportRow(key: string): TraineeImportRow {
     feedback: "",
     interestedInFirstAidKit: "",
     leadId: "",
-    errors: ["חסר שם מלא", "חסרה ת״ז"],
+    errors: ["חסר שם מלא"],
+    warnings: ["חסרה ת״ז"],
   }
 }
 
@@ -250,7 +256,7 @@ export function mapSheetRowsToImport(
     const isBlank = line.every((c) => !cellToString(c))
     if (isBlank) continue
 
-    const base: Omit<TraineeImportRow, "errors" | "key"> = {
+    const base: Omit<TraineeImportRow, "errors" | "warnings" | "key"> = {
       fullName: "",
       idNumber: "",
       phone: "",
@@ -278,8 +284,8 @@ export function mapSheetRowsToImport(
     })
 
     const key = `row-${r}-${base.idNumber || base.fullName || Math.random()}`
-    const errors = validateImportRow(base)
-    rows.push({ ...base, key, errors })
+    const { errors, warnings } = validateImportRow(base)
+    rows.push({ ...base, key, errors, warnings })
   }
 
   return { rows, mappedHeaders, ignoredHeaders }

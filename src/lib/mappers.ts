@@ -153,6 +153,16 @@ export function mapLead(db: DbLeadFull): Lead {
     notes: db.notes || undefined,
     quoteSentAt: db.quoteSentAt?.toISOString(),
     kindergartenApproval: db.kindergartenApproved,
+    kindergartenManagerName:
+      (db as { kindergartenManagerName?: string | null }).kindergartenManagerName ||
+      undefined,
+    kindergartenManagerPhone:
+      (db as { kindergartenManagerPhone?: string | null }).kindergartenManagerPhone ||
+      undefined,
+    institutionSymbol:
+      (db as { institutionSymbol?: string | null }).institutionSymbol || undefined,
+    basicTrainingDate:
+      (db as { basicTrainingDate?: string | null }).basicTrainingDate || undefined,
     collectCertificateShipping: Boolean(db.collectCertificateShipping),
     participants: (db.participants || []).map((p) => ({
       id: p.id,

@@ -16,6 +16,7 @@ import {
   Trash2,
   UserPlus,
   Video,
+  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
@@ -450,6 +451,22 @@ export function ParticipantsSection({
     }
   }
 
+  const unmarkAllAttended = async () => {
+    const targets = filtered.filter((p) => selectedIds.has(p.id) && p.attended)
+    if (!targets.length) {
+      toast.error("אין משתתפים עם נוכחות לביטול")
+      return
+    }
+    for (const p of targets) {
+      await toggleAttended(p, false)
+    }
+    toast.success(
+      targets.length === 1
+        ? "נוכחות בוטלה"
+        : `נוכחות בוטלה ל־${targets.length} משתתפים`,
+    )
+  }
+
   const remove = async (p: Participant) => {
     const res = await removeParticipant(p.id, lead.id)
     if (!res.ok) {
@@ -659,6 +676,18 @@ export function ParticipantsSection({
           <CheckCheck className="size-4" />
           אישור נוכחות לכולם
         </Button>
+        {allFilteredSelected ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2 rounded-xl border-amber-300 text-amber-900 hover:bg-amber-50 md:w-auto"
+            onClick={() => void unmarkAllAttended()}
+          >
+            <XCircle className="size-4" />
+            בטל נוכחות לכולם
+          </Button>
+        ) : null}
         <Button
           type="button"
           size="sm"

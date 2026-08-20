@@ -50,6 +50,11 @@ import {
   uiStatusToDb,
 } from "@/lib/types";
 import { ASSIGNABLE_LEAD_DB_STATUSES } from "@/lib/trainee-import";
+import {
+  findParticipantByIdNumber,
+  isUsableParticipantIdNumber,
+  normalizeParticipantIdNumber,
+} from "@/lib/participant-identity";
 
 export type ActionResult<T = unknown> =
   | { ok: true; data: T }
@@ -675,6 +680,30 @@ export async function updateLead(
       courseCategory: merged.courseCategory,
       courseCategoryOther: merged.courseCategoryOther,
       kindergartenApproved: Boolean(merged.kindergartenApproved),
+      kindergartenManagerName:
+        raw.kindergartenManagerName !== undefined
+          ? raw.kindergartenManagerName
+            ? String(raw.kindergartenManagerName).trim()
+            : null
+          : existing.kindergartenManagerName,
+      kindergartenManagerPhone:
+        raw.kindergartenManagerPhone !== undefined
+          ? raw.kindergartenManagerPhone
+            ? String(raw.kindergartenManagerPhone).trim()
+            : null
+          : existing.kindergartenManagerPhone,
+      institutionSymbol:
+        raw.institutionSymbol !== undefined
+          ? raw.institutionSymbol
+            ? String(raw.institutionSymbol).trim()
+            : null
+          : existing.institutionSymbol,
+      basicTrainingDate:
+        raw.basicTrainingDate !== undefined
+          ? raw.basicTrainingDate
+            ? String(raw.basicTrainingDate).trim().slice(0, 10)
+            : null
+          : existing.basicTrainingDate,
       expectedParticipants: merged.expectedParticipants,
       sessionsCount: merged.sessionsCount,
       sessionDuration: merged.sessionDuration,
@@ -1137,6 +1166,26 @@ export async function addParticipant(
       error: "יש למלא לפחות שדה אחד (שם, ת״ז, טלפון או אימייל)",
     };
   }
+
+  // ת״ז ייחודית בהדרכה — אם כבר קיים, מעדכנים במקום שורה חדשה
+  if (isUsableParticipantIdNumber(id)) {
+    const rows = await prisma.participant.findMany({ where: { leadId } });
+    const match = findParticipantByIdNumber(rows, id);
+    if (match) {
+      await prisma.participant.update({
+        where: { id: match.id },
+        data: {
+          fullName: name || match.fullName,
+          idNumber: id,
+          phone: phone || match.phone,
+          email: email || match.email,
+        },
+      });
+      revalidatePath(`/leads/${leadId}`);
+      return { ok: true as const };
+    }
+  }
+
   // מודרך גלובלי נוצר רק לאחר אישור נוכחות
   await prisma.participant.create({
     data: {
@@ -1202,24 +1251,62 @@ export async function addExternalParticipant(input: {
   const courseSaved = isExternal && input.courseType?.trim()
     ? resolveCourseTypeForSave(input.courseType.trim())
     : null
+  const participantData = {
+    fullName: name || "מצטרף נוסף",
+    idNumber: id,
+    phone: phone || null,
+    email: email || null,
+    isExternal,
+    isLead: Boolean(input.isLead),
+    feedback: input.feedback?.trim() || null,
+    courseType: courseSaved?.courseType || input.courseType?.trim() || null,
+    courseCategory: isExternal
+      ? input.courseCategory?.trim() || null
+      : null,
+    agreedPrice:
+      input.agreedPrice != null && Number.isFinite(input.agreedPrice)
+        ? Number(input.agreedPrice)
+        : null,
+  }
+
+  if (isUsableParticipantIdNumber(id)) {
+    const rows = await prisma.participant.findMany({
+      where: { leadId: input.leadId },
+    })
+    const match = findParticipantByIdNumber(rows, id)
+    if (match) {
+      const updated = await prisma.participant.update({
+        where: { id: match.id },
+        data: {
+          ...participantData,
+          phone: phone || match.phone,
+          email: email || match.email,
+          feedback: input.feedback?.trim() || match.feedback,
+          courseType:
+            participantData.courseType || match.courseType,
+          courseCategory:
+            participantData.courseCategory || match.courseCategory,
+          agreedPrice:
+            participantData.agreedPrice != null
+              ? participantData.agreedPrice
+              : match.agreedPrice,
+        },
+      })
+      if (isExternal) {
+        await linkParticipantToTrainee(updated)
+      }
+      revalidatePath("/")
+      revalidatePath("/leads")
+      revalidatePath(`/leads/${input.leadId}`)
+      revalidatePath("/clients")
+      return { ok: true, data: { id: updated.id } }
+    }
+  }
+
   const created = await prisma.participant.create({
     data: {
       leadId: input.leadId,
-      fullName: name || "מצטרף נוסף",
-      idNumber: id,
-      phone: phone || null,
-      email: email || null,
-      isExternal,
-      isLead: Boolean(input.isLead),
-      feedback: input.feedback?.trim() || null,
-      courseType: courseSaved?.courseType || input.courseType?.trim() || null,
-      courseCategory: isExternal
-        ? input.courseCategory?.trim() || null
-        : null,
-      agreedPrice:
-        input.agreedPrice != null && Number.isFinite(input.agreedPrice)
-          ? Number(input.agreedPrice)
-          : null,
+      ...participantData,
     },
   })
   if (isExternal) {
@@ -1348,22 +1435,43 @@ export async function submitPublicParticipant(
     }
   }
 
+  const idNumber = normalizeParticipantIdNumber(data.idNumber);
+  const existingRows = await prisma.participant.findMany({
+    where: { leadId },
+  });
+  const existing = findParticipantByIdNumber(existingRows, idNumber);
+
+  const payload = {
+    fullName: data.fullName.trim(),
+    idNumber,
+    organizerName: data.organizerName.trim(),
+    courseDate: data.courseDate.trim(),
+    email: data.email.trim(),
+    phone: data.phone.trim(),
+    satisfaction: data.satisfaction.trim(),
+    feedback: data.feedback?.trim() || null,
+    kitInterest: data.kitInterest.trim(),
+    shippingCity: data.shippingCity?.trim() || null,
+    shippingStreet: data.shippingStreet?.trim() || null,
+    shippingHouseNo: data.shippingHouseNo?.trim() || null,
+    shippingZip: data.shippingZip?.trim() || null,
+  };
+
+  // מילוי חוזר עם אותה ת״ז — מעדכן את הקיים (לא שורה חדשה)
+  if (existing) {
+    await prisma.participant.update({
+      where: { id: existing.id },
+      data: payload,
+    });
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath(`/p/${leadId}`);
+    return { ok: true, data: { id: existing.id } };
+  }
+
   const created = await prisma.participant.create({
     data: {
       leadId,
-      fullName: data.fullName.trim(),
-      idNumber: data.idNumber.trim(),
-      organizerName: data.organizerName.trim(),
-      courseDate: data.courseDate.trim(),
-      email: data.email.trim(),
-      phone: data.phone.trim(),
-      satisfaction: data.satisfaction.trim(),
-      feedback: data.feedback?.trim() || null,
-      kitInterest: data.kitInterest.trim(),
-      shippingCity: data.shippingCity?.trim() || null,
-      shippingStreet: data.shippingStreet?.trim() || null,
-      shippingHouseNo: data.shippingHouseNo?.trim() || null,
-      shippingZip: data.shippingZip?.trim() || null,
+      ...payload,
     },
   });
 
@@ -2155,14 +2263,16 @@ export async function bulkImportTrainees(
     const row = rows[i];
     const fullName = row.fullName?.trim() || "";
     const idNumber = (row.idNumber || "").trim().replace(/[-\s]/g, "");
-    if (!fullName || !idNumber) {
+    if (!fullName) {
       skipped += 1;
-      errors.push(`שורה ${i + 1}: חסר שם או ת״ז`);
+      errors.push(`שורה ${i + 1}: חסר שם מלא`);
       continue;
     }
 
     try {
-      const existing = await prisma.trainee.findUnique({ where: { idNumber } });
+      const existing = idNumber
+        ? await prisma.trainee.findUnique({ where: { idNumber } })
+        : null;
       const trainee = await upsertTraineeFromParticipant({
         fullName,
         idNumber,
@@ -2197,9 +2307,12 @@ export async function bulkImportTrainees(
       if (leadId) {
         const kit =
           row.interestedInFirstAidKit?.trim() || null;
-        const dup = await prisma.participant.findFirst({
-          where: { leadId, idNumber },
-        });
+        const savedIdNumber = trainee.idNumber;
+        const dup = idNumber
+          ? await prisma.participant.findFirst({
+              where: { leadId, idNumber },
+            })
+          : null;
         if (dup) {
           await prisma.participant.update({
             where: { id: dup.id },
@@ -2224,7 +2337,7 @@ export async function bulkImportTrainees(
               leadId,
               traineeId: trainee.id,
               fullName,
-              idNumber,
+              idNumber: savedIdNumber,
               phone: row.phone?.trim() || null,
               email: row.email?.trim() || null,
               organizerName: row.organizerName?.trim() || null,

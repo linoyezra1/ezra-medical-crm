@@ -35,6 +35,7 @@ import {
   instructorAssignmentWhatsAppMessage,
   whatsappLink,
   whatsappSummary,
+  yossiAmarKindergartenWhatsAppMessage,
 } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
@@ -42,6 +43,7 @@ import { cn } from "@/lib/utils"
 
 type QuickActionId =
   | "share_instructor"
+  | "send_yossi_amar"
   | "send_booklet"
   | "presentation_44_pdf"
   | "booklet_print"
@@ -72,6 +74,12 @@ const ACTIONS: QuickActionDef[] = [
     label: "שליחה למדריך",
     description: "פרטי הדרכה וקישור רישום לוואטסאפ",
     icon: MessageCircle,
+  },
+  {
+    id: "send_yossi_amar",
+    label: "שלח פרטים ליוסי עמר",
+    description: "פרטי מעון / רענון — בחירת נמען בוואטסאפ",
+    icon: Send,
   },
   {
     id: "send_booklet",
@@ -188,6 +196,11 @@ export function QuickActionsView() {
           courseLabel,
           registrationUrl,
         })
+        window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
+        break
+      }
+      case "send_yossi_amar": {
+        const text = yossiAmarKindergartenWhatsAppMessage(lead)
         window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
         break
       }

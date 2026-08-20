@@ -77,7 +77,9 @@ export function TraineeImportDialog({ open, onOpenChange }: Props) {
       prev.map((r) => {
         if (r.key !== key) return r
         const next = { ...r, ...patch }
-        next.errors = validateImportRow(next)
+        const { errors, warnings } = validateImportRow(next)
+        next.errors = errors
+        next.warnings = warnings
         return next
       }),
     )
@@ -87,17 +89,23 @@ export function TraineeImportDialog({ open, onOpenChange }: Props) {
     setRows((prev) => prev.filter((r) => r.key !== key))
   }
 
-  const validRows = rows.filter((r) => r.errors.length === 0)
-  const invalidCount = rows.length - validRows.length
+  const importableRows = rows.filter((r) => r.errors.length === 0)
+  const blockingCount = rows.length - importableRows.length
+  const warningCount = importableRows.filter((r) => r.warnings.length > 0).length
 
   const onSave = async () => {
-    if (!validRows.length) {
-      toast.error("אין שורות תקינות לשמירה")
+    if (!importableRows.length) {
+      toast.error("אין שורות לשמירה — חסר שם מלא בשורות")
       return
+    }
+    if (warningCount > 0) {
+      toast.message("שימו לב", {
+        description: `${warningCount} שורות יישמרו ללא ת״ז תקינה (אזהרה בלבד)`,
+      })
     }
     setSaving(true)
     const res = await bulkImportTrainees(
-      validRows.map((r) => ({
+      importableRows.map((r) => ({
         fullName: r.fullName,
         idNumber: r.idNumber,
         phone: r.phone || undefined,
@@ -144,7 +152,8 @@ export function TraineeImportDialog({ open, onOpenChange }: Props) {
         <DialogHeader className="border-b border-border px-4 py-3 pe-12 text-right">
           <DialogTitle>ייבוא מודרכים מאקסל / CSV</DialogTitle>
           <p className="text-xs text-muted-foreground">
-            העלו קובץ, בדקו את התצוגה המקדימה, מחקו שורות שגויות ואז שמרו
+            העלו קובץ, בדקו את התצוגה המקדימה. חסרה ת״ז מוצגת כאזהרה בלבד — השורות
+            עדיין יישמרו
           </p>
         </DialogHeader>
 
@@ -212,11 +221,16 @@ export function TraineeImportDialog({ open, onOpenChange }: Props) {
                   {rows.length} שורות
                 </span>
                 <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">
-                  {validRows.length} תקינות
+                  {importableRows.length} לשמירה
                 </span>
-                {invalidCount > 0 && (
+                {warningCount > 0 && (
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-900">
+                    {warningCount} עם אזהרות (יישמרו)
+                  </span>
+                )}
+                {blockingCount > 0 && (
                   <span className="rounded-full bg-destructive/10 px-2.5 py-1 font-semibold text-destructive">
-                    {invalidCount} עם שגיאות
+                    {blockingCount} חסומות (חסר שם)
                   </span>
                 )}
               </div>
@@ -243,6 +257,9 @@ export function TraineeImportDialog({ open, onOpenChange }: Props) {
                         className={cn(
                           "border-t border-border",
                           r.errors.length > 0 && "bg-destructive/5",
+                          r.errors.length === 0 &&
+                            r.warnings.length > 0 &&
+                            "bg-amber-50/80",
                         )}
                       >
                         <td className="px-2 py-1.5">
@@ -315,8 +332,16 @@ export function TraineeImportDialog({ open, onOpenChange }: Props) {
                             className="h-8 text-xs"
                           />
                         </td>
-                        <td className="max-w-[120px] px-2 py-1.5 text-[10px] text-destructive">
-                          {r.errors.join(", ") || (
+                        <td className="max-w-[140px] px-2 py-1.5 text-[10px]">
+                          {r.errors.length > 0 ? (
+                            <span className="text-destructive">
+                              {r.errors.join(", ")}
+                            </span>
+                          ) : r.warnings.length > 0 ? (
+                            <span className="text-amber-800">
+                              אזהרה: {r.warnings.join(", ")}
+                            </span>
+                          ) : (
                             <span className="text-emerald-700">תקין</span>
                           )}
                         </td>
@@ -349,12 +374,12 @@ export function TraineeImportDialog({ open, onOpenChange }: Props) {
           </Button>
           <Button
             type="button"
-            disabled={saving || !validRows.length}
+            disabled={saving || !importableRows.length}
             onClick={() => void onSave()}
           >
             {saving
               ? "שומר…"
-              : `שמירת ${validRows.length} מודרכים`}
+              : `שמירת ${importableRows.length} מודרכים`}
           </Button>
         </DialogFooter>
       </DialogContent>

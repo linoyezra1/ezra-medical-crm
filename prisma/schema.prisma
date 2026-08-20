@@ -72,6 +72,12 @@ model Lead {
   sessionDurationOther String?
   bookletRequired      Boolean  @default(false)
 
+  /** שדות ייעודיים לרענון עזרה ראשונה+התנהלות בטוחה (מעון/גן) */
+  kindergartenManagerName  String?
+  kindergartenManagerPhone String?
+  institutionSymbol        String?
+  basicTrainingDate        String?  // YYYY-MM-DD
+
   // Schedule (required for closed)
   scheduledStart DateTime?
   scheduledEnd   DateTime?

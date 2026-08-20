@@ -3,6 +3,12 @@ import {
   getSheetsClient,
   isGoogleSheetsConfigured,
 } from "@/lib/google-sheets/client"
+import {
+  cleanParticipantPhone,
+  findParticipantByIdNumber,
+  isUsableParticipantIdNumber,
+  normalizeParticipantIdNumber,
+} from "@/lib/participant-identity"
 
 const DEFAULT_WIX_SPREADSHEET_ID =
   "1vy5gL9PjLQ8scNHvHPHxAtCLfWDRZm0Lr4BfdBK3Nz4"
@@ -68,9 +74,45 @@ export type WixSyncResult = {
   error: string
 }
 
+type ExistingParticipant = Awaited<
+  ReturnType<typeof prisma.participant.findMany>
+>[number]
+
+/**
+ * התאמה להדרכה: ת״ז היא מפתח ייחודי.
+ * בלי ת״ז בנתוני Wix — נפילה לטלפון/שם רק לתיקון ייבוא ישן.
+ */
+function findExistingForWixRow(
+  existing: ExistingParticipant[],
+  opts: { idNumber: string; phone: string; fullName: string },
+): ExistingParticipant | undefined {
+  const byId = findParticipantByIdNumber(existing, opts.idNumber)
+  if (byId) return byId
+
+  // יש ת״ז בדוח ואין התאמה — אדם חדש (לא למזג לפי שם בלבד)
+  if (isUsableParticipantIdNumber(opts.idNumber)) return undefined
+
+  const phone = opts.phone
+  const fullName = opts.fullName.trim()
+
+  return existing.find((p) => {
+    const pid = normalizeParticipantIdNumber(p.idNumber)
+    const pname = (p.fullName || "").trim()
+    const pphone = cleanParticipantPhone(p.phone)
+
+    if (phone && pphone === phone) return true
+    if (fullName && pname === fullName) return true
+    // ייבוא ישן שהוחלף: ת"ז=שם, טלפון=ת"ז, שם=תאריך
+    if (fullName && pid === fullName) return true
+    if (opts.idNumber && pphone === opts.idNumber) return true
+    return false
+  })
+}
+
 /**
  * Reads Wix registration sheet rows, filters by trainingId,
- * adds or repairs participants and tags with source="Wix".
+ * upserts by ת״ז (unique per training) and tags with source="Wix".
+ * מילוי חוזר / דיווח חוזר — מעדכן את הקיים, לא יוצר שורה חדשה.
  */
 export async function refreshParticipantsFromWix(
   trainingId: string,
@@ -115,10 +157,10 @@ export async function refreshParticipantsFromWix(
 
     for (const row of wixRows) {
       const fullName = cell(row, COL.fullName)
-      const idNumber = cell(row, COL.idNumber).replace(/[-\s]/g, "")
+      const idNumber = normalizeParticipantIdNumber(cell(row, COL.idNumber))
       const courseDate = cell(row, COL.courseDate) || null
       const email = cell(row, COL.email)
-      const phone = cleanPhone(cell(row, COL.phone))
+      const phone = cleanParticipantPhone(cell(row, COL.phone))
       const courseType = cell(row, COL.courseType) || null
       const organizerName = cell(row, COL.organizer) || null
       const satisfaction = cell(row, COL.satisfied) || null
@@ -130,41 +172,43 @@ export async function refreshParticipantsFromWix(
         continue
       }
 
-      const match = existing.find((p) => {
-        const pid = (p.idNumber || "").trim()
-        const pname = (p.fullName || "").trim()
-        const pphone = cleanPhone(p.phone)
-        if (idNumber && pid === idNumber) return true
-        if (phone && pphone === phone) return true
-        if (fullName && pname === fullName) return true
-        // ייבוא ישן שהוחלף: ת"ז=שם, טלפון=ת"ז, שם=תאריך
-        if (fullName && pid === fullName) return true
-        if (idNumber && pphone === idNumber) return true
-        return false
+      const match = findExistingForWixRow(existing, {
+        idNumber,
+        phone,
+        fullName,
       })
 
-      const data = {
-        fullName,
-        idNumber,
-        phone: phone || null,
-        email: email || null,
-        courseDate,
-        organizerName,
-        courseType,
-        satisfaction,
-        kitInterest,
-        feedback,
-        source: "Wix",
-      }
-
       if (match) {
+        const nextIdNumber =
+          idNumber || normalizeParticipantIdNumber(match.idNumber) || match.idNumber
+        const data = {
+          fullName: fullName || match.fullName,
+          idNumber: nextIdNumber,
+          phone: phone || match.phone,
+          email: email || match.email,
+          courseDate: courseDate || match.courseDate,
+          organizerName: organizerName || match.organizerName,
+          courseType: courseType || match.courseType,
+          satisfaction: satisfaction || match.satisfaction,
+          kitInterest: kitInterest || match.kitInterest,
+          feedback: feedback || match.feedback,
+          source: "Wix",
+        }
         await prisma.participant.update({
           where: { id: match.id },
           data,
         })
-        match.fullName = fullName
-        match.idNumber = idNumber
-        match.phone = phone || null
+        match.fullName = data.fullName
+        match.idNumber = data.idNumber
+        match.phone = data.phone
+        match.email = data.email
+        match.courseDate = data.courseDate
+        match.organizerName = data.organizerName
+        match.courseType = data.courseType
+        match.satisfaction = data.satisfaction
+        match.kitInterest = data.kitInterest
+        match.feedback = data.feedback
+        match.source = "Wix"
         updated++
         continue
       }
@@ -172,7 +216,17 @@ export async function refreshParticipantsFromWix(
       const created = await prisma.participant.create({
         data: {
           leadId: trainingId,
-          ...data,
+          fullName: fullName || "ללא שם",
+          idNumber: idNumber || "",
+          phone: phone || null,
+          email: email || null,
+          courseDate,
+          organizerName,
+          courseType,
+          satisfaction,
+          kitInterest,
+          feedback,
+          source: "Wix",
         },
       })
       existing.push(created)
@@ -187,8 +241,4 @@ export async function refreshParticipantsFromWix(
       error: err instanceof Error ? err.message : "שגיאה בסנכרון מ-Wix",
     }
   }
-}
-
-function cleanPhone(raw: string | null | undefined): string {
-  return (raw || "").replace(/[-\s().+]/g, "").trim()
 }

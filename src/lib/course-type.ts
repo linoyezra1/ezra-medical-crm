@@ -110,6 +110,28 @@ export function extractCourseHoursDigits(
   return anyDigits?.[1] || ""
 }
 
+/** סוג קורס מעון: רענון עזרה ראשונה + התנהלות בטוחה */
+export const KINDERGARTEN_REFRESH_COURSE_LABEL =
+  "רענון עזרה ראשונה+התנהלות בטוחה"
+
+/** האם סוג הקורס הוא (או מכיל) רענון עזרה ראשונה + התנהלות בטוחה */
+export function isKindergartenRefreshCourseType(
+  courseType?: string | null,
+  courseTypeOther?: string | null,
+): boolean {
+  const sources = [
+    formatCourseTypeLabel(courseType, { other: courseTypeOther }),
+    (courseTypeOther || "").trim(),
+    (courseType || "").trim(),
+  ]
+  return sources.some((s) => {
+    const n = s.replace(/\s+/g, " ").trim()
+    if (!n) return false
+    if (/^רענון עזרה ראשונה\s*\+\s*התנהלות בטוחה$/.test(n)) return true
+    return n.includes("רענון עזרה ראשונה") && n.includes("התנהלות בטוחה")
+  })
+}
+
 /** האם סוג הקורס הוא רענון (לתעודה / תבנית PDF) */
 export function isRefreshCourseType(
   courseType?: string | null,

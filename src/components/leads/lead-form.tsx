@@ -23,10 +23,12 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   COURSE_TYPE_FORMAT_ERROR,
   COURSE_TYPE_OTHER,
+  KINDERGARTEN_REFRESH_COURSE_LABEL,
   collectCourseTypeOptions,
   findCourseCatalog,
   formatLeadCourseType,
   isAllowedCourseTypeValue,
+  isKindergartenRefreshCourseType,
   resolveCourseTypeForSave,
 } from "@/lib/course-type"
 import {
@@ -148,6 +150,14 @@ export function LeadForm({ existing }: Props) {
   const [courseTypeSelect, setCourseTypeSelect] = useState(initialCourseSelect)
   const [courseTypeOther, setCourseTypeOther] = useState(initialCourseOtherText)
   const [categorySelect, setCategorySelect] = useState(initialCategorySelect)
+
+  const showKindergartenRefreshFields = useMemo(() => {
+    if (form.isPrivateCourse) return false
+    if (courseTypeSelect === COURSE_TYPE_OTHER) {
+      return isKindergartenRefreshCourseType(courseTypeOther, courseTypeOther)
+    }
+    return isKindergartenRefreshCourseType(courseTypeSelect)
+  }, [form.isPrivateCourse, courseTypeSelect, courseTypeOther])
   const [instructorAssign, setInstructorAssign] =
     useState<InstructorAssignValue>(initialInstructorAssign)
   const [globalPrice, setGlobalPrice] = useState(
@@ -798,6 +808,52 @@ export function LeadForm({ existing }: Props) {
                 />
               </Field>
             )}
+
+            {showKindergartenRefreshFields ? (
+              <div className="space-y-4 rounded-2xl border border-amber-200/80 bg-amber-50/50 p-4">
+                <p className="text-sm font-semibold text-amber-950">
+                  פרטי מעון / גן — {KINDERGARTEN_REFRESH_COURSE_LABEL}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  שדות אופציונליים לשליחה ליוסי עמר
+                </p>
+                <Field label="שם מנהלת הגן/מעון">
+                  <Input
+                    value={form.kindergartenManagerName || ""}
+                    onChange={(e) =>
+                      set("kindergartenManagerName", e.target.value)
+                    }
+                    placeholder="שם מנהלת"
+                  />
+                </Field>
+                <Field label="טלפון מנהלת הגן/מעון">
+                  <Input
+                    value={form.kindergartenManagerPhone || ""}
+                    onChange={(e) =>
+                      set("kindergartenManagerPhone", e.target.value)
+                    }
+                    placeholder="טלפון"
+                    inputMode="tel"
+                    dir="ltr"
+                  />
+                </Field>
+                <Field label="סמל מוסד/מעון">
+                  <Input
+                    value={form.institutionSymbol || ""}
+                    onChange={(e) => set("institutionSymbol", e.target.value)}
+                    placeholder="סמל מוסד"
+                  />
+                </Field>
+                <Field label="תאריך הכשרה בסיסית">
+                  <Input
+                    type="date"
+                    value={form.basicTrainingDate || ""}
+                    onChange={(e) => set("basicTrainingDate", e.target.value)}
+                    dir="ltr"
+                  />
+                </Field>
+              </div>
+            ) : null}
 
             <Field label="קטגוריה" error={errors.categoryOther}>
               <Select
