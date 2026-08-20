@@ -1426,6 +1426,7 @@ export async function fetchLeadParticipants(leadId: string) {
     paymentMethod: p.paymentMethod || undefined,
     paymentReceivedBy: p.paymentReceivedBy || undefined,
     paymentReceiptIssued: Boolean(p.paymentReceiptIssued),
+    source: p.source || undefined,
   }));
 }
 
@@ -2938,10 +2939,13 @@ export async function sendZoomLinkEmailAction(data: {
 /** רענון משתתפים מגיליון Wix — מסנן לפי trainingId ומונע כפילויות */
 export async function refreshWixParticipantsAction(
   leadId: string,
-): Promise<ActionResult<{ added: number; skipped: number }>> {
+): Promise<ActionResult<{ added: number; skipped: number; updated: number }>> {
   const res = await refreshParticipantsFromWix(leadId);
   if (!res.ok) return { ok: false, error: res.error };
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/clients");
-  return { ok: true, data: { added: res.added, skipped: res.skipped } };
+  return {
+    ok: true,
+    data: { added: res.added, skipped: res.skipped, updated: res.updated },
+  };
 }

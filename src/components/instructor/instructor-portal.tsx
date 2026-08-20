@@ -1,16 +1,13 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import {
-  ClipboardCheck,
   MapPin,
   User,
-  UserPlus,
   Wallet,
 } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
-import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
-import { ParticipantsSection } from "@/components/leads/participants-section"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -36,8 +33,6 @@ export function InstructorTrainingsView({
   const { leads, settings } = useApp()
   const [name, setName] = useState("")
   const [ready, setReady] = useState(false)
-  const [collectLead, setCollectLead] = useState<Lead | null>(null)
-  const [rollLeadId, setRollLeadId] = useState<string | null>(null)
 
   useEffect(() => {
     setName(localStorage.getItem(STORAGE_KEY) || "")
@@ -94,89 +89,55 @@ export function InstructorTrainingsView({
               .filter(Boolean)
               .join(" ")
             return (
-              <Card key={lead.id} className="space-y-3 p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 text-right">
-                    <p className="font-bold">
-                      {formatLeadCourseType(lead, settings.courses)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDateWithWeekday(lead.date)}
-                      {lead.time
-                        ? ` · ${lead.time}${lead.endTime ? `–${lead.endTime}` : ""}`
-                        : ""}
-                    </p>
-                  </div>
-                  <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
-                    {formatCurrency(pay)}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <SummaryRow
-                    icon={User}
-                    label="מדריך"
-                    value={lead.instructor || "—"}
-                  />
-                  <SummaryRow
-                    icon={Wallet}
-                    label="משך"
-                    value={formatTrainingDuration(lead)}
-                  />
-                  <SummaryRow
-                    icon={MapPin}
-                    label="עיר"
-                    value={lead.address?.city || "—"}
-                  />
-                  <SummaryRow
-                    icon={MapPin}
-                    label="כתובת"
-                    value={address || "—"}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    className="gap-1.5 rounded-xl"
-                    onClick={() => setCollectLead(lead)}
-                  >
-                    <UserPlus className="size-3.5" />
-                    משתתפים
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 rounded-xl"
-                    onClick={() =>
-                      setRollLeadId((id) => (id === lead.id ? null : lead.id))
-                    }
-                  >
-                    <ClipboardCheck className="size-3.5" />
-                    נוכחות
-                    <span className="rounded-md bg-secondary px-1.5 text-[10px] font-bold">
-                      {lead.participants.length || lead.participantsCount || 0}
+              <Link key={lead.id} href={`/instructor/${portalToken}/training/${lead.id}`}>
+                <Card className="space-y-3 p-4 transition-colors hover:bg-secondary/30">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 text-right">
+                      <p className="font-bold">
+                        {formatLeadCourseType(lead, settings.courses)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateWithWeekday(lead.date)}
+                        {lead.time
+                          ? ` · ${lead.time}${lead.endTime ? `–${lead.endTime}` : ""}`
+                          : ""}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
+                      {formatCurrency(pay)}
                     </span>
-                  </Button>
-                </div>
-                {rollLeadId === lead.id && (
-                  <div className="border-t border-border pt-3">
-                    <ParticipantsSection lead={lead} />
                   </div>
-                )}
-              </Card>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <SummaryRow
+                      icon={User}
+                      label="מדריך"
+                      value={lead.instructor || "—"}
+                    />
+                    <SummaryRow
+                      icon={Wallet}
+                      label="משך"
+                      value={formatTrainingDuration(lead)}
+                    />
+                    <SummaryRow
+                      icon={MapPin}
+                      label="עיר"
+                      value={lead.address?.city || "—"}
+                    />
+                    <SummaryRow
+                      icon={MapPin}
+                      label="כתובת"
+                      value={address || "—"}
+                    />
+                  </div>
+                  <div className="rounded-xl bg-secondary/60 px-3 py-2 text-center text-xs font-semibold text-muted-foreground">
+                    פתח משתתפי הדרכה
+                  </div>
+                </Card>
+              </Link>
             )
           })
         )}
       </div>
-
-      {collectLead && (
-        <CollectParticipantsDialog
-          lead={collectLead}
-          open={!!collectLead}
-          onOpenChange={(o) => {
-            if (!o) setCollectLead(null)
-          }}
-        />
-      )}
     </div>
   )
 }
