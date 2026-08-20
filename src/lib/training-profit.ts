@@ -113,23 +113,27 @@ export function computeTrainingPaymentSummary(
   lead: Lead,
 ): TrainingPaymentSummary {
   const basePrice = money(lead.totalPrice)
-  const externals = externalParticipantsWithPrice(lead).map((p) => ({
-    id: p.id,
-    name: p.name,
-    amount: money(p.agreedPrice),
-    paid: isParticipantPaid(p),
-  }))
+  const externals = externalParticipantsWithPrice(lead)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      amount: money(p.agreedPrice),
+      paid: isParticipantPaid(p),
+    }))
+    .sort((a, b) => a.amount - b.amount)
   const externalExpected = externals.reduce((s, p) => s + p.amount, 0)
   const externalCollected = externals
     .filter((p) => p.paid)
     .reduce((s, p) => s + p.amount, 0)
 
-  const internals = internalParticipantsWithPayment(lead).map((p) => ({
-    id: p.id,
-    name: p.name,
-    amount: money(p.agreedPrice),
-    paid: true,
-  }))
+  const internals = internalParticipantsWithPayment(lead)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      amount: money(p.agreedPrice),
+      paid: true,
+    }))
+    .sort((a, b) => a.amount - b.amount)
   const internalCollected = internals.reduce((s, p) => s + p.amount, 0)
 
   const sales = (lead.trainingSales || [])
@@ -140,6 +144,7 @@ export function computeTrainingPaymentSummary(
       paid: s.paymentStatus === TRAINING_SALE_PAID,
     }))
     .filter((s) => s.amount > 0)
+    .sort((a, b) => a.amount - b.amount)
   const salesExpected = sales.reduce((s, x) => s + x.amount, 0)
   const salesCollected = sales
     .filter((s) => s.paid)

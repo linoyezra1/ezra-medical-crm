@@ -892,14 +892,15 @@ export function ParticipantsSection({
                         aria-label="בחר הכל"
                       />
                     </th>
-                    <th className="w-[14%] px-3 py-2 font-semibold">שם</th>
-                    <th className="w-[11%] px-3 py-2 font-semibold">טלפון</th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">ת״ז</th>
-                    <th className="w-[12%] px-3 py-2 font-semibold">דוא״ל</th>
-                    <th className="w-[12%] px-3 py-2 font-semibold">סוג קורס</th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">קטגוריה</th>
-                    <th className="w-[11%] px-3 py-2 font-semibold">גישת LMS</th>
-                    <th className="w-[14%] px-3 py-2 font-semibold">פעולות</th>
+                    <th className="w-[13%] px-3 py-2 font-semibold">שם</th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">טלפון</th>
+                    <th className="w-[9%] px-3 py-2 font-semibold">ת״ז</th>
+                    <th className="w-[11%] px-3 py-2 font-semibold">דוא״ל</th>
+                    <th className="w-[11%] px-3 py-2 font-semibold">סוג קורס</th>
+                    <th className="w-[9%] px-3 py-2 font-semibold">קטגוריה</th>
+                    <th className="w-[8%] px-3 py-2 font-semibold">מחיר</th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">גישת LMS</th>
+                    <th className="w-[13%] px-3 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -949,11 +950,6 @@ export function ParticipantsSection({
                             ) : null}
                             {p.isExternal ? <ExternalTag /> : null}
                             {p.source === "Wix" ? <WixTag /> : null}
-                            {(p.isExternal || p.isLead) && p.agreedPrice != null ? (
-                              <span className="shrink-0 text-[10px] font-semibold text-pink-700">
-                                {formatCurrency(p.agreedPrice)}
-                              </span>
-                            ) : null}
                           </span>
                         </td>
                         <td
@@ -982,6 +978,11 @@ export function ParticipantsSection({
                           title={categoryLabel}
                         >
                           {categoryLabel}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-sm font-semibold tabular-nums text-pink-700">
+                          {(p.isExternal || p.isLead) && p.agreedPrice != null
+                            ? formatCurrency(p.agreedPrice)
+                            : "—"}
                         </td>
                         <td className="px-3 py-2">
                           {p.hasLmsAccess ? (
