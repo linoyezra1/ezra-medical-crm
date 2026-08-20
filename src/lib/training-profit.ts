@@ -50,11 +50,21 @@ export type TrainingPaymentSummary = {
   basePrice: number
   externalExpected: number
   expectedTotal: number
+  /** תשלום בסיס שנרשם במפורש על ההדרכה (0 או מחיר בסיס מלא) */
   baseCollected: number
+  /**
+   * כיסוי בסיס בפועל = תשלום בסיס + תשלומי משתתפים פנימיים
+   * (פנימיים מקזזים את מחיר הבסיס)
+   */
+  baseCoveredAmount: number
+  /** מחיר הבסיס כוסה במלואו (תשלום בסיס ו/או פנימיים) */
+  baseSettled: boolean
   externalCollected: number
   internalCollected: number
   collectedTotal: number
   remaining: number
+  /** יתרה 0 — ההדרכה נחשבת שולמה במלואה לצורך סטטוס ״הסתיים״ */
+  isFullySettled: boolean
   progressPct: number
   externals: ParticipantPaymentEntry[]
   internals: ParticipantPaymentEntry[]
@@ -63,7 +73,8 @@ export type TrainingPaymentSummary = {
 /**
  * סיכום תשלומים להדרכה:
  * צפוי = מחיר בסיס + מחירי משתתפים חיצוניים
- * נגבה = תשלום הדרכה שנרשם + תשלומים שנרשמו למשתתפים
+ * נגבה = תשלום הדרכה שנרשם + תשלומי חיצוניים + תשלומי פנימיים
+ * (תשלומי פנימיים מקזזים את מחיר הבסיס)
  */
 export function computeTrainingPaymentSummary(
   lead: Lead,
@@ -89,26 +100,44 @@ export function computeTrainingPaymentSummary(
   const internalCollected = internals.reduce((s, p) => s + p.amount, 0)
 
   const baseCollected = isLeadPaid(lead) ? basePrice : 0
+  const baseCoveredAmount = Math.min(
+    basePrice,
+    baseCollected + internalCollected,
+  )
+  const baseSettled = basePrice <= 0 || baseCoveredAmount >= basePrice
   const expectedTotal = basePrice + externalExpected
   const collectedTotal = baseCollected + externalCollected + internalCollected
   const remaining = Math.max(0, expectedTotal - collectedTotal)
+  const isFullySettled = remaining <= 0
   const progressPct =
     expectedTotal > 0
       ? Math.min(100, Math.round((collectedTotal / expectedTotal) * 100))
-      : 0
+      : isFullySettled
+        ? 100
+        : 0
   return {
     basePrice,
     externalExpected,
     expectedTotal,
     baseCollected,
+    baseCoveredAmount,
+    baseSettled,
     externalCollected,
     internalCollected,
     collectedTotal,
     remaining,
+    isFullySettled,
     progressPct,
     externals,
     internals,
   }
+}
+
+/** האם יתרת ההדרכה מכוסה (בסיס + חיצוניים) — כולל קיזוז מתשלומי פנימיים */
+export function isTrainingFullySettled(
+  lead: Pick<Lead, "totalPrice" | "paymentStatus" | "participants">,
+): boolean {
+  return computeTrainingPaymentSummary(lead as Lead).isFullySettled
 }
 
 /** סכום תצוגה בכרטיס ליד — בסיס + מחירי משתתפים חיצוניים */

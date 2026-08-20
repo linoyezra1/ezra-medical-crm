@@ -3,7 +3,7 @@ import {
   certificateScopeForSheet,
   resolveParticipantCertificateCourseType,
 } from "@/lib/course-type"
-import { PAID_PAYMENT_STATUS } from "@/lib/payment"
+import { isTrainingFullySettled } from "@/lib/training-profit"
 import {
   getSheetTabName,
   getSheetsClient,
@@ -905,8 +905,21 @@ export async function tryAutoCompleteTrainingIfReady(
   if (lead.courseStatus === "closed_won" || lead.courseStatus === "canceled") {
     return false
   }
-  if (lead.paymentStatus !== PAID_PAYMENT_STATUS) return false
   if (!lead.participants.length) return false
+
+  const settled = isTrainingFullySettled({
+    totalPrice: Number(lead.agreedPrice) || 0,
+    paymentStatus: lead.paymentStatus || undefined,
+    participants: lead.participants.map((p) => ({
+      id: p.id,
+      name: p.fullName,
+      idNumber: p.idNumber || "",
+      isExternal: Boolean(p.isExternal),
+      agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
+      paymentStatus: p.paymentStatus || undefined,
+    })),
+  })
+  if (!settled) return false
 
   const allDone = lead.participants.every(
     (p) =>

@@ -45,7 +45,6 @@ import {
 } from "@/lib/helpers"
 import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
 import { isInstructorUnassigned, isOwnerInstructor, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
-import { isLeadPaid } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { computeTrainingProfit, computeTrainingPaymentSummary } from "@/lib/training-profit"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -625,10 +624,10 @@ function FinanceTab({ lead }: { lead: Lead }) {
           <li className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground">תשלום הדרכה (בסיס)</span>
             <span className="font-semibold">
-              {formatCurrency(payments.baseCollected)} /{" "}
+              {formatCurrency(payments.baseCoveredAmount)} /{" "}
               {formatCurrency(payments.basePrice)}
-              {isLeadPaid(lead) ? (
-                <span className="mr-1 text-emerald-700"> · שולם</span>
+              {payments.baseSettled ? (
+                <span className="mr-1 text-emerald-700"> · כוסה</span>
               ) : (
                 <span className="mr-1 text-amber-800"> · ממתין</span>
               )}

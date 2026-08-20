@@ -21,7 +21,8 @@ import {
   missingForClose,
   requiresPhysicalAddress,
 } from "@/lib/helpers"
-import { isLeadPaid, leadCalendarSessions } from "@/lib/payment"
+import { leadCalendarSessions } from "@/lib/payment"
+import { isTrainingFullySettled } from "@/lib/training-profit"
 import { useApp } from "@/lib/store"
 import {
   LEAD_STATUS_LABELS,
@@ -109,7 +110,7 @@ export function LifecycleControls({
     }
 
     if (target === "completed") {
-      if (!isLeadPaid(lead)) {
+      if (!isTrainingFullySettled(lead)) {
         setPaymentBlockOpen(true)
         return
       }
@@ -378,8 +379,8 @@ export function LifecycleControls({
             <DialogTitle className="text-right">לא בוצע תשלום</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            לא ניתן להעביר את ההדרכה לסטטוס ״הסתיים״ לפני שנרשם תשלום. יש להוסיף
-            או לעדכן תשלום תחילה.
+            לא ניתן להעביר את ההדרכה לסטטוס ״הסתיים״ לפני שיתרת התשלום מכוסה
+            במלואה. תשלומי משתתפים פנימיים נספרים ככיסוי למחיר הבסיס.
           </p>
           <DialogFooter className="flex-row gap-2">
             <Button

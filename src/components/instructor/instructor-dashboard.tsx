@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import {
   Loader2,
   LogOut,
@@ -153,12 +154,17 @@ export function InstructorDashboard() {
           </p>
         ) : (
           list.map((lead) => (
-            <TrainingCard
+            <Link
               key={lead.id}
-              lead={lead}
-              commissionPct={data?.instructor.salesCommissionPercentage ?? 0}
-              onReportSale={() => setReportLead(lead)}
-            />
+              href={`/instructor/training/${lead.id}`}
+              className="block"
+            >
+              <TrainingCard
+                lead={lead}
+                commissionPct={data?.instructor.salesCommissionPercentage ?? 0}
+                onReportSale={() => setReportLead(lead)}
+              />
+            </Link>
           ))
         )}
       </div>
@@ -284,7 +290,12 @@ function TrainingCard({
         type="button"
         variant="outline"
         className="min-h-12 w-full gap-2 rounded-xl text-sm font-semibold"
-        onClick={onReportSale}
+        onClick={(e) => {
+          // Clicking this button should not trigger navigation to the participants screen.
+          e.preventDefault()
+          e.stopPropagation()
+          onReportSale()
+        }}
       >
         <Package className="size-4" />
         דווח מכירת ציוד

@@ -25,11 +25,11 @@ import {
   unpaidTrainingSaleTaskNotes,
   unpaidTrainingSaleTaskTitle,
   UNPAID_PAYMENT_TASK_PREFIX,
-  isLeadPaid,
   unpaidPaymentTaskTitle,
   parseSessionsJson,
   type TrainingSessionSlot,
 } from "@/lib/payment";
+import { isTrainingFullySettled } from "@/lib/training-profit";
 import { sanitizePhone } from "@/lib/utils";
 import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
@@ -246,16 +246,39 @@ async function syncUnassignedInstructorTask(lead: {
   });
 }
 
-/** משימת גבייה אוטומטית כל עוד ההדרכה לא שולמה */
+/** משימת גבייה אוטומטית כל עוד יתרת ההדרכה אינה מכוסה */
 async function syncUnpaidPaymentTask(lead: {
   id: string;
   fullName: string;
   paymentStatus: string | null;
   scheduledStart: Date | null;
+  agreedPrice?: number | null;
 }) {
   const title = unpaidPaymentTaskTitle(lead.fullName);
+  const participants = await prisma.participant.findMany({
+    where: { leadId: lead.id },
+    select: {
+      id: true,
+      fullName: true,
+      isExternal: true,
+      agreedPrice: true,
+      paymentStatus: true,
+    },
+  });
+  const settled = isTrainingFullySettled({
+    totalPrice: Number(lead.agreedPrice) || 0,
+    paymentStatus: lead.paymentStatus || undefined,
+    participants: participants.map((p) => ({
+      id: p.id,
+      name: p.fullName,
+      idNumber: "",
+      isExternal: Boolean(p.isExternal),
+      agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
+      paymentStatus: p.paymentStatus || undefined,
+    })),
+  });
 
-  if (!isLeadPaid(lead)) {
+  if (!settled) {
     let dueDate: Date | null = null;
     if (lead.scheduledStart) {
       const { date } = formatInJerusalem(lead.scheduledStart);
@@ -521,19 +544,45 @@ export async function updateLead(
     merged.courseStatus = "certificates_pending";
   }
 
-  // חסימת "הסתיים" ללא תשלום
+  // חסימת "הסתיים" כל עוד יתרת התשלום אינה מכוסה
+  // (תשלום בסיס מפורש ו/או תשלומי משתתפים פנימיים שמקזזים את הבסיס + חיצוניים)
   if (
     nextStatus === "closed_won" &&
     existing.courseStatus !== "closed_won"
   ) {
-    const paid =
-      String(merged.paymentStatus ?? existing.paymentStatus) ===
-      PAID_PAYMENT_STATUS;
-    if (!paid) {
+    const participants = await prisma.participant.findMany({
+      where: { leadId },
+      select: {
+        id: true,
+        fullName: true,
+        isExternal: true,
+        agreedPrice: true,
+        paymentStatus: true,
+      },
+    });
+    const agreed =
+      merged.agreedPrice != null
+        ? Number(merged.agreedPrice)
+        : Number(existing.agreedPrice) || 0;
+    const settled = isTrainingFullySettled({
+      totalPrice: Number.isFinite(agreed) ? agreed : 0,
+      paymentStatus:
+        String(merged.paymentStatus ?? existing.paymentStatus ?? "") ||
+        undefined,
+      participants: participants.map((p) => ({
+        id: p.id,
+        name: p.fullName,
+        idNumber: "",
+        isExternal: Boolean(p.isExternal),
+        agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
+        paymentStatus: p.paymentStatus || undefined,
+      })),
+    });
+    if (!settled) {
       return {
         ok: false,
         error:
-          "לא ניתן לסמן הדרכה כ״הסתיים״ לפני שבוצע תשלום. יש לרשום תשלום תחילה.",
+          "לא ניתן לסמן הדרכה כ״הסתיים״ לפני שיתרת התשלום מכוסה במלואה (תשלום בסיס ו/או תשלומי משתתפים).",
         code: "payment_required",
       };
     }
@@ -744,6 +793,7 @@ export async function updateLead(
       scheduledStart: true,
       courseStatus: true,
       paymentStatus: true,
+      agreedPrice: true,
     },
   });
   if (after) {
@@ -849,6 +899,7 @@ export async function duplicateLead(
       scheduledStart: true,
       courseStatus: true,
       paymentStatus: true,
+      agreedPrice: true,
     },
   });
   if (after) {
@@ -911,6 +962,7 @@ export async function rollbackLeadStatus(
       scheduledStart: true,
       courseStatus: true,
       paymentStatus: true,
+      agreedPrice: true,
     },
   });
   if (after) {
@@ -968,6 +1020,7 @@ export async function recordLeadPayment(
       fullName: true,
       paymentStatus: true,
       scheduledStart: true,
+      agreedPrice: true,
     },
   });
   if (after) await syncUnpaidPaymentTask(after);
@@ -1206,8 +1259,23 @@ export async function recordParticipantPayment(
       ...(amount != null ? { agreedPrice: amount } : {}),
     },
   })
+
+  const after = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      fullName: true,
+      paymentStatus: true,
+      scheduledStart: true,
+      agreedPrice: true,
+    },
+  })
+  if (after) await syncUnpaidPaymentTask(after)
+
   revalidatePath(`/leads/${leadId}`)
   revalidatePath("/")
+  revalidatePath("/calendar")
+  revalidatePath("/dashboard")
   return { ok: true, data: { id: participantId } }
 }
 

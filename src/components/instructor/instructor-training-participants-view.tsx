@@ -69,21 +69,6 @@ export function InstructorTrainingParticipantsView({
     void loadParticipants()
   }, [ready, isMine, loadParticipants])
 
-  useEffect(() => {
-    if (!ready || !isMine) return
-    const id = window.setInterval(() => {
-      void loadParticipants()
-    }, 8000)
-    const onFocus = () => {
-      void loadParticipants()
-    }
-    window.addEventListener("focus", onFocus)
-    return () => {
-      window.clearInterval(id)
-      window.removeEventListener("focus", onFocus)
-    }
-  }, [ready, isMine, loadParticipants])
-
   const refreshFromWix = async () => {
     setRefreshingWix(true)
     const res = await refreshWixParticipantsAction(leadId)
