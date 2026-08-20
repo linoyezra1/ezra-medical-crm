@@ -899,6 +899,15 @@ export async function tryAutoCompleteTrainingIfReady(
           },
         },
       },
+      trainingSales: {
+        select: {
+          id: true,
+          quantity: true,
+          unitSellingPrice: true,
+          paymentStatus: true,
+          inventoryItem: { select: { name: true } },
+        },
+      },
     },
   })
   if (!lead) return false
@@ -918,6 +927,15 @@ export async function tryAutoCompleteTrainingIfReady(
       isLead: Boolean(p.isLead),
       agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
       paymentStatus: p.paymentStatus || undefined,
+    })),
+    trainingSales: lead.trainingSales.map((s) => ({
+      id: s.id,
+      inventoryItemId: "",
+      itemName: s.inventoryItem?.name || "מכירת ציוד",
+      quantity: s.quantity,
+      unitSellingPrice: Number(s.unitSellingPrice) || 0,
+      unitCostPrice: 0,
+      paymentStatus: s.paymentStatus || undefined,
     })),
   })
   if (!settled) return false

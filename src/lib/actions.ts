@@ -11,6 +11,10 @@ import {
   resolveParticipantCertificateCourseType,
   isRefreshCourseType,
   certificateScopeForSheet,
+  isKindergartenRefreshCourseType,
+  hasCompleteKindergartenRefreshDetails,
+  yossiAmarDetailsTaskTitle,
+  YOSSI_AMAR_DETAILS_TASK_PREFIX,
 } from "@/lib/course-type";
 import {
   ASSIGN_INSTRUCTOR_TASK_PREFIX,
@@ -251,6 +255,75 @@ async function syncUnassignedInstructorTask(lead: {
   });
 }
 
+/**
+ * משימה אוטומטית לרענון מעון + התנהלות בטוחה —
+ * נוצרת כשסוג הקורס נבחר; נסגרת כשכל פרטי המעון מולאו או כשסוג הקורס משתנה.
+ */
+async function syncYossiAmarDetailsTask(lead: {
+  id: string;
+  fullName: string;
+  courseType: string | null;
+  courseTypeOther: string | null;
+  scheduledStart: Date | null;
+  kindergartenManagerName?: string | null;
+  kindergartenManagerPhone?: string | null;
+  institutionSymbol?: string | null;
+  basicTrainingDate?: string | null;
+}) {
+  const isRefresh = isKindergartenRefreshCourseType(
+    lead.courseType,
+    lead.courseTypeOther,
+  );
+  const title = yossiAmarDetailsTaskTitle(lead.fullName);
+
+  if (isRefresh && !hasCompleteKindergartenRefreshDetails(lead)) {
+    let dueDate: Date | null = null;
+    if (lead.scheduledStart) {
+      const { date } = formatInJerusalem(lead.scheduledStart);
+      if (date) dueDate = jerusalemLocalToUtcDate(date, "09:00");
+    }
+
+    const existing = await prisma.followUpTask.findFirst({
+      where: {
+        leadId: lead.id,
+        completed: false,
+        title: { startsWith: YOSSI_AMAR_DETAILS_TASK_PREFIX },
+      },
+    });
+
+    if (existing) {
+      await prisma.followUpTask.update({
+        where: { id: existing.id },
+        data: { title, dueDate },
+      });
+    } else {
+      await prisma.followUpTask.create({
+        data: {
+          leadId: lead.id,
+          title,
+          dueDate,
+          assignee: "מכירות",
+          notes:
+            "נוצר אוטומטית — יש להשלים פרטי מעון (מנהלת, טלפון, סמל, תאריך בסיס) ולשלוח ליוסי עמר מפעולות מהירות",
+        },
+      });
+    }
+    revalidatePath("/calendar");
+    revalidatePath("/dashboard");
+    revalidatePath("/tasks");
+    return;
+  }
+
+  await prisma.followUpTask.updateMany({
+    where: {
+      leadId: lead.id,
+      completed: false,
+      title: { startsWith: YOSSI_AMAR_DETAILS_TASK_PREFIX },
+    },
+    data: { completed: true },
+  });
+}
+
 /** משימת גבייה אוטומטית כל עוד יתרת ההדרכה אינה מכוסה */
 async function syncUnpaidPaymentTask(lead: {
   id: string;
@@ -271,6 +344,16 @@ async function syncUnpaidPaymentTask(lead: {
       paymentStatus: true,
     },
   });
+  const trainingSales = await prisma.trainingSale.findMany({
+    where: { leadId: lead.id },
+    select: {
+      id: true,
+      quantity: true,
+      unitSellingPrice: true,
+      paymentStatus: true,
+      inventoryItem: { select: { name: true } },
+    },
+  });
   const settled = isTrainingFullySettled({
     totalPrice: Number(lead.agreedPrice) || 0,
     paymentStatus: lead.paymentStatus || undefined,
@@ -282,6 +365,15 @@ async function syncUnpaidPaymentTask(lead: {
       isLead: Boolean(p.isLead),
       agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
       paymentStatus: p.paymentStatus || undefined,
+    })),
+    trainingSales: trainingSales.map((s) => ({
+      id: s.id,
+      inventoryItemId: "",
+      itemName: s.inventoryItem?.name || "מכירת ציוד",
+      quantity: s.quantity,
+      unitSellingPrice: Number(s.unitSellingPrice) || 0,
+      unitCostPrice: 0,
+      paymentStatus: s.paymentStatus || undefined,
     })),
   });
 
@@ -568,6 +660,16 @@ export async function updateLead(
         paymentStatus: true,
       },
     });
+    const trainingSales = await prisma.trainingSale.findMany({
+      where: { leadId },
+      select: {
+        id: true,
+        quantity: true,
+        unitSellingPrice: true,
+        paymentStatus: true,
+        inventoryItem: { select: { name: true } },
+      },
+    });
     const agreed =
       merged.agreedPrice != null
         ? Number(merged.agreedPrice)
@@ -586,12 +688,21 @@ export async function updateLead(
         agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
         paymentStatus: p.paymentStatus || undefined,
       })),
+      trainingSales: trainingSales.map((s) => ({
+        id: s.id,
+        inventoryItemId: "",
+        itemName: s.inventoryItem?.name || "מכירת ציוד",
+        quantity: s.quantity,
+        unitSellingPrice: Number(s.unitSellingPrice) || 0,
+        unitCostPrice: 0,
+        paymentStatus: s.paymentStatus || undefined,
+      })),
     });
     if (!settled) {
       return {
         ok: false,
         error:
-          "לא ניתן לסמן הדרכה כ״הסתיים״ לפני שיתרת התשלום מכוסה במלואה (תשלום בסיס ו/או תשלומי משתתפים).",
+          "לא ניתן לסמן הדרכה כ״הסתיים״ לפני שיתרת התשלום מכוסה במלואה (תשלום בסיס, משתתפים ומכירות ציוד).",
         code: "payment_required",
       };
     }
@@ -827,11 +938,16 @@ export async function updateLead(
       courseStatus: true,
       paymentStatus: true,
       agreedPrice: true,
+      kindergartenManagerName: true,
+      kindergartenManagerPhone: true,
+      institutionSymbol: true,
+      basicTrainingDate: true,
     },
   });
   if (after) {
     await syncUnassignedInstructorTask(after);
     await syncUnpaidPaymentTask(after);
+    await syncYossiAmarDetailsTask(after);
   }
 
   // ייצוא ל-Google Sheets בעת מעבר ל״ממתין לתעודות״
@@ -933,11 +1049,16 @@ export async function duplicateLead(
       courseStatus: true,
       paymentStatus: true,
       agreedPrice: true,
+      kindergartenManagerName: true,
+      kindergartenManagerPhone: true,
+      institutionSymbol: true,
+      basicTrainingDate: true,
     },
   });
   if (after) {
     await syncUnassignedInstructorTask(after);
     await syncUnpaidPaymentTask(after);
+    await syncYossiAmarDetailsTask(after);
   }
 
   revalidatePath("/");
@@ -996,11 +1117,16 @@ export async function rollbackLeadStatus(
       courseStatus: true,
       paymentStatus: true,
       agreedPrice: true,
+      kindergartenManagerName: true,
+      kindergartenManagerPhone: true,
+      institutionSymbol: true,
+      basicTrainingDate: true,
     },
   });
   if (after) {
     await syncUnassignedInstructorTask(after);
     await syncUnpaidPaymentTask(after);
+    await syncYossiAmarDetailsTask(after);
   }
 
   revalidatePath("/");

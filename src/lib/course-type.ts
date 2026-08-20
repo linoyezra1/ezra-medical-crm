@@ -114,6 +114,15 @@ export function extractCourseHoursDigits(
 export const KINDERGARTEN_REFRESH_COURSE_LABEL =
   "רענון עזרה ראשונה+התנהלות בטוחה"
 
+/** משימה אוטומטית — השלמת פרטי מעון ושליחה ליוסי עמר */
+export const YOSSI_AMAR_DETAILS_TASK_PREFIX =
+  "יש להשלים פרטים ולשלוח ליוסי עמר"
+
+export function yossiAmarDetailsTaskTitle(leadName: string): string {
+  const name = leadName.trim() || "הדרכה"
+  return `${YOSSI_AMAR_DETAILS_TASK_PREFIX} — ${name}`
+}
+
 /** האם סוג הקורס הוא (או מכיל) רענון עזרה ראשונה + התנהלות בטוחה */
 export function isKindergartenRefreshCourseType(
   courseType?: string | null,
@@ -130,6 +139,21 @@ export function isKindergartenRefreshCourseType(
     if (/^רענון עזרה ראשונה\s*\+\s*התנהלות בטוחה$/.test(n)) return true
     return n.includes("רענון עזרה ראשונה") && n.includes("התנהלות בטוחה")
   })
+}
+
+/** האם כל שדות המעון מולאו (לסגירת משימת יוסי עמר) */
+export function hasCompleteKindergartenRefreshDetails(lead: {
+  kindergartenManagerName?: string | null
+  kindergartenManagerPhone?: string | null
+  institutionSymbol?: string | null
+  basicTrainingDate?: string | null
+}): boolean {
+  return Boolean(
+    lead.kindergartenManagerName?.trim() &&
+      lead.kindergartenManagerPhone?.trim() &&
+      lead.institutionSymbol?.trim() &&
+      lead.basicTrainingDate?.trim(),
+  )
 }
 
 /** האם סוג הקורס הוא רענון (לתעודה / תבנית PDF) */

@@ -32,8 +32,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
   formatLeadCourseType,
-  isKindergartenRefreshCourseType,
-  KINDERGARTEN_REFRESH_COURSE_LABEL,
 } from "@/lib/course-type"
 import { exportLeadCertificatesToSheetsAction } from "@/lib/actions"
 import {
@@ -44,7 +42,6 @@ import {
   downloadLeadIcs,
   weekdayNameHe,
   whatsappLink,
-  yossiAmarKindergartenWhatsAppMessage,
 } from "@/lib/helpers"
 import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
 import { isInstructorUnassigned, isOwnerInstructor, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
@@ -151,151 +148,135 @@ export function LeadDetailView({
       >
         <div className="sticky top-0 z-30 shrink-0">
           {/* —— Expanded action header (separated from tabs) —— */}
-          <header className="border-b border-slate-200/80 bg-slate-50/90 px-5 py-4 shadow-sm backdrop-blur-md md:px-6 md:py-5">
+          <header className="border-b border-slate-200/80 bg-slate-50/90 px-5 py-4 shadow-sm backdrop-blur-md md:px-6 md:py-5 lg:px-5 lg:py-2.5">
             {embedded && (
               <Link
                 href="/leads"
-                className="mb-3 hidden w-fit items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-secondary md:inline-flex"
+                className="mb-3 hidden w-fit items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-secondary md:inline-flex lg:mb-1.5 lg:px-3 lg:py-1.5 lg:text-xs"
               >
                 <ArrowRight className="size-4 shrink-0" />
                 חזרה לכלל הלידים וההדרכות
               </Link>
             )}
 
-            <div className="flex items-start gap-3">
-              {embedded ? (
-                <Link
-                  href="/leads"
-                  aria-label="חזרה לרשימה"
-                  className="mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-white/80 text-secondary-foreground shadow-sm md:hidden"
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                {embedded ? (
+                  <Link
+                    href="/leads"
+                    aria-label="חזרה לרשימה"
+                    className="mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-white/80 text-secondary-foreground shadow-sm md:hidden"
+                  >
+                    <ArrowRight className="size-5" />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => router.back()}
+                    aria-label="חזרה"
+                    className="mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-white/80 text-secondary-foreground shadow-sm lg:mt-0 lg:size-9"
+                  >
+                    <ArrowRight className="size-5 lg:size-4" />
+                  </button>
+                )}
+
+                <div className="min-w-0 flex-1 space-y-1.5 lg:space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-2.5 lg:gap-2">
+                    <h1 className="truncate text-xl font-bold tracking-tight text-foreground md:text-2xl lg:text-lg">
+                      {lead.name}
+                    </h1>
+                    <LeadStatusBadge
+                      status={lead.status}
+                      className="px-3.5 py-1.5 text-sm font-bold shadow-sm lg:px-2.5 lg:py-0.5 lg:text-xs"
+                    />
+                  </div>
+                  <p className="truncate text-sm font-medium text-muted-foreground md:text-base lg:text-xs">
+                    {courseLabel}
+                  </p>
+                  <div className="max-w-xs pt-1 lg:max-w-sm lg:pt-0">
+                    <InstructorAssignmentWidget lead={lead} compact />
+                  </div>
+                  <p className="text-base font-extrabold text-foreground md:text-lg lg:text-sm">
+                    הסכום הכולל של ההדרכה:{" "}
+                    <span className="text-primary">
+                      {formatCurrency(payments.expectedTotal)}
+                    </span>
+                  </p>
+                  {payments.leadOptionAmount > 0 ? (
+                    <p className="text-xs font-normal text-muted-foreground lg:text-[11px]">
+                      {payments.leadOptionCount > 1
+                        ? `* עוד כ-${formatCurrency(payments.leadOptionAmount)} באופציה (${payments.leadOptionCount} לידים)`
+                        : `* ${formatCurrency(payments.leadOptionAmount)} באופציה`}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-3 md:gap-4 lg:shrink-0 lg:gap-1.5">
+                <IconAction
+                  href={`tel:${lead.phone}`}
+                  label="חיוג"
+                  className="bg-white/80 text-primary shadow-sm lg:size-9 lg:p-2"
                 >
-                  <ArrowRight className="size-5" />
-                </Link>
-              ) : (
+                  <Phone className="size-6 lg:size-4" />
+                </IconAction>
+                <IconAction
+                  href={whatsappLink("", trainingDetailsWhatsApp)}
+                  label="שליחת פרטי הדרכה"
+                  external
+                  className="bg-white/80 text-primary shadow-sm lg:size-9 lg:p-2"
+                >
+                  <Send className="size-6 lg:size-4" />
+                </IconAction>
+                <IconAction
+                  href={whatsappLink(lead.phone)}
+                  label="וואטסאפ"
+                  external
+                  className="bg-white/80 shadow-sm lg:size-9 lg:p-2"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/whatsapp.svg"
+                    alt=""
+                    width={24}
+                    height={24}
+                    className="size-6 lg:size-4"
+                  />
+                </IconAction>
                 <button
                   type="button"
-                  onClick={() => router.back()}
-                  aria-label="חזרה"
-                  className="mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-white/80 text-secondary-foreground shadow-sm"
+                  onClick={() => setPaymentOpen(true)}
+                  aria-label="רישום תשלום"
+                  className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform lg:size-9 lg:p-2"
                 >
-                  <ArrowRight className="size-5" />
+                  <CreditCard className="size-6 lg:size-4" />
                 </button>
-              )}
-
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="truncate text-xl font-bold tracking-tight text-foreground md:text-2xl">
-                    {lead.name}
-                  </h1>
-                  <LeadStatusBadge
-                    status={lead.status}
-                    className="px-3.5 py-1.5 text-sm font-bold shadow-sm"
-                  />
-                </div>
-                <p className="truncate text-sm font-medium text-muted-foreground md:text-base">
-                  {courseLabel}
-                </p>
-                <div className="max-w-xs pt-1">
-                  <InstructorAssignmentWidget lead={lead} compact />
-                </div>
-                <p className="text-base font-extrabold text-foreground md:text-lg">
-                  הסכום הכולל של ההדרכה:{" "}
-                  <span className="text-primary">
-                    {formatCurrency(payments.expectedTotal)}
-                  </span>
-                </p>
-                {payments.leadOptionAmount > 0 ? (
-                  <p className="text-xs font-normal text-muted-foreground">
-                    {payments.leadOptionCount > 1
-                      ? `* עוד כ-${formatCurrency(payments.leadOptionAmount)} באופציה (${payments.leadOptionCount} לידים)`
-                      : `* ${formatCurrency(payments.leadOptionAmount)} באופציה`}
-                  </p>
+                <button
+                  type="button"
+                  onClick={syncCalendar}
+                  aria-label="הכנס ללו״ז"
+                  className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform lg:size-9 lg:p-2"
+                >
+                  <CalendarPlus className="size-6 lg:size-4" />
+                </button>
+                <Link
+                  href={`/leads/${lead.id}/edit`}
+                  aria-label="עריכה"
+                  className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform lg:size-9 lg:p-2"
+                >
+                  <Pencil className="size-6 lg:size-4" />
+                </Link>
+                {zoomLink ? (
+                  <IconAction
+                    href={zoomLink}
+                    label="זום"
+                    external
+                    className="bg-sky-50 text-sky-700 shadow-sm lg:size-9 lg:p-2"
+                  >
+                    <Video className="size-6 lg:size-4" />
+                  </IconAction>
                 ) : null}
               </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center justify-end gap-3 md:gap-4">
-              <IconAction
-                href={`tel:${lead.phone}`}
-                label="חיוג"
-                className="bg-white/80 text-primary shadow-sm"
-              >
-                <Phone className="size-6" />
-              </IconAction>
-              <IconAction
-                href={whatsappLink("", trainingDetailsWhatsApp)}
-                label="שליחת פרטי הדרכה"
-                external
-                className="bg-white/80 text-primary shadow-sm"
-              >
-                <Send className="size-6" />
-              </IconAction>
-              {(isKindergartenRefreshCourseType(
-                lead.courseType,
-                lead.courseTypeOther,
-              ) ||
-                lead.kindergartenManagerName ||
-                lead.institutionSymbol) && (
-                <IconAction
-                  href={whatsappLink(
-                    "",
-                    yossiAmarKindergartenWhatsAppMessage(lead),
-                  )}
-                  label="שלח פרטים ליוסי עמר"
-                  external
-                  className="bg-amber-50 text-amber-900 shadow-sm"
-                >
-                  <Send className="size-6" />
-                </IconAction>
-              )}
-              <IconAction
-                href={whatsappLink(lead.phone)}
-                label="וואטסאפ"
-                external
-                className="bg-white/80 shadow-sm"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/whatsapp.svg"
-                  alt=""
-                  width={24}
-                  height={24}
-                  className="size-6"
-                />
-              </IconAction>
-              <button
-                type="button"
-                onClick={() => setPaymentOpen(true)}
-                aria-label="רישום תשלום"
-                className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform"
-              >
-                <CreditCard className="size-6" />
-              </button>
-              <button
-                type="button"
-                onClick={syncCalendar}
-                aria-label="הכנס ללו״ז"
-                className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform"
-              >
-                <CalendarPlus className="size-6" />
-              </button>
-              <Link
-                href={`/leads/${lead.id}/edit`}
-                aria-label="עריכה"
-                className="flex size-12 items-center justify-center rounded-full bg-white/80 p-3 text-foreground shadow-sm active:scale-95 transition-transform"
-              >
-                <Pencil className="size-6" />
-              </Link>
-              {zoomLink ? (
-                <IconAction
-                  href={zoomLink}
-                  label="זום"
-                  external
-                  className="bg-sky-50 text-sky-700 shadow-sm"
-                >
-                  <Video className="size-6" />
-                </IconAction>
-              ) : null}
             </div>
           </header>
 
@@ -466,43 +447,6 @@ function HomeTab({
             value={formatLeadCategory(lead.category)}
           />
         </div>
-
-        {(isKindergartenRefreshCourseType(
-          lead.courseType,
-          lead.courseTypeOther,
-        ) ||
-          lead.kindergartenManagerName ||
-          lead.kindergartenManagerPhone ||
-          lead.institutionSymbol ||
-          lead.basicTrainingDate) && (
-          <div className="rounded-2xl border border-amber-200/70 bg-amber-50/40 p-3">
-            <p className="mb-2 text-xs font-bold text-amber-950">
-              פרטי מעון — {KINDERGARTEN_REFRESH_COURSE_LABEL}
-            </p>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <Info
-                label="מנהלת הגן/מעון"
-                value={lead.kindergartenManagerName || "—"}
-              />
-              <Info
-                label="טלפון מנהלת"
-                value={lead.kindergartenManagerPhone || "—"}
-              />
-              <Info
-                label="סמל מוסד"
-                value={lead.institutionSymbol || "—"}
-              />
-              <Info
-                label="תאריך הכשרה בסיסית"
-                value={
-                  lead.basicTrainingDate
-                    ? formatDate(lead.basicTrainingDate)
-                    : "—"
-                }
-              />
-            </div>
-          </div>
-        )}
 
         <div className="flex items-start gap-3 rounded-2xl bg-secondary/50 p-3">
           {addressLine === "זום" ? (
@@ -738,6 +682,25 @@ function FinanceTab({ lead }: { lead: Lead }) {
               </span>
             </li>
           ))}
+          {payments.sales.map((s) => (
+            <li
+              key={s.id}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="min-w-0 truncate text-muted-foreground">
+                {s.name} · מכירת ציוד
+              </span>
+              <span className="shrink-0 font-semibold">
+                {formatCurrency(s.paid ? s.amount : 0)} /{" "}
+                {formatCurrency(s.amount)}
+                {s.paid ? (
+                  <span className="mr-1 text-emerald-700"> · שולם</span>
+                ) : (
+                  <span className="mr-1 text-amber-800"> · ממתין</span>
+                )}
+              </span>
+            </li>
+          ))}
         </ul>
       </Card>
 
@@ -759,9 +722,19 @@ function FinanceTab({ lead }: { lead: Lead }) {
             />
           )}
           <Info
+            label="עלות ציוד"
+            value={formatCurrency(profit.salesCost)}
+          />
+          <Info
             label="הוצאות אחרות"
             value={formatCurrency(profit.otherExpenses)}
           />
+          {profit.salesCommissions > 0 ? (
+            <Info
+              label="עמלות מכירה"
+              value={formatCurrency(profit.salesCommissions)}
+            />
+          ) : null}
         </div>
         <div className="rounded-2xl bg-card px-3 py-2.5 text-sm">
           <span className="text-muted-foreground">רווח נקי: </span>

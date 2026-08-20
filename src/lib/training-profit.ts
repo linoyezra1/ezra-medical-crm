@@ -57,9 +57,18 @@ export type ParticipantPaymentEntry = {
   paid: boolean
 }
 
+export type SalePaymentEntry = {
+  id: string
+  name: string
+  amount: number
+  paid: boolean
+}
+
 export type TrainingPaymentSummary = {
   basePrice: number
   externalExpected: number
+  /** סכום מכירות ציוד הצפוי לגבייה */
+  salesExpected: number
   expectedTotal: number
   /** תשלום בסיס שנרשם במפורש על ההדרכה (0 או מחיר בסיס מלא) */
   baseCollected: number
@@ -72,6 +81,8 @@ export type TrainingPaymentSummary = {
   baseSettled: boolean
   externalCollected: number
   internalCollected: number
+  /** סכום מכירות ציוד שנגבו */
+  salesCollected: number
   collectedTotal: number
   remaining: number
   /** יתרה 0 — ההדרכה נחשבת שולמה במלואה לצורך סטטוס ״הסתיים״ */
@@ -79,15 +90,23 @@ export type TrainingPaymentSummary = {
   progressPct: number
   externals: ParticipantPaymentEntry[]
   internals: ParticipantPaymentEntry[]
+  sales: SalePaymentEntry[]
   /** סכום אופציה ממשתתפים שמסומנים כליד */
   leadOptionAmount: number
   leadOptionCount: number
 }
 
+function saleLineAmount(s: {
+  unitSellingPrice?: number
+  quantity?: number
+}): number {
+  return money(s.unitSellingPrice) * money(s.quantity)
+}
+
 /**
  * סיכום תשלומים להדרכה:
- * צפוי = מחיר בסיס + מחירי משתתפים חיצוניים
- * נגבה = תשלום הדרכה שנרשם + תשלומי חיצוניים + תשלומי פנימיים
+ * צפוי = מחיר בסיס + מחירי משתתפים חיצוניים + מכירות ציוד
+ * נגבה = תשלום הדרכה שנרשם + תשלומי חיצוניים + תשלומי פנימיים + מכירות ששולמו
  * (תשלומי פנימיים מקזזים את מחיר הבסיס)
  */
 export function computeTrainingPaymentSummary(
@@ -113,14 +132,28 @@ export function computeTrainingPaymentSummary(
   }))
   const internalCollected = internals.reduce((s, p) => s + p.amount, 0)
 
+  const sales = (lead.trainingSales || [])
+    .map((s) => ({
+      id: s.id,
+      name: s.itemName || "מכירת ציוד",
+      amount: saleLineAmount(s),
+      paid: s.paymentStatus === TRAINING_SALE_PAID,
+    }))
+    .filter((s) => s.amount > 0)
+  const salesExpected = sales.reduce((s, x) => s + x.amount, 0)
+  const salesCollected = sales
+    .filter((s) => s.paid)
+    .reduce((s, x) => s + x.amount, 0)
+
   const baseCollected = isLeadPaid(lead) ? basePrice : 0
   const baseCoveredAmount = Math.min(
     basePrice,
     baseCollected + internalCollected,
   )
   const baseSettled = basePrice <= 0 || baseCoveredAmount >= basePrice
-  const expectedTotal = basePrice + externalExpected
-  const collectedTotal = baseCollected + externalCollected + internalCollected
+  const expectedTotal = basePrice + externalExpected + salesExpected
+  const collectedTotal =
+    baseCollected + externalCollected + internalCollected + salesCollected
   const remaining = Math.max(0, expectedTotal - collectedTotal)
   const isFullySettled = remaining <= 0
   const progressPct =
@@ -140,26 +173,30 @@ export function computeTrainingPaymentSummary(
   return {
     basePrice,
     externalExpected,
+    salesExpected,
     expectedTotal,
     baseCollected,
     baseCoveredAmount,
     baseSettled,
     externalCollected,
     internalCollected,
+    salesCollected,
     collectedTotal,
     remaining,
     isFullySettled,
     progressPct,
     externals,
     internals,
+    sales,
     leadOptionAmount,
     leadOptionCount,
   }
 }
 
-/** האם יתרת ההדרכה מכוסה (בסיס + חיצוניים) — כולל קיזוז מתשלומי פנימיים */
+/** האם יתרת ההדרכה מכוסה (בסיס + חיצוניים + מכירות) — כולל קיזוז מתשלומי פנימיים */
 export function isTrainingFullySettled(
-  lead: Pick<Lead, "totalPrice" | "paymentStatus" | "participants">,
+  lead: Pick<Lead, "totalPrice" | "paymentStatus" | "participants"> &
+    Partial<Pick<Lead, "trainingSales">>,
 ): boolean {
   return computeTrainingPaymentSummary(lead as Lead).isFullySettled
 }
@@ -218,16 +255,16 @@ export type TrainingProfitSummary = {
 
 /**
  * רווח הדרכה:
- * (מחיר הדרכה כולל חיצוניים + מכירות ציוד) − (תעריף מדריך חי + הוצאות אחרות [+ עלות מלאי])
- * מחיר הדרכה בתצוגה = בסיס + כל מחירי החיצוניים.
- * ברווח נספרים תשלומי חיצוניים שנגבו (הבסיס נספר כערך ההדרכה).
+ * (מחיר הדרכה כולל חיצוניים + מכירות ציוד) − (תעריף מדריך חי + הוצאות אחרות + עלות ציוד [+ עמלות])
+ * מחיר הדרכה בתצוגה = בסיס + מחירי חיצוניים (ללא מכירות).
+ * ברווח נספרים תשלומי חיצוניים שנגבו (הבסיס נספר כערך ההדרכה) + הכנסות ממכירות.
  */
 export function computeTrainingProfit(
   lead: Lead,
   instructors: InstructorProfile[],
 ): TrainingProfitSummary {
   const pay = computeTrainingPaymentSummary(lead)
-  const coursePrice = pay.expectedTotal
+  const coursePrice = pay.basePrice + pay.externalExpected
   const sales = lead.trainingSales || []
   const salesIncome = sales.reduce(
     (s, x) => s + (x.unitSellingPrice || 0) * (x.quantity || 0),
@@ -246,7 +283,8 @@ export function computeTrainingProfit(
     .filter((e) => !isInstructorExpenseType(e.type))
     .reduce((s, e) => s + (e.amount || 0), 0)
 
-  const revenue = pay.basePrice + pay.externalCollected + pay.internalCollected + salesIncome
+  const revenue =
+    pay.basePrice + pay.externalCollected + pay.internalCollected + salesIncome
   const totalExpenses =
     instructorFee + otherExpenses + salesCost + salesCommissions
   return {
@@ -260,22 +298,6 @@ export function computeTrainingProfit(
     totalExpenses,
     netProfit: revenue - totalExpenses,
   }
-}
-
-function trainingSalesIncome(lead: Lead): number {
-  return (lead.trainingSales || []).reduce(
-    (s, x) => s + money(x.unitSellingPrice) * money(x.quantity),
-    0,
-  )
-}
-
-function paidTrainingSalesIncome(lead: Lead): number {
-  return (lead.trainingSales || [])
-    .filter((s) => s.paymentStatus === TRAINING_SALE_PAID)
-    .reduce(
-      (sum, x) => sum + money(x.unitSellingPrice) * money(x.quantity),
-      0,
-    )
 }
 
 /** עלות מדריך ששולמה/נרשמה — רשומת הוצאת מדריך או תעריף כשההדרכה שולמה */
@@ -298,10 +320,7 @@ export function instructorCostPaid(
 /** האם נרשם לפחות תשלום אחד (הדרכה / משתתף / מכירת ציוד) */
 export function leadHasLoggedPayment(lead: Lead): boolean {
   const pay = computeTrainingPaymentSummary(lead)
-  if (pay.collectedTotal > 0) return true
-  return (lead.trainingSales || []).some(
-    (s) => s.paymentStatus === TRAINING_SALE_PAID,
-  )
+  return pay.collectedTotal > 0
 }
 
 /**
@@ -313,14 +332,13 @@ export function computeExpectedNetProfit(
   instructors: InstructorProfile[],
 ): number {
   const pay = computeTrainingPaymentSummary(lead)
-  const salesIncome = trainingSalesIncome(lead)
   const instructorFee = resolveInstructorFee(lead, instructors)
-  return pay.expectedTotal + salesIncome - instructorFee
+  return pay.expectedTotal - instructorFee
 }
 
 /**
  * רווח נקי ממומש:
- * (תשלומים שנגבו + מכירות ציוד ששולמו) − עלות מדריך ששולמה
+ * (תשלומים שנגבו כולל מכירות ששולמו) − עלות מדריך ששולמה
  */
 export function computeRealizedNetProfit(
   lead: Lead,
@@ -328,9 +346,7 @@ export function computeRealizedNetProfit(
 ): number {
   if (!leadHasLoggedPayment(lead)) return 0
   const pay = computeTrainingPaymentSummary(lead)
-  const paidSales = paidTrainingSalesIncome(lead)
-  const revenue = pay.collectedTotal + paidSales
-  return revenue - instructorCostPaid(lead, instructors)
+  return pay.collectedTotal - instructorCostPaid(lead, instructors)
 }
 
 export type DashboardKpis = {
