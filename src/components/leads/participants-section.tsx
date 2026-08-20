@@ -73,6 +73,7 @@ import {
   collectLeadCategoryOptions,
   formatCurrency,
   formatDate,
+  formatLeadCategory,
   weekdayNameHe,
   whatsappLink,
   zoomInviteWhatsAppMessage,
@@ -377,15 +378,51 @@ export function ParticipantsSection({
 
   const filtered = useMemo(() => {
     const q = query.trim()
-    if (!q) return participants
-    return participants.filter(
-      (p) =>
-        p.name.includes(q) ||
-        (p.phone || "").includes(q) ||
-        p.idNumber.includes(q) ||
-        (p.email || "").includes(q),
-    )
-  }, [participants, query])
+    const list = !q
+      ? [...participants]
+      : participants.filter(
+          (p) =>
+            p.name.includes(q) ||
+            (p.phone || "").includes(q) ||
+            p.idNumber.includes(q) ||
+            (p.email || "").includes(q),
+        )
+
+    const courseLabel = (p: Participant) =>
+      (
+        formatCourseTypeLabel(p.courseType || lead.courseType, {
+          other: p.courseType ? undefined : lead.courseTypeOther,
+          catalog: settings.courses,
+        }) || ""
+      ).trim()
+
+    const categoryLabel = (p: Participant) =>
+      formatLeadCategory(
+        p.courseCategory ||
+          (lead.category === "אחר" ? lead.categoryOther : lead.category),
+      ).trim()
+
+    return list.sort((a, b) => {
+      const priceA = Number(a.agreedPrice ?? 0)
+      const priceB = Number(b.agreedPrice ?? 0)
+      const safeA = Number.isFinite(priceA) ? priceA : 0
+      const safeB = Number.isFinite(priceB) ? priceB : 0
+      if (safeA !== safeB) return safeA - safeB
+
+      const courseDiff = courseLabel(a).localeCompare(courseLabel(b), "he")
+      if (courseDiff !== 0) return courseDiff
+
+      return categoryLabel(a).localeCompare(categoryLabel(b), "he")
+    })
+  }, [
+    participants,
+    query,
+    lead.courseType,
+    lead.courseTypeOther,
+    lead.category,
+    lead.categoryOther,
+    settings.courses,
+  ])
 
   const courseOptions = useMemo(
     () => collectCourseTypeOptions(leads, settings.courses),
@@ -855,17 +892,33 @@ export function ParticipantsSection({
                         aria-label="בחר הכל"
                       />
                     </th>
-                    <th className="w-[18%] px-3 py-2 font-semibold">שם</th>
-                    <th className="w-[14%] px-3 py-2 font-semibold">טלפון</th>
-                    <th className="w-[12%] px-3 py-2 font-semibold">ת״ז</th>
-                    <th className="w-[18%] px-3 py-2 font-semibold">דוא״ל</th>
-                    <th className="w-[14%] px-3 py-2 font-semibold">גישת LMS</th>
-                    <th className="w-[16%] px-3 py-2 font-semibold">פעולות</th>
+                    <th className="w-[14%] px-3 py-2 font-semibold">שם</th>
+                    <th className="w-[11%] px-3 py-2 font-semibold">טלפון</th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">ת״ז</th>
+                    <th className="w-[12%] px-3 py-2 font-semibold">דוא״ל</th>
+                    <th className="w-[12%] px-3 py-2 font-semibold">סוג קורס</th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">קטגוריה</th>
+                    <th className="w-[11%] px-3 py-2 font-semibold">גישת LMS</th>
+                    <th className="w-[14%] px-3 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((p) => {
                     const busy = lmsBusy === p.id
+                    const courseTypeLabel =
+                      formatCourseTypeLabel(
+                        p.courseType || lead.courseType,
+                        {
+                          other: p.courseType ? undefined : lead.courseTypeOther,
+                          catalog: settings.courses,
+                        },
+                      ) || "—"
+                    const categoryLabel = formatLeadCategory(
+                      p.courseCategory ||
+                        (lead.category === "אחר"
+                          ? lead.categoryOther
+                          : lead.category),
+                    )
                     return (
                       <tr
                         key={p.id}
@@ -917,6 +970,18 @@ export function ParticipantsSection({
                         </td>
                         <td className="max-w-0 truncate px-3 py-2 text-muted-foreground">
                           {p.email || "—"}
+                        </td>
+                        <td
+                          className="max-w-0 truncate px-3 py-2 text-muted-foreground"
+                          title={courseTypeLabel}
+                        >
+                          {courseTypeLabel}
+                        </td>
+                        <td
+                          className="max-w-0 truncate px-3 py-2 text-muted-foreground"
+                          title={categoryLabel}
+                        >
+                          {categoryLabel}
                         </td>
                         <td className="px-3 py-2">
                           {p.hasLmsAccess ? (
