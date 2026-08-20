@@ -1,6 +1,5 @@
 "use server";
 
-import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/db";
@@ -67,6 +66,11 @@ import {
   isUsableParticipantIdNumber,
   normalizeParticipantIdNumber,
 } from "@/lib/participant-identity";
+import {
+  linkParticipantToTrainee,
+  syncParticipantContactToTrainee,
+  upsertTraineeFromParticipant,
+} from "@/lib/trainee-directory";
 
 export type ActionResult<T = unknown> =
   | { ok: true; data: T }
@@ -1206,75 +1210,6 @@ export async function recordLeadPayment(
   return { ok: true, data: { id: leadId } };
 }
 
-async function upsertTraineeFromParticipant(data: {
-  fullName: string;
-  idNumber: string;
-  email?: string | null;
-  phone?: string | null;
-}) {
-  const fullName = data.fullName.trim() || "ללא שם";
-  let idNumber = normalizeParticipantIdNumber(data.idNumber);
-  const phone = data.phone?.trim() || null;
-  const email = data.email?.trim() || null;
-
-  if (!idNumber && phone) {
-    const byPhone = await prisma.trainee.findFirst({
-      where: { phone },
-      orderBy: { updatedAt: "desc" },
-    });
-    if (byPhone) {
-      return prisma.trainee.update({
-        where: { id: byPhone.id },
-        data: {
-          fullName,
-          email: email || undefined,
-        },
-      });
-    }
-  }
-
-  // ת״ז ריקה — מזהה זמני ייחודי (אילוץ @@unique על Trainee)
-  if (!idNumber) {
-    idNumber = `temp-${randomUUID()}`;
-  }
-  return prisma.trainee.upsert({
-    where: { idNumber },
-    create: {
-      fullName,
-      idNumber,
-      email,
-      phone,
-    },
-    update: {
-      fullName,
-      email: email || undefined,
-      phone: phone || undefined,
-    },
-  });
-}
-
-async function linkParticipantToTrainee(p: {
-  id: string;
-  fullName: string;
-  idNumber: string;
-  email?: string | null;
-  phone?: string | null;
-  traineeId?: string | null;
-}) {
-  if (p.traineeId) return p.traineeId;
-  const trainee = await upsertTraineeFromParticipant({
-    fullName: p.fullName,
-    idNumber: p.idNumber,
-    email: p.email,
-    phone: p.phone,
-  });
-  await prisma.participant.update({
-    where: { id: p.id },
-    data: { traineeId: trainee.id },
-  });
-  return trainee.id;
-}
-
 /** משלים מודרכים גלובליים למשתתפים חיצוניים שטרם נכנסו למאגר */
 export async function ensureExternalParticipantsInDirectory() {
   const orphans = await prisma.participant.findMany({
@@ -1311,7 +1246,7 @@ export async function addParticipant(
     const rows = await prisma.participant.findMany({ where: { leadId } });
     const match = findParticipantByIdNumber(rows, id);
     if (match) {
-      await prisma.participant.update({
+      const updated = await prisma.participant.update({
         where: { id: match.id },
         data: {
           fullName: name || match.fullName,
@@ -1320,7 +1255,9 @@ export async function addParticipant(
           email: email || match.email,
         },
       });
+      await syncParticipantContactToTrainee(updated);
       revalidatePath(`/leads/${leadId}`);
+      revalidatePath("/clients");
       return { ok: true as const };
     }
   }
@@ -1431,9 +1368,7 @@ export async function addExternalParticipant(input: {
               : match.agreedPrice,
         },
       })
-      if (isExternal) {
-        await linkParticipantToTrainee(updated)
-      }
+      await syncParticipantContactToTrainee(updated)
       revalidatePath("/")
       revalidatePath("/leads")
       revalidatePath(`/leads/${input.leadId}`)
@@ -1448,9 +1383,7 @@ export async function addExternalParticipant(input: {
       ...participantData,
     },
   })
-  if (isExternal) {
-    await linkParticipantToTrainee(created)
-  }
+  await syncParticipantContactToTrainee(created)
   revalidatePath("/")
   revalidatePath("/leads")
   revalidatePath(`/leads/${input.leadId}`)
@@ -1528,6 +1461,8 @@ export async function getAllPaymentTransactionsAction(): Promise<
               { agreedPrice: { gt: 0 } },
               { paymentStatus: { not: null } },
             ],
+            // הדרכה אבודה/מבוטלת — בלי צפייה לגבייה
+            lead: { courseStatus: { not: "canceled" } },
           },
           select: {
             id: true,
@@ -1545,11 +1480,18 @@ export async function getAllPaymentTransactionsAction(): Promise<
                 id: true,
                 fullName: true,
                 activityType: true,
+                courseStatus: true,
               },
             },
           },
         }),
         prisma.trainingSale.findMany({
+          where: {
+            OR: [
+              { leadId: null },
+              { lead: { courseStatus: { not: "canceled" } } },
+            ],
+          },
           select: {
             id: true,
             leadId: true,
@@ -1561,13 +1503,16 @@ export async function getAllPaymentTransactionsAction(): Promise<
             inventoryItem: { select: { name: true } },
             participant: { select: { fullName: true } },
             reportedByInstructor: { select: { name: true } },
-            lead: { select: { id: true, fullName: true } },
+            lead: {
+              select: { id: true, fullName: true, courseStatus: true },
+            },
           },
           orderBy: { createdAt: "desc" },
         }),
         prisma.lead.findMany({
           where: {
             activityType: { not: "equipment" },
+            courseStatus: { not: "canceled" },
             OR: [
               { paymentStatus: PAID_PAYMENT_STATUS },
               { paymentDate: { not: null } },
@@ -1587,6 +1532,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
         prisma.lead.findMany({
           where: {
             activityType: { in: ["equipment", "combined"] },
+            courseStatus: { not: "canceled" },
             OR: [
               { paymentStatus: PAID_PAYMENT_STATUS },
               { paymentDate: { not: null } },
@@ -1785,12 +1731,20 @@ export async function submitPublicParticipant(
 
   // מילוי חוזר עם אותה ת״ז — מעדכן את הקיים (לא שורה חדשה)
   if (existing) {
-    await prisma.participant.update({
+    const updated = await prisma.participant.update({
       where: { id: existing.id },
       data: payload,
     });
+    if (
+      updated.traineeId ||
+      updated.attended ||
+      isUsableParticipantIdNumber(idNumber)
+    ) {
+      await syncParticipantContactToTrainee(updated);
+    }
     revalidatePath(`/leads/${leadId}`);
     revalidatePath(`/p/${leadId}`);
+    revalidatePath("/clients");
     return { ok: true, data: { id: existing.id } };
   }
 
@@ -1817,17 +1771,10 @@ export async function setParticipantAttended(
   if (!participant) return { ok: false, error: "משתתף לא נמצא" };
 
   let traineeId = participant.traineeId;
-  if (attended && !traineeId) {
-    const trainee = await upsertTraineeFromParticipant({
-      fullName: participant.fullName,
-      idNumber: participant.idNumber,
-      email: participant.email,
-      phone: participant.phone,
-    });
-    traineeId = trainee.id;
-  }
-
-  if (!attended) {
+  if (attended) {
+    // תמיד מסנכרנים פרטים עדכניים מ-Participant → Trainee (גם אם כבר מקושר)
+    traineeId = await syncParticipantContactToTrainee(participant);
+  } else {
     traineeId = null;
   }
 
@@ -1879,7 +1826,9 @@ export async function updateParticipantDetails(
     where: { id: participantId },
     data: {
       fullName: data.fullName?.trim(),
-      idNumber: data.idNumber?.trim(),
+      idNumber: data.idNumber?.trim()
+        ? normalizeParticipantIdNumber(data.idNumber)
+        : data.idNumber?.trim(),
       phone: data.phone?.trim() || null,
       email: data.email?.trim() || null,
       feedback: data.feedback?.trim() || null,
@@ -1897,11 +1846,11 @@ export async function updateParticipantDetails(
       ...(agreedPrice !== undefined ? { agreedPrice } : {}),
     },
   });
-  if (isExternal) {
-    await linkParticipantToTrainee(updated);
-  }
+  // סנכרון דו-כיווני: פרטי משתתף → מודרך גלובלי
+  await syncParticipantContactToTrainee(updated);
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/clients");
+  revalidatePath("/leads");
   return { ok: true, data: { id: participantId } };
 }
 

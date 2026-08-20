@@ -37,7 +37,7 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
   const { leads } = useApp()
   const [filter, setFilter] = useState<LeadStatus | "all">("new")
   const [query, setQuery] = useState("")
-  const [browseMode, setBrowseMode] = useState<DesktopBrowseMode>("cards")
+  const [browseMode, setBrowseMode] = useState<DesktopBrowseMode>("table")
   const [externalOpen, setExternalOpen] = useState(false)
 
   // Deep-link: /leads?status=new

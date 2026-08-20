@@ -53,6 +53,9 @@ export function PaymentHistoryView() {
   const [type, setType] = useState<PaymentTransactionType | typeof ALL>(ALL)
   const [paymentMethod, setPaymentMethod] = useState<string>(ALL)
   const [receivedBy, setReceivedBy] = useState<string>(ALL)
+  const [paymentStatus, setPaymentStatus] = useState<
+    PaymentLedgerStatus | typeof ALL
+  >(ALL)
   const [search, setSearch] = useState("")
 
   const load = useCallback(async () => {
@@ -80,9 +83,19 @@ export function PaymentHistoryView() {
         type,
         paymentMethod,
         receivedBy,
+        paymentStatus,
         search,
       }),
-    [rows, dateFrom, dateTo, type, paymentMethod, receivedBy, search],
+    [
+      rows,
+      dateFrom,
+      dateTo,
+      type,
+      paymentMethod,
+      receivedBy,
+      paymentStatus,
+      search,
+    ],
   )
 
   const summary = useMemo(
@@ -102,6 +115,7 @@ export function PaymentHistoryView() {
     type !== ALL ||
     paymentMethod !== ALL ||
     receivedBy !== ALL ||
+    paymentStatus !== ALL ||
     Boolean(search.trim())
 
   function clearFilters() {
@@ -110,6 +124,7 @@ export function PaymentHistoryView() {
     setType(ALL)
     setPaymentMethod(ALL)
     setReceivedBy(ALL)
+    setPaymentStatus(ALL)
     setSearch("")
   }
 
@@ -137,7 +152,7 @@ export function PaymentHistoryView() {
         </Button>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           label="סך הכל נגבה"
           value={formatCurrency(summary.totalCollected)}
@@ -147,22 +162,43 @@ export function PaymentHistoryView() {
         <SummaryCard
           label="מזומן"
           value={formatCurrency(summary.cashTotal)}
-          hint="לפי הסינון הנוכחי"
+          hint="שולם במזומן"
           tone="success"
         />
         <SummaryCard
-          label="אשראי / העברות / אחר"
-          value={formatCurrency(summary.nonCashTotal)}
+          label="ביט"
+          value={formatCurrency(summary.bitTotal)}
+          hint="שולם בביט"
+          tone="success"
+        />
+        <SummaryCard
+          label="העברה בנקאית"
+          value={formatCurrency(summary.bankTransferTotal)}
+          hint="שולם בהעברה"
+          tone="success"
+        />
+        <SummaryCard
+          label="אחר שנגבה"
+          value={formatCurrency(summary.otherCollectedTotal)}
           hint={
-            summary.byMethod.length
-              ? summary.byMethod
-                  .filter((m) => m.method !== "cash")
-                  .slice(0, 3)
-                  .map((m) => `${m.label}: ${formatCurrency(m.amount)}`)
-                  .join(" · ") || "—"
-              : "—"
+            summary.byMethod
+              .filter(
+                (m) =>
+                  m.method !== "cash" &&
+                  m.method !== "bit" &&
+                  m.method !== "bank_transfer",
+              )
+              .slice(0, 2)
+              .map((m) => `${m.label}: ${formatCurrency(m.amount)}`)
+              .join(" · ") || "פייבוקס / צ׳ק / אחר"
           }
           tone="muted"
+        />
+        <SummaryCard
+          label="ממתין לתשלום"
+          value={formatCurrency(summary.pendingTotal)}
+          hint={`${summary.pendingCount} רשומות · ללא הדרכות אבודות`}
+          tone="warning"
         />
       </div>
 
@@ -176,7 +212,7 @@ export function PaymentHistoryView() {
             className="pr-9"
           />
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <label className="space-y-1 text-xs text-muted-foreground">
             מתאריך
             <Input
@@ -192,6 +228,28 @@ export function PaymentHistoryView() {
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
+          </label>
+          <label className="space-y-1 text-xs text-muted-foreground">
+            סטטוס תשלום
+            <select
+              className={selectClass}
+              value={paymentStatus}
+              onChange={(e) =>
+                setPaymentStatus(
+                  e.target.value === ALL
+                    ? ALL
+                    : (e.target.value as PaymentLedgerStatus),
+                )
+              }
+            >
+              <option value={ALL}>הכל</option>
+              <option value="paid">
+                {PAYMENT_LEDGER_STATUS_LABELS.paid}
+              </option>
+              <option value="pending">
+                {PAYMENT_LEDGER_STATUS_LABELS.pending}
+              </option>
+            </select>
           </label>
           <label className="space-y-1 text-xs text-muted-foreground">
             סוג תשלום
@@ -421,14 +479,16 @@ function SummaryCard({
   label: string
   value: string
   hint: string
-  tone: "primary" | "success" | "muted"
+  tone: "primary" | "success" | "muted" | "warning"
 }) {
   const valueClass =
     tone === "primary"
       ? "text-primary"
       : tone === "success"
         ? "text-success"
-        : "text-foreground"
+        : tone === "warning"
+          ? "text-amber-800"
+          : "text-foreground"
   return (
     <div className="rounded-2xl border border-border bg-card p-3">
       <p className="text-xs text-muted-foreground">{label}</p>

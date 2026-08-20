@@ -56,6 +56,7 @@ export type PaymentTransactionFilters = {
   type?: PaymentTransactionType | "all"
   paymentMethod?: string | "all"
   receivedBy?: string | "all"
+  paymentStatus?: PaymentLedgerStatus | "all"
   search?: string
 }
 
@@ -63,7 +64,12 @@ export type PaymentTransactionsSummary = {
   totalCollected: number
   byMethod: { method: string; label: string; amount: number }[]
   cashTotal: number
-  nonCashTotal: number
+  bitTotal: number
+  bankTransferTotal: number
+  /** שולם שלא במזומן / ביט / העברה (פייבוקס, צ'ק, אחר, לא צוין) */
+  otherCollectedTotal: number
+  pendingTotal: number
+  pendingCount: number
   count: number
 }
 
@@ -139,11 +145,16 @@ export function filterPaymentTransactions(
     filters.receivedBy && filters.receivedBy !== "all"
       ? filters.receivedBy
       : null
+  const paymentStatus =
+    filters.paymentStatus && filters.paymentStatus !== "all"
+      ? filters.paymentStatus
+      : null
 
   return rows.filter((row) => {
     if (filters.dateFrom && row.date < filters.dateFrom) return false
     if (filters.dateTo && row.date > filters.dateTo) return false
     if (type && row.type !== type) return false
+    if (paymentStatus && row.paymentStatus !== paymentStatus) return false
     if (method) {
       if (method === "__none__") {
         if (row.paymentMethod) return false
@@ -170,17 +181,27 @@ export function summarizePaymentTransactions(
   rows: PaymentTransaction[],
 ): PaymentTransactionsSummary {
   const paid = rows.filter((r) => r.paymentStatus === "paid")
+  const pending = rows.filter((r) => r.paymentStatus === "pending")
   const byMethodMap = new Map<string, number>()
   let cashTotal = 0
-  let nonCashTotal = 0
+  let bitTotal = 0
+  let bankTransferTotal = 0
+  let otherCollectedTotal = 0
   let totalCollected = 0
+  let pendingTotal = 0
 
   for (const row of paid) {
     totalCollected += row.amount
     const key = row.paymentMethod || "__none__"
     byMethodMap.set(key, (byMethodMap.get(key) || 0) + row.amount)
     if (key === "cash") cashTotal += row.amount
-    else nonCashTotal += row.amount
+    else if (key === "bit") bitTotal += row.amount
+    else if (key === "bank_transfer") bankTransferTotal += row.amount
+    else otherCollectedTotal += row.amount
+  }
+
+  for (const row of pending) {
+    pendingTotal += row.amount
   }
 
   const byMethod = Array.from(byMethodMap.entries())
@@ -195,7 +216,11 @@ export function summarizePaymentTransactions(
     totalCollected,
     byMethod,
     cashTotal,
-    nonCashTotal,
+    bitTotal,
+    bankTransferTotal,
+    otherCollectedTotal,
+    pendingTotal,
+    pendingCount: pending.length,
     count: rows.length,
   }
 }

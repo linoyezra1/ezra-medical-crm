@@ -10,6 +10,7 @@ import {
   isUsableParticipantIdNumber,
   normalizeParticipantIdNumber,
 } from "@/lib/participant-identity"
+import { syncParticipantContactToTrainee } from "@/lib/trainee-directory"
 
 const DEFAULT_WIX_SPREADSHEET_ID =
   "1vy5gL9PjLQ8scNHvHPHxAtCLfWDRZm0Lr4BfdBK3Nz4"
@@ -221,6 +222,9 @@ export async function refreshParticipantsFromWix(
           data,
         })
         rememberParticipant(existing, byId, saved)
+        if (saved.traineeId || saved.attended || isUsableParticipantIdNumber(idNumber)) {
+          await syncParticipantContactToTrainee(saved)
+        }
         updated++
         continue
       }
@@ -249,6 +253,13 @@ export async function refreshParticipantsFromWix(
             },
           })
           rememberParticipant(existing, byId, saved)
+          if (
+            saved.traineeId ||
+            saved.attended ||
+            isUsableParticipantIdNumber(idNumber)
+          ) {
+            await syncParticipantContactToTrainee(saved)
+          }
           updated++
           continue
         }
@@ -271,6 +282,18 @@ export async function refreshParticipantsFromWix(
         },
       })
       rememberParticipant(existing, byId, created)
+      // אם כבר קיים מודרך עם אותה ת״ז — מעדכנים פרטים; קישור מלא בנוכחות
+      if (isUsableParticipantIdNumber(idNumber)) {
+        const existingTrainee = await prisma.trainee.findUnique({
+          where: { idNumber },
+        })
+        if (existingTrainee) {
+          await syncParticipantContactToTrainee({
+            ...created,
+            traineeId: existingTrainee.id,
+          })
+        }
+      }
       added++
     }
 
