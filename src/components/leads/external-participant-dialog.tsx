@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { addExternalParticipant, addParticipant, ensureCustomCourseTypeOption } from "@/lib/actions"
+import { addExternalParticipant, ensureCustomCourseTypeOption } from "@/lib/actions"
 import {
   COURSE_TYPE_FORMAT_ERROR,
   COURSE_TYPE_OTHER,
@@ -50,11 +50,16 @@ const EMPTY_FORM = {
   phone: "",
   leadId: "",
   isExternal: true,
+  isLead: false,
   courseType: "",
   courseTypeOther: "",
   courseCategory: "",
+  courseCategoryOther: "",
   agreedPrice: "",
+  feedback: "",
 }
+
+const CATEGORY_OTHER = "אחר"
 
 export function ExternalParticipantDialog({
   open,
@@ -126,22 +131,42 @@ export function ExternalParticipantDialog({
         }
         await ensureCustomCourseTypeOption(courseType)
       }
+      let courseCategory = form.courseCategory
+      if (courseCategory === CATEGORY_OTHER) {
+        courseCategory = form.courseCategoryOther.trim()
+        if (!courseCategory) {
+          setSaving(false)
+          toast.error("יש למלא קטגוריה")
+          return
+        }
+      }
       res = await addExternalParticipant({
         leadId: form.leadId,
         fullName: form.fullName,
         phone: form.phone,
         courseType,
-        courseCategory: form.courseCategory,
+        courseCategory,
         agreedPrice:
           form.agreedPrice ? Number(form.agreedPrice) : undefined,
         idNumber: form.idNumber,
         email: form.email,
         isExternal: true,
+        isLead: form.isLead,
+        feedback: form.feedback,
       })
     } else {
-      res = await addParticipant(form.leadId, form.fullName, form.idNumber, {
-        phone: form.phone || null,
-        email: form.email || null,
+      res = await addExternalParticipant({
+        leadId: form.leadId,
+        fullName: form.fullName,
+        phone: form.phone,
+        idNumber: form.idNumber,
+        email: form.email,
+        isExternal: false,
+        isLead: form.isLead,
+        feedback: form.feedback,
+        agreedPrice: form.isLead && form.agreedPrice
+          ? Number(form.agreedPrice)
+          : undefined,
       })
     }
     setSaving(false)
@@ -241,12 +266,32 @@ export function ExternalParticipantDialog({
                   isExternal: Boolean(v),
                   courseType: "",
                   courseCategory: "",
-                  agreedPrice: "",
+                  courseCategoryOther: "",
+                  agreedPrice: Boolean(v) || f.isLead ? f.agreedPrice : "",
                 }))
               }
             />
             משתתף חיצוני
           </label>
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <Checkbox
+              checked={form.isLead}
+              onCheckedChange={(v) =>
+                setForm((f) => ({ ...f, isLead: Boolean(v) }))
+              }
+            />
+            סמן כליד
+          </label>
+          <div>
+            <Label className="mb-1.5 block text-sm">הערות</Label>
+            <Input
+              value={form.feedback}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, feedback: e.target.value }))
+              }
+              placeholder="הערות"
+            />
+          </div>
           {form.isExternal ? (
             <>
               <div>
@@ -289,9 +334,20 @@ export function ExternalParticipantDialog({
               <div>
                 <Label className="mb-1.5 block text-sm">קטגוריה</Label>
                 <Select
-                  value={form.courseCategory || undefined}
+                  value={
+                    form.courseCategory === CATEGORY_OTHER ||
+                    (form.courseCategoryOther &&
+                      form.courseCategory === CATEGORY_OTHER)
+                      ? CATEGORY_OTHER
+                      : form.courseCategory || undefined
+                  }
                   onValueChange={(v) =>
-                    setForm((f) => ({ ...f, courseCategory: v ?? "" }))
+                    setForm((f) => ({
+                      ...f,
+                      courseCategory: v ?? "",
+                      courseCategoryOther:
+                        v === CATEGORY_OTHER ? f.courseCategoryOther : "",
+                    }))
                   }
                 >
                   <SelectTrigger className="w-full">
@@ -303,9 +359,27 @@ export function ExternalParticipantDialog({
                         {o}
                       </SelectItem>
                     ))}
+                    <SelectItem value={CATEGORY_OTHER}>
+                      {CATEGORY_OTHER}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {form.courseCategory === CATEGORY_OTHER ? (
+                <div>
+                  <Label className="mb-1.5 block text-sm">קטגוריה חדשה</Label>
+                  <Input
+                    value={form.courseCategoryOther}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        courseCategoryOther: e.target.value,
+                      }))
+                    }
+                    placeholder="הקלידו קטגוריה מותאמת"
+                  />
+                </div>
+              ) : null}
               <div>
                 <Label className="mb-1.5 block text-sm">מחיר</Label>
                 <Input
@@ -319,6 +393,19 @@ export function ExternalParticipantDialog({
                 />
               </div>
             </>
+          ) : form.isLead ? (
+            <div>
+              <Label className="mb-1.5 block text-sm">מחיר אופציה</Label>
+              <Input
+                type="number"
+                min={0}
+                value={form.agreedPrice}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, agreedPrice: e.target.value }))
+                }
+                dir="ltr"
+              />
+            </div>
           ) : null}
           <DialogFooter className="flex-row gap-2 pt-2">
             <Button

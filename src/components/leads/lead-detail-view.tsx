@@ -201,6 +201,13 @@ export function LeadDetailView({
                     {formatCurrency(payments.expectedTotal)}
                   </span>
                 </p>
+                {payments.leadOptionAmount > 0 ? (
+                  <p className="text-xs font-normal text-muted-foreground">
+                    {payments.leadOptionCount > 1
+                      ? `* עוד כ-${formatCurrency(payments.leadOptionAmount)} באופציה (${payments.leadOptionCount} לידים)`
+                      : `* ${formatCurrency(payments.leadOptionAmount)} באופציה`}
+                  </p>
+                ) : null}
               </div>
             </div>
 
@@ -608,6 +615,13 @@ function FinanceTab({ lead }: { lead: Lead }) {
             </p>
           </div>
         </div>
+        {payments.leadOptionAmount > 0 ? (
+          <p className="text-center text-xs font-normal text-muted-foreground">
+            {payments.leadOptionCount > 1
+              ? `* עוד כ-${formatCurrency(payments.leadOptionAmount)} באופציה (${payments.leadOptionCount} לידים)`
+              : `* ${formatCurrency(payments.leadOptionAmount)} באופציה`}
+          </p>
+        ) : null}
         <div>
           <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
             <span>התקדמות גבייה</span>

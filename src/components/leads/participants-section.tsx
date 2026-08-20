@@ -159,6 +159,15 @@ function ParticipantMobileKebab({
             <SheetTitle className="text-base">
               פעולות · {p.name}
             </SheetTitle>
+            {p.isLead ? (
+              <p className="text-xs font-medium text-violet-700">★ מסומן כליד</p>
+            ) : null}
+            {p.feedback?.trim() ? (
+              <p className="mt-1 rounded-lg bg-amber-50 px-2.5 py-2 text-sm font-normal text-amber-950">
+                <span className="font-semibold">הערות: </span>
+                {p.feedback.trim()}
+              </p>
+            ) : null}
           </SheetHeader>
           <div className="flex max-h-[min(70dvh,480px)] flex-col gap-1 overflow-y-auto overscroll-contain p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {p.phone?.trim() ? (
@@ -289,12 +298,16 @@ export function ParticipantsSection({
     email: "",
     feedback: "",
     isExternal: false,
+    isLead: false,
     courseType: "",
     courseTypeOther: "",
     courseCategory: "",
+    courseCategoryOther: "",
     agreedPrice: "",
   })
   const [issueOpen, setIssueOpen] = useState(false)
+
+  const CATEGORY_OTHER = "אחר"
 
   const participants = lead.participants || []
   const attendedCount = participants.filter((p) => p.attended).length
@@ -461,6 +474,8 @@ export function ParticipantsSection({
       ? formatCourseTypeLabel(p.courseType, { catalog: settings.courses })
       : ""
     const inList = Boolean(courseLabel && courseOptions.includes(courseLabel))
+    const cat = p.courseCategory || ""
+    const catInList = Boolean(cat && categoryOptions.includes(cat))
     setEditP(p)
     setEditForm({
       fullName: p.name,
@@ -469,13 +484,15 @@ export function ParticipantsSection({
       email: p.email || "",
       feedback: p.feedback || "",
       isExternal: Boolean(p.isExternal),
+      isLead: Boolean(p.isLead),
       courseType: inList
         ? courseLabel
         : courseLabel
           ? COURSE_TYPE_OTHER
           : "",
       courseTypeOther: inList ? "" : courseLabel,
-      courseCategory: p.courseCategory || "",
+      courseCategory: catInList ? cat : cat ? CATEGORY_OTHER : "",
+      courseCategoryOther: catInList ? "" : cat,
       agreedPrice: p.agreedPrice != null ? String(p.agreedPrice) : "",
     })
   }
@@ -485,7 +502,11 @@ export function ParticipantsSection({
     const priceRaw = editForm.agreedPrice.trim()
     const agreedPrice =
       priceRaw === "" ? null : Number(priceRaw)
-    if (editForm.isExternal && agreedPrice != null && !Number.isFinite(agreedPrice)) {
+    if (
+      (editForm.isExternal || editForm.isLead) &&
+      agreedPrice != null &&
+      !Number.isFinite(agreedPrice)
+    ) {
       toast.error("מחיר לא תקין")
       return
     }
@@ -503,6 +524,15 @@ export function ParticipantsSection({
       await ensureCustomCourseTypeOption(custom)
       courseType = custom
     }
+    let courseCategory = editForm.isExternal ? editForm.courseCategory : null
+    if (editForm.isExternal && editForm.courseCategory === CATEGORY_OTHER) {
+      const customCat = editForm.courseCategoryOther.trim()
+      if (!customCat) {
+        toast.error("יש למלא קטגוריה")
+        return
+      }
+      courseCategory = customCat
+    }
     const res = await updateParticipantDetails(editP.id, lead.id, {
       fullName: editForm.fullName,
       idNumber: editForm.idNumber,
@@ -510,9 +540,11 @@ export function ParticipantsSection({
       email: editForm.email,
       feedback: editForm.feedback,
       isExternal: editForm.isExternal,
+      isLead: editForm.isLead,
       courseType,
-      courseCategory: editForm.isExternal ? editForm.courseCategory : null,
-      agreedPrice: editForm.isExternal ? agreedPrice : null,
+      courseCategory,
+      agreedPrice:
+        editForm.isExternal || editForm.isLead ? agreedPrice : null,
     })
     if (!res.ok) {
       toast.error(res.error)
@@ -763,9 +795,14 @@ export function ParticipantsSection({
                               />
                             )}
                             <span className="truncate">{p.name}</span>
+                            {p.isLead ? (
+                              <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                                ליד
+                              </span>
+                            ) : null}
                             {p.isExternal ? <ExternalTag /> : null}
                             {p.source === "Wix" ? <WixTag /> : null}
-                            {p.isExternal && p.agreedPrice != null ? (
+                            {(p.isExternal || p.isLead) && p.agreedPrice != null ? (
                               <span className="shrink-0 text-[10px] font-semibold text-pink-700">
                                 {formatCurrency(p.agreedPrice)}
                               </span>
@@ -943,6 +980,11 @@ export function ParticipantsSection({
                         <span className="truncate text-foreground">
                           {p.name} – {p.idNumber}
                         </span>
+                        {p.isLead ? (
+                          <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                            ליד
+                          </span>
+                        ) : null}
                         {p.isExternal ? <ExternalTag /> : null}
                         {p.source === "Wix" ? <WixTag /> : null}
                       </p>
@@ -966,9 +1008,9 @@ export function ParticipantsSection({
                   </div>
                   {open && (
                     <div className="space-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
-                      {p.isExternal ? (
+                      {p.isExternal || p.isLead ? (
                         <p className="rounded-lg bg-pink-50 px-2 py-1.5 text-sm font-bold text-pink-800">
-                          מחיר:{" "}
+                          {p.isLead ? "מחיר אופציה: " : "מחיר: "}
                           {p.agreedPrice != null
                             ? formatCurrency(p.agreedPrice)
                             : "—"}
@@ -987,6 +1029,15 @@ export function ParticipantsSection({
                       ) : null}
                       <p>טלפון: {p.phone || "—"}</p>
                       <p>דוא״ל: {p.email || "—"}</p>
+                      {p.feedback?.trim() ? (
+                        <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-sm text-amber-950">
+                          <span className="font-semibold">הערות: </span>
+                          {p.feedback.trim()}
+                        </p>
+                      ) : null}
+                      {p.isLead ? (
+                        <p className="font-medium text-violet-700">★ מסומן כליד</p>
+                      ) : null}
                       {p.attended && (
                         <p className="font-medium text-emerald-700">
                           ✓ נוכח — במאגר מודרכים
@@ -1043,13 +1094,16 @@ export function ParticipantsSection({
               placeholder="דוא״ל"
               dir="ltr"
             />
-            <Input
-              value={editForm.feedback}
-              onChange={(e) =>
-                setEditForm((f) => ({ ...f, feedback: e.target.value }))
-              }
-              placeholder="משוב"
-            />
+            <div>
+              <Label className="mb-1.5 block text-sm">הערות</Label>
+              <Input
+                value={editForm.feedback}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, feedback: e.target.value }))
+                }
+                placeholder="הערות"
+              />
+            </div>
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox
                 checked={editForm.isExternal}
@@ -1058,6 +1112,15 @@ export function ParticipantsSection({
                 }
               />
               משתתף חיצוני
+            </label>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={editForm.isLead}
+                onCheckedChange={(v) =>
+                  setEditForm((f) => ({ ...f, isLead: Boolean(v) }))
+                }
+              />
+              סמן כליד
             </label>
             {editForm.isExternal ? (
               <>
@@ -1104,7 +1167,12 @@ export function ParticipantsSection({
                   <Select
                     value={editForm.courseCategory || undefined}
                     onValueChange={(v) =>
-                      setEditForm((f) => ({ ...f, courseCategory: v ?? "" }))
+                      setEditForm((f) => ({
+                        ...f,
+                        courseCategory: v ?? "",
+                        courseCategoryOther:
+                          v === CATEGORY_OTHER ? f.courseCategoryOther : "",
+                      }))
                     }
                   >
                     <SelectTrigger className="w-full">
@@ -1112,6 +1180,7 @@ export function ParticipantsSection({
                     </SelectTrigger>
                     <SelectContent>
                       {editForm.courseCategory &&
+                      editForm.courseCategory !== CATEGORY_OTHER &&
                       !categoryOptions.includes(editForm.courseCategory) ? (
                         <SelectItem value={editForm.courseCategory}>
                           {editForm.courseCategory}
@@ -1122,9 +1191,27 @@ export function ParticipantsSection({
                           {o}
                         </SelectItem>
                       ))}
+                      <SelectItem value={CATEGORY_OTHER}>
+                        {CATEGORY_OTHER}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+                {editForm.courseCategory === CATEGORY_OTHER ? (
+                  <div>
+                    <Label className="mb-1.5 block text-sm">קטגוריה חדשה</Label>
+                    <Input
+                      value={editForm.courseCategoryOther}
+                      onChange={(e) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          courseCategoryOther: e.target.value,
+                        }))
+                      }
+                      placeholder="הקלידו קטגוריה מותאמת"
+                    />
+                  </div>
+                ) : null}
                 <div>
                   <Label className="mb-1.5 block text-sm">מחיר</Label>
                   <Input
@@ -1140,6 +1227,21 @@ export function ParticipantsSection({
                   />
                 </div>
               </>
+            ) : editForm.isLead ? (
+              <div>
+                <Label className="mb-1.5 block text-sm">מחיר אופציה</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editForm.agreedPrice}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, agreedPrice: e.target.value }))
+                  }
+                  placeholder="מחיר"
+                  dir="ltr"
+                />
+              </div>
             ) : null}
           </div>
           <DialogFooter>

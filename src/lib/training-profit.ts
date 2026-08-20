@@ -25,17 +25,28 @@ export function isParticipantPaid(p: Pick<Participant, "paymentStatus">): boolea
   return p.paymentStatus === PAID_PAYMENT_STATUS
 }
 
-/** מחיר אישי של משתתפים חיצוניים (גם אם טרם שולם) */
+/** מחיר אישי של משתתפים חיצוניים פעילים (לא לידים) */
 export function externalParticipantsWithPrice(lead: Lead): Participant[] {
   return (lead.participants || []).filter(
-    (p) => p.isExternal && money(p.agreedPrice) > 0,
+    (p) => p.isExternal && !p.isLead && money(p.agreedPrice) > 0,
   )
 }
 
-/** משתתפים פנימיים עם תשלום אישי רשום */
+/** משתתפים פנימיים עם תשלום אישי רשום (לא לידים) */
 export function internalParticipantsWithPayment(lead: Lead): Participant[] {
   return (lead.participants || []).filter(
-    (p) => !p.isExternal && money(p.agreedPrice) > 0 && isParticipantPaid(p),
+    (p) =>
+      !p.isExternal &&
+      !p.isLead &&
+      money(p.agreedPrice) > 0 &&
+      isParticipantPaid(p),
+  )
+}
+
+/** משתתפים שמסומנים כליד עם מחיר אופציה */
+export function leadOptionParticipants(lead: Lead): Participant[] {
+  return (lead.participants || []).filter(
+    (p) => Boolean(p.isLead) && money(p.agreedPrice) > 0,
   )
 }
 
@@ -68,6 +79,9 @@ export type TrainingPaymentSummary = {
   progressPct: number
   externals: ParticipantPaymentEntry[]
   internals: ParticipantPaymentEntry[]
+  /** סכום אופציה ממשתתפים שמסומנים כליד */
+  leadOptionAmount: number
+  leadOptionCount: number
 }
 
 /**
@@ -115,6 +129,14 @@ export function computeTrainingPaymentSummary(
       : isFullySettled
         ? 100
         : 0
+
+  const leadOptions = leadOptionParticipants(lead)
+  const leadOptionAmount = leadOptions.reduce(
+    (s, p) => s + money(p.agreedPrice),
+    0,
+  )
+  const leadOptionCount = leadOptions.length
+
   return {
     basePrice,
     externalExpected,
@@ -130,6 +152,8 @@ export function computeTrainingPaymentSummary(
     progressPct,
     externals,
     internals,
+    leadOptionAmount,
+    leadOptionCount,
   }
 }
 

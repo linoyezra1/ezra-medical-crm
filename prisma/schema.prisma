@@ -225,6 +225,8 @@ model Participant {
   certificateUrl  String?
   /** משתתף חיצוני / מצטרף נוסף */
   isExternal      Boolean  @default(false)
+  /** מסומן כליד/אופציה — לא נספר בסכום הפעיל של ההדרכה */
+  isLead          Boolean  @default(false)
   /** סוג קורס אישי לתעודה (חיצוני) */
   courseType      String?
   /** קטגוריה אישית לתעודה (חיצוני) */

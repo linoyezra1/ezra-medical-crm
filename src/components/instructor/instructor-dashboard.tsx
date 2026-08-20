@@ -249,10 +249,16 @@ function TrainingCard({
               <a
                 href={lead.zoomLink}
                 target="_blank"
-                rel="noreferrer"
-                className="flex min-h-12 items-center justify-center rounded-xl bg-sky-600 px-4 text-sm font-bold text-white active:scale-[0.98]"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  window.open(lead.zoomLink, "_blank", "noopener,noreferrer")
+                }}
+                className="inline-flex h-8 max-w-full items-center justify-center gap-1.5 rounded-md bg-sky-600 px-2.5 text-xs font-medium text-white active:scale-[0.98]"
               >
-                כניסה למפגש זום
+                <Video className="size-3.5 shrink-0" />
+                הצטרפות לזום
               </a>
             ) : (
               <p className="text-xs text-destructive">חסר קישור זום</p>
@@ -269,8 +275,13 @@ function TrainingCard({
               <a
                 href={lead.wazeUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 aria-label="נווט ב-Waze"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  window.open(lead.wazeUrl, "_blank", "noopener,noreferrer")
+                }}
                 className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white shadow-sm active:scale-95"
               >
                 <Image

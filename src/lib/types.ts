@@ -111,6 +111,8 @@ export interface Participant {
   certificateUrl?: string;
   /** משתתף חיצוני / מצטרף נוסף */
   isExternal?: boolean;
+  /** ליד/אופציה — לא נספר בסכום הפעיל של ההדרכה */
+  isLead?: boolean;
   /** סוג קורס אישי לתעודה (חיצוני) */
   courseType?: string;
   /** קטגוריה אישית לתעודה (חיצוני) */

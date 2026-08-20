@@ -261,6 +261,7 @@ async function syncUnpaidPaymentTask(lead: {
       id: true,
       fullName: true,
       isExternal: true,
+      isLead: true,
       agreedPrice: true,
       paymentStatus: true,
     },
@@ -273,6 +274,7 @@ async function syncUnpaidPaymentTask(lead: {
       name: p.fullName,
       idNumber: "",
       isExternal: Boolean(p.isExternal),
+      isLead: Boolean(p.isLead),
       agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
       paymentStatus: p.paymentStatus || undefined,
     })),
@@ -556,6 +558,7 @@ export async function updateLead(
         id: true,
         fullName: true,
         isExternal: true,
+        isLead: true,
         agreedPrice: true,
         paymentStatus: true,
       },
@@ -574,6 +577,7 @@ export async function updateLead(
         name: p.fullName,
         idNumber: "",
         isExternal: Boolean(p.isExternal),
+        isLead: Boolean(p.isLead),
         agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
         paymentStatus: p.paymentStatus || undefined,
       })),
@@ -1172,6 +1176,8 @@ export async function addExternalParticipant(input: {
   courseCategory?: string
   agreedPrice?: number
   isExternal?: boolean
+  isLead?: boolean
+  feedback?: string
 }): Promise<ActionResult<{ id: string }>> {
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } })
   if (!lead) return { ok: false, error: "הדרכה לא נמצאה" }
@@ -1204,14 +1210,14 @@ export async function addExternalParticipant(input: {
       phone: phone || null,
       email: email || null,
       isExternal,
+      isLead: Boolean(input.isLead),
+      feedback: input.feedback?.trim() || null,
       courseType: courseSaved?.courseType || input.courseType?.trim() || null,
       courseCategory: isExternal
         ? input.courseCategory?.trim() || null
         : null,
       agreedPrice:
-        isExternal &&
-        input.agreedPrice != null &&
-        Number.isFinite(input.agreedPrice)
+        input.agreedPrice != null && Number.isFinite(input.agreedPrice)
           ? Number(input.agreedPrice)
           : null,
     },
@@ -1417,20 +1423,22 @@ export async function updateParticipantDetails(
     email?: string;
     feedback?: string;
     isExternal?: boolean;
+    isLead?: boolean;
     courseType?: string | null;
     courseCategory?: string | null;
     agreedPrice?: number | null;
   },
 ): Promise<ActionResult<{ id: string }>> {
   const isExternal = Boolean(data.isExternal);
+  const isLead = Boolean(data.isLead);
   const courseSaved =
     isExternal && data.courseType?.trim()
       ? resolveCourseTypeForSave(data.courseType.trim())
       : null;
   const agreedPrice =
-    isExternal && data.agreedPrice != null && Number.isFinite(Number(data.agreedPrice))
+    data.agreedPrice != null && Number.isFinite(Number(data.agreedPrice))
       ? Number(data.agreedPrice)
-      : isExternal
+      : data.agreedPrice === null
         ? null
         : undefined;
   const updated = await prisma.participant.update({
@@ -1442,13 +1450,17 @@ export async function updateParticipantDetails(
       email: data.email?.trim() || null,
       feedback: data.feedback?.trim() || null,
       isExternal,
+      isLead,
       ...(isExternal
         ? {
             courseType: courseSaved?.courseType || data.courseType?.trim() || null,
             courseCategory: data.courseCategory?.trim() || null,
-            ...(agreedPrice !== undefined ? { agreedPrice } : {}),
           }
-        : {}),
+        : {
+            courseType: null,
+            courseCategory: null,
+          }),
+      ...(agreedPrice !== undefined ? { agreedPrice } : {}),
     },
   });
   if (isExternal) {
@@ -1484,6 +1496,7 @@ export async function fetchLeadParticipants(leadId: string) {
     traineeId: p.traineeId || undefined,
     certificateUrl: p.certificateUrl || undefined,
     isExternal: Boolean(p.isExternal),
+    isLead: Boolean(p.isLead),
     courseType: p.courseType || undefined,
     courseCategory: p.courseCategory || undefined,
     agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,

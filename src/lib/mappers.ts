@@ -176,6 +176,7 @@ export function mapLead(db: DbLeadFull): Lead {
       isExternal: Boolean(
         (p as { isExternal?: boolean }).isExternal,
       ),
+      isLead: Boolean((p as { isLead?: boolean }).isLead),
       courseType: (p as { courseType?: string | null }).courseType || undefined,
       courseCategory:
         (p as { courseCategory?: string | null }).courseCategory || undefined,

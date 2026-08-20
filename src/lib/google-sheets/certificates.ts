@@ -915,6 +915,7 @@ export async function tryAutoCompleteTrainingIfReady(
       name: p.fullName,
       idNumber: p.idNumber || "",
       isExternal: Boolean(p.isExternal),
+      isLead: Boolean(p.isLead),
       agreedPrice: p.agreedPrice != null ? Number(p.agreedPrice) : undefined,
       paymentStatus: p.paymentStatus || undefined,
     })),
