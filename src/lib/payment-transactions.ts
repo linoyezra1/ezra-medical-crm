@@ -315,17 +315,24 @@ export function buildTrainingBaseTransaction(input: {
   paymentMethod: string | null | undefined
   paymentReceivedBy: string | null | undefined
   createdAt: Date | string
+  /** תאריך הדרכה לתצוגה כשעדיין ממתין לתשלום */
+  trainingDate?: Date | string | null
 }): PaymentTransaction | null {
-  const paid =
-    normalizePaymentLedgerStatus(input.paymentStatus) === "paid" ||
-    Boolean(input.paymentDate)
-  if (!paid) return null
   const amount = money(input.amount)
-  if (amount <= 0 && !input.paymentDate) return null
+  if (amount <= 0) return null
+
+  const statusFromField = normalizePaymentLedgerStatus(input.paymentStatus)
+  const isPaid =
+    statusFromField === "paid" ||
+    input.paymentStatus === PAID_PAYMENT_STATUS ||
+    Boolean(input.paymentDate)
 
   return {
     id: `lead-base:${input.id}`,
-    date: toDateKey(input.paymentDate, input.createdAt),
+    date: toDateKey(
+      input.paymentDate,
+      input.trainingDate || input.createdAt,
+    ),
     type: "training_base",
     payerName: input.fullName.trim() || "לקוח",
     receivedBy: input.paymentReceivedBy?.trim() || "—",
@@ -333,9 +340,7 @@ export function buildTrainingBaseTransaction(input: {
     trainingId: input.id,
     amount,
     paymentMethod: input.paymentMethod?.trim() || "",
-    paymentStatus: normalizePaymentLedgerStatus(
-      input.paymentStatus || PAID_PAYMENT_STATUS,
-    ),
+    paymentStatus: isPaid ? "paid" : "pending",
   }
 }
 

@@ -1514,6 +1514,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
             activityType: { not: "equipment" },
             courseStatus: { not: "canceled" },
             OR: [
+              { agreedPrice: { gt: 0 } },
               { paymentStatus: PAID_PAYMENT_STATUS },
               { paymentDate: { not: null } },
             ],
@@ -1527,6 +1528,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
             paymentMethod: true,
             paymentReceivedBy: true,
             createdAt: true,
+            scheduledStart: true,
           },
         }),
         prisma.lead.findMany({
@@ -1616,6 +1618,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
         paymentMethod: lead.paymentMethod,
         paymentReceivedBy: lead.paymentReceivedBy,
         createdAt: lead.createdAt,
+        trainingDate: lead.scheduledStart,
       })
       if (row) rows.push(row)
     }
