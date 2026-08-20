@@ -8,6 +8,12 @@ import { PageHeader } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import {
   fetchLeadParticipants,
   refreshWixParticipantsAction,
   removeParticipant,
@@ -34,6 +40,7 @@ export function InstructorTrainingParticipantsView({
   const [loading, setLoading] = useState(false)
   const [refreshingWix, setRefreshingWix] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Participant | null>(null)
 
   const lead = useMemo(() => leads.find((l) => l.id === leadId), [leads, leadId])
 
@@ -95,6 +102,9 @@ export function InstructorTrainingParticipantsView({
     setParticipants((prev) =>
       prev.map((x) => (x.id === p.id ? { ...x, attended: next } : x)),
     )
+    setSelected((cur) =>
+      cur?.id === p.id ? { ...cur, attended: next } : cur,
+    )
   }
 
   const deleteParticipant = async (p: Participant) => {
@@ -104,6 +114,7 @@ export function InstructorTrainingParticipantsView({
     await removeParticipant(p.id, leadId)
     setBusyId(null)
     setParticipants((prev) => prev.filter((x) => x.id !== p.id))
+    if (selected?.id === p.id) setSelected(null)
     toast.success("המשתתף נמחק")
   }
 
@@ -178,7 +189,7 @@ export function InstructorTrainingParticipantsView({
 
         <Card className="p-3 text-xs text-muted-foreground">
           מוצגים רק משתתפים שמקורם ב-Wix עבור הדרכה זו ({wixParticipants.length}
-          ).
+          ). לחצו על שם המודרך לפתיחת פרטים ומשוב.
         </Card>
 
         {loading && wixParticipants.length === 0 ? (
@@ -195,17 +206,26 @@ export function InstructorTrainingParticipantsView({
               const busy = busyId === p.id
               return (
                 <li key={p.id} className="rounded-xl border border-border bg-card p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 text-right">
+                  <button
+                    type="button"
+                    className="flex w-full items-start justify-between gap-2 text-right"
+                    onClick={() => setSelected(p)}
+                  >
+                    <div className="min-w-0">
                       <p className="truncate text-sm font-bold">{p.name}</p>
                       <p className="truncate text-xs text-muted-foreground">
                         {p.phone || "—"} · {p.idNumber || "—"}
                       </p>
+                      {p.feedback?.trim() ? (
+                        <p className="mt-1 line-clamp-1 text-[11px] text-amber-800">
+                          משוב: {p.feedback.trim()}
+                        </p>
+                      ) : null}
                     </div>
                     <span className="rounded bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
                       Wix
                     </span>
-                  </div>
+                  </button>
                   <div className="mt-3 flex items-center gap-2">
                     <Button
                       type="button"
@@ -236,7 +256,58 @@ export function InstructorTrainingParticipantsView({
           </ul>
         )}
       </div>
+
+      <Sheet
+        open={Boolean(selected)}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null)
+        }}
+      >
+        <SheetContent
+          side="bottom"
+          className="max-h-[min(85dvh,520px)] gap-0 rounded-t-3xl p-0"
+        >
+          <SheetHeader className="border-b border-border px-4 py-3 text-right">
+            <SheetTitle className="text-base">
+              {selected?.name || "פרטי מודרך"}
+            </SheetTitle>
+          </SheetHeader>
+          {selected ? (
+            <div className="space-y-3 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-right text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">טלפון</p>
+                <p className="font-medium" dir="ltr">
+                  {selected.phone || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">ת״ז</p>
+                <p className="font-medium" dir="ltr">
+                  {selected.idNumber || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">דוא״ל</p>
+                <p className="font-medium" dir="ltr">
+                  {selected.email || "—"}
+                </p>
+              </div>
+              {selected.organizerName?.trim() ? (
+                <div>
+                  <p className="text-xs text-muted-foreground">מארגן</p>
+                  <p className="font-medium">{selected.organizerName.trim()}</p>
+                </div>
+              ) : null}
+              <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-amber-950">
+                <p className="text-xs font-semibold text-amber-800">משוב</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">
+                  {selected.feedback?.trim() || "לא נרשם משוב"}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
-

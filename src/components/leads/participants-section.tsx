@@ -1,7 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import {
+  ArrowRightLeft,
   BadgeCheck,
   CheckCheck,
   FileCheck,
@@ -21,6 +22,9 @@ import {
 import { toast } from "sonner"
 import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
 import { ParticipantPaymentDialog } from "@/components/leads/participant-payment-dialog"
+import {
+  formatTrainingOptionLabel,
+} from "@/components/clients/training-select"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -54,6 +58,7 @@ import {
   sendLmsAccessToSheets,
   sendZoomLinkEmailAction,
   setParticipantAttended,
+  transferParticipantToLead,
   updateParticipantDetails,
 } from "@/lib/actions"
 import {
@@ -113,6 +118,7 @@ function ParticipantMobileKebab({
   onCreateLms,
   onEdit,
   onPayment,
+  onTransfer,
   onRemove,
 }: {
   p: Participant
@@ -123,6 +129,7 @@ function ParticipantMobileKebab({
   onCreateLms: () => void
   onEdit: () => void
   onPayment: () => void
+  onTransfer: () => void
   onRemove: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -257,6 +264,14 @@ function ParticipantMobileKebab({
             </button>
             <button
               type="button"
+              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary"
+              onClick={() => run(onTransfer)}
+            >
+              <ArrowRightLeft className="size-5 shrink-0 text-primary" />
+              העבר לקורס אחר
+            </button>
+            <button
+              type="button"
               className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base text-destructive hover:bg-destructive/10"
               onClick={() => run(onRemove)}
             >
@@ -272,15 +287,13 @@ function ParticipantMobileKebab({
 
 export function ParticipantsSection({
   lead,
-  active = true,
 }: {
   lead: Lead
-  /** רענון אוטומטי פעם אחת בכל כניסה לטאב */
+  /** @deprecated רענון אוטומטי בוטל — רק כפתור רענון ידני */
   active?: boolean
 }) {
   const { setLeadParticipants, refresh, settings, leads } = useApp()
   const [polling, setPolling] = useState(false)
-  const wasActive = useRef(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [lmsBusy, setLmsBusy] = useState<string | null>(null)
   const [query, setQuery] = useState("")
@@ -292,6 +305,9 @@ export function ParticipantsSection({
   >({})
   const [editP, setEditP] = useState<Participant | null>(null)
   const [payParticipant, setPayParticipant] = useState<Participant | null>(null)
+  const [transferP, setTransferP] = useState<Participant | null>(null)
+  const [transferLeadId, setTransferLeadId] = useState("")
+  const [transferSaving, setTransferSaving] = useState(false)
   const [editForm, setEditForm] = useState({
     fullName: "",
     idNumber: "",
@@ -378,6 +394,18 @@ export function ParticipantsSection({
     [leads],
   )
 
+  const transferTargets = useMemo(
+    () =>
+      leads
+        .filter(
+          (l) =>
+            l.id !== lead.id &&
+            (l.status === "new" || l.status === "closed"),
+        )
+        .sort((a, b) => (b.date || "").localeCompare(a.date || "")),
+    [leads, lead.id],
+  )
+
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id))
   const selectedPendingLms = filtered.filter(
@@ -397,15 +425,7 @@ export function ParticipantsSection({
     }
   }, [lead.id, setLeadParticipants])
 
-  useEffect(() => {
-    if (!active) {
-      wasActive.current = false
-      return
-    }
-    if (wasActive.current) return
-    wasActive.current = true
-    void refreshParticipants()
-  }, [active, refreshParticipants])
+  // רענון רק בלחיצה על כפתור החצים — ללא רענון אוטומטי בכניסה לטאב
 
   const toggleSelected = (id: string, next: boolean) => {
     setSelectedIds((prev) => {
@@ -470,7 +490,7 @@ export function ParticipantsSection({
   const remove = async (p: Participant) => {
     const res = await removeParticipant(p.id, lead.id)
     if (!res.ok) {
-      toast.error("שגיאה במחיקה")
+      toast.error(res.error || "שגיאה במחיקה")
       return
     }
     setLeadParticipants(
@@ -483,6 +503,43 @@ export function ParticipantsSection({
       return copy
     })
     toast.success("המשתתף נמחק")
+    refresh()
+  }
+
+  const openTransfer = (p: Participant) => {
+    setTransferP(p)
+    setTransferLeadId("")
+  }
+
+  const confirmTransfer = async () => {
+    if (!transferP) return
+    if (!transferLeadId) {
+      toast.error("יש לבחור הדרכה יעד")
+      return
+    }
+    setTransferSaving(true)
+    const res = await transferParticipantToLead(
+      transferP.id,
+      lead.id,
+      transferLeadId,
+    )
+    setTransferSaving(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    setLeadParticipants(
+      lead.id,
+      participants.filter((x) => x.id !== transferP.id),
+    )
+    setSelectedIds((prev) => {
+      const copy = new Set(prev)
+      copy.delete(transferP.id)
+      return copy
+    })
+    setTransferP(null)
+    setTransferLeadId("")
+    toast.success("המשתתף הועבר להדרכה אחרת")
     refresh()
   }
 
@@ -955,6 +1012,15 @@ export function ParticipantsSection({
                             </button>
                             <button
                               type="button"
+                              onClick={() => openTransfer(p)}
+                              className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+                              aria-label="העבר לקורס אחר"
+                              title="העבר לקורס אחר"
+                            >
+                              <ArrowRightLeft className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => void remove(p)}
                               className="flex size-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
                               aria-label="מחק"
@@ -1032,6 +1098,7 @@ export function ParticipantsSection({
                       onCreateLms={() => void createLmsUsers([p.id])}
                       onEdit={() => openEdit(p)}
                       onPayment={() => setPayParticipant(p)}
+                      onTransfer={() => openTransfer(p)}
                       onRemove={() => void remove(p)}
                     />
                   </div>
@@ -1294,6 +1361,79 @@ export function ParticipantsSection({
         open={Boolean(payParticipant)}
         onOpenChange={(o) => !o && setPayParticipant(null)}
       />
+
+      <Dialog
+        open={Boolean(transferP)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setTransferP(null)
+            setTransferLeadId("")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-right">
+              העבר לקורס אחר
+              {transferP ? ` · ${transferP.name}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              בחרו הדרכה בסטטוס ליד חדש או נרשם ביומן
+            </p>
+            {transferTargets.length === 0 ? (
+              <p className="text-sm text-destructive">
+                אין הדרכות זמינות להעברה כרגע
+              </p>
+            ) : (
+              <div>
+                <Label className="mb-1.5 block text-sm">הדרכת יעד</Label>
+                <Select
+                  value={transferLeadId || undefined}
+                  onValueChange={(v) => setTransferLeadId(v ?? "")}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="בחר הדרכה" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {transferTargets.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {formatTrainingOptionLabel(l, settings.courses)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex-row gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setTransferP(null)
+                setTransferLeadId("")
+              }}
+            >
+              ביטול
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={
+                transferSaving ||
+                !transferLeadId ||
+                transferTargets.length === 0
+              }
+              onClick={() => void confirmTransfer()}
+            >
+              {transferSaving ? "מעביר…" : "העברה"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SendZoomLinkDialog
         open={zoomDialogOpen}

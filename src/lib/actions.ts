@@ -2833,9 +2833,97 @@ export async function deleteTrainingSale(
 }
 
 export async function removeParticipant(id: string, leadId: string) {
-  await prisma.participant.delete({ where: { id } });
-  revalidatePath(`/leads/${leadId}`);
-  return { ok: true as const };
+  try {
+    await prisma.participant.delete({ where: { id } });
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath("/clients");
+    revalidatePath("/leads");
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[removeParticipant]", err);
+    return {
+      ok: false as const,
+      error: "לא ניתן למחוק את המשתתף — ייתכן שיש רשומות מקושרות",
+    };
+  }
+}
+
+/** העברת משתתף להדרכה אחרת (ליד חדש / נרשם ביומן) */
+export async function transferParticipantToLead(
+  participantId: string,
+  fromLeadId: string,
+  toLeadId: string,
+): Promise<ActionResult<{ id: string }>> {
+  if (!toLeadId || toLeadId === fromLeadId) {
+    return { ok: false, error: "יש לבחור הדרכה אחרת" };
+  }
+
+  const target = await prisma.lead.findUnique({ where: { id: toLeadId } });
+  if (!target) return { ok: false, error: "הדרכה לא נמצאה" };
+
+  const ui = dbStatusToUi(target.courseStatus);
+  if (ui !== "new" && ui !== "closed") {
+    return {
+      ok: false,
+      error: "ניתן להעביר רק להדרכה בסטטוס ליד חדש או נרשם ביומן",
+    };
+  }
+
+  const participant = await prisma.participant.findUnique({
+    where: { id: participantId },
+  });
+  if (!participant || participant.leadId !== fromLeadId) {
+    return { ok: false, error: "משתתף לא נמצא בהדרכה זו" };
+  }
+
+  const idNumber = normalizeParticipantIdNumber(participant.idNumber);
+  if (isUsableParticipantIdNumber(idNumber)) {
+    const onTarget = await prisma.participant.findMany({
+      where: { leadId: toLeadId },
+    });
+    const match = findParticipantByIdNumber(onTarget, idNumber);
+    if (match && match.id !== participantId) {
+      await prisma.participant.update({
+        where: { id: match.id },
+        data: {
+          fullName: participant.fullName || match.fullName,
+          phone: participant.phone || match.phone,
+          email: participant.email || match.email,
+          organizerName: participant.organizerName || match.organizerName,
+          courseDate: participant.courseDate || match.courseDate,
+          satisfaction: participant.satisfaction || match.satisfaction,
+          feedback: participant.feedback || match.feedback,
+          kitInterest: participant.kitInterest || match.kitInterest,
+          attended: participant.attended || match.attended,
+          isExternal: participant.isExternal,
+          isLead: participant.isLead,
+          courseType: participant.courseType || match.courseType,
+          courseCategory: participant.courseCategory || match.courseCategory,
+          agreedPrice:
+            participant.agreedPrice != null
+              ? participant.agreedPrice
+              : match.agreedPrice,
+          source: participant.source || match.source,
+        },
+      });
+      await prisma.participant.delete({ where: { id: participantId } });
+      revalidatePath(`/leads/${fromLeadId}`);
+      revalidatePath(`/leads/${toLeadId}`);
+      revalidatePath("/leads");
+      revalidatePath("/clients");
+      return { ok: true, data: { id: match.id } };
+    }
+  }
+
+  await prisma.participant.update({
+    where: { id: participantId },
+    data: { leadId: toLeadId },
+  });
+  revalidatePath(`/leads/${fromLeadId}`);
+  revalidatePath(`/leads/${toLeadId}`);
+  revalidatePath("/leads");
+  revalidatePath("/clients");
+  return { ok: true, data: { id: participantId } };
 }
 
 export async function addExpense(

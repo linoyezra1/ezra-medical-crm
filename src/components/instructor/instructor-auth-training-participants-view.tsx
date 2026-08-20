@@ -7,6 +7,12 @@ import { PageHeader } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import {
   fetchLeadParticipants,
   refreshWixParticipantsAction,
   removeParticipant,
@@ -24,6 +30,7 @@ export function InstructorAuthTrainingParticipantsView({
   const [participants, setParticipants] = useState<Participant[]>([])
   const [refreshingWix, setRefreshingWix] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Participant | null>(null)
 
   const wixParticipants = useMemo(
     () =>
@@ -75,6 +82,9 @@ export function InstructorAuthTrainingParticipantsView({
     setParticipants((prev) =>
       prev.map((x) => (x.id === p.id ? { ...x, attended: next } : x)),
     )
+    setSelected((cur) =>
+      cur?.id === p.id ? { ...cur, attended: next } : cur,
+    )
   }
 
   const remove = async (p: Participant) => {
@@ -84,6 +94,7 @@ export function InstructorAuthTrainingParticipantsView({
       setBusyId(p.id)
       await removeParticipant(p.id, leadId)
       setParticipants((prev) => prev.filter((x) => x.id !== p.id))
+      if (selected?.id === p.id) setSelected(null)
       toast.success("המשתתף נמחק")
     } catch {
       toast.error("שגיאה במחיקה")
@@ -127,18 +138,27 @@ export function InstructorAuthTrainingParticipantsView({
               return (
                 <li key={p.id}>
                   <Card className="p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 text-right">
+                    <button
+                      type="button"
+                      className="flex w-full items-start justify-between gap-3 text-right"
+                      onClick={() => setSelected(p)}
+                    >
+                      <div className="min-w-0">
                         <p className="truncate text-sm font-bold">{p.name}</p>
                         <p className="truncate text-xs text-muted-foreground">
                           {p.phone || "—"} · {p.idNumber || "—"}
                         </p>
+                        {p.feedback?.trim() ? (
+                          <p className="mt-1 line-clamp-1 text-[11px] text-amber-800">
+                            משוב: {p.feedback.trim()}
+                          </p>
+                        ) : null}
                       </div>
 
                       <span className="shrink-0 rounded bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
                         Wix
                       </span>
-                    </div>
+                    </button>
 
                     <div className="mt-3 flex items-center gap-2">
                       <Button
@@ -171,7 +191,72 @@ export function InstructorAuthTrainingParticipantsView({
           </ul>
         )}
       </div>
+
+      <InstructorParticipantDrawer
+        participant={selected}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null)
+        }}
+      />
     </div>
   )
 }
 
+function InstructorParticipantDrawer({
+  participant,
+  onOpenChange,
+}: {
+  participant: Participant | null
+  onOpenChange: (open: boolean) => void
+}) {
+  const p = participant
+  return (
+    <Sheet open={Boolean(p)} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className="max-h-[min(85dvh,520px)] gap-0 rounded-t-3xl p-0"
+      >
+        <SheetHeader className="border-b border-border px-4 py-3 text-right">
+          <SheetTitle className="text-base">
+            {p?.name || "פרטי מודרך"}
+          </SheetTitle>
+        </SheetHeader>
+        {p ? (
+          <div className="space-y-3 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-right text-sm">
+            <DetailRow label="טלפון" value={p.phone || "—"} dir="ltr" />
+            <DetailRow label="ת״ז" value={p.idNumber || "—"} dir="ltr" />
+            <DetailRow label="דוא״ל" value={p.email || "—"} dir="ltr" />
+            {p.organizerName?.trim() ? (
+              <DetailRow label="מארגן" value={p.organizerName.trim()} />
+            ) : null}
+            <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-amber-950">
+              <p className="text-xs font-semibold text-amber-800">משוב</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">
+                {p.feedback?.trim() || "לא נרשם משוב"}
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function DetailRow({
+  label,
+  value,
+  dir,
+}: {
+  label: string
+  value: string
+  dir?: "ltr" | "rtl"
+}) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="font-medium" dir={dir}>
+        {value}
+      </p>
+    </div>
+  )
+}
