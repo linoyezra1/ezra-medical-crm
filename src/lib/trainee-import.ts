@@ -204,7 +204,7 @@ export function validateImportRow(
   if (!row.fullName.trim()) errors.push("חסר שם מלא")
   if (!row.idNumber.trim()) {
     warnings.push("חסרה ת״ז")
-  } else if (!/^\d{5,12}$/.test(row.idNumber.trim().replace(/[-\s]/g, ""))) {
+  } else if (!/^\d{5,12}$/.test(row.idNumber.trim().replace(/\D/g, ""))) {
     warnings.push("ת״ז לא תקינה")
   }
   return { errors, warnings }

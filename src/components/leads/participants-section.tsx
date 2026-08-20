@@ -26,6 +26,7 @@ import {
   formatTrainingOptionLabel,
 } from "@/components/clients/training-select"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -308,6 +309,8 @@ export function ParticipantsSection({
   const [transferP, setTransferP] = useState<Participant | null>(null)
   const [transferLeadId, setTransferLeadId] = useState("")
   const [transferSaving, setTransferSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Participant | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [editForm, setEditForm] = useState({
     fullName: "",
     idNumber: "",
@@ -487,12 +490,17 @@ export function ParticipantsSection({
     )
   }
 
-  const remove = async (p: Participant) => {
+  const confirmRemove = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const p = deleteTarget
     const res = await removeParticipant(p.id, lead.id)
+    setDeleting(false)
     if (!res.ok) {
       toast.error(res.error || "שגיאה במחיקה")
       return
     }
+    setDeleteTarget(null)
     setLeadParticipants(
       lead.id,
       participants.filter((x) => x.id !== p.id),
@@ -1021,7 +1029,7 @@ export function ParticipantsSection({
                             </button>
                             <button
                               type="button"
-                              onClick={() => void remove(p)}
+                              onClick={() => setDeleteTarget(p)}
                               className="flex size-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
                               aria-label="מחק"
                             >
@@ -1099,7 +1107,7 @@ export function ParticipantsSection({
                       onEdit={() => openEdit(p)}
                       onPayment={() => setPayParticipant(p)}
                       onTransfer={() => openTransfer(p)}
-                      onRemove={() => void remove(p)}
+                      onRemove={() => setDeleteTarget(p)}
                     />
                   </div>
                   {open && (
@@ -1360,6 +1368,19 @@ export function ParticipantsSection({
         participant={payParticipant}
         open={Boolean(payParticipant)}
         onOpenChange={(o) => !o && setPayParticipant(null)}
+      />
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => {
+          if (!v && !deleting) setDeleteTarget(null)
+        }}
+        title="אישור מחיקה"
+        description={`האם אתה בטוח שאתה רוצה למחוק את ${deleteTarget?.name || "המשתתף"}?`}
+        confirmLabel="אישור"
+        cancelLabel="ביטול"
+        confirming={deleting}
+        onConfirm={confirmRemove}
       />
 
       <Dialog

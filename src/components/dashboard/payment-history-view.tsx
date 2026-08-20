@@ -1,185 +1,443 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ChevronDown } from "lucide-react"
+import { Loader2, RefreshCw, Search } from "lucide-react"
+import { getAllPaymentTransactionsAction } from "@/lib/actions"
 import { formatCurrency, formatDate } from "@/lib/helpers"
+import { PAYMENT_METHODS, PAYMENT_RECEIVERS } from "@/lib/payment"
 import {
-  buildProfitTransactions,
-  groupProfitByMonth,
-  type ProfitTransaction,
-} from "@/lib/profit-history"
-import { useApp } from "@/lib/store"
+  filterPaymentTransactions,
+  PAYMENT_LEDGER_STATUS_LABELS,
+  PAYMENT_TRANSACTION_TYPE_LABELS,
+  PAYMENT_TRANSACTION_TYPES,
+  paymentMethodLabel,
+  summarizePaymentTransactions,
+  uniqueReceivedByOptions,
+  type PaymentLedgerStatus,
+  type PaymentTransaction,
+  type PaymentTransactionType,
+} from "@/lib/payment-transactions"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/app-shell"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+
+const ALL = "all" as const
+
+const TYPE_BADGE_CLASS: Record<PaymentTransactionType, string> = {
+  regular_participant: "bg-sky-100 text-sky-900 border-sky-200",
+  external_participant: "bg-violet-100 text-violet-900 border-violet-200",
+  training_sale: "bg-amber-100 text-amber-900 border-amber-200",
+  standalone_sale: "bg-emerald-100 text-emerald-900 border-emerald-200",
+  training_base: "bg-slate-100 text-slate-800 border-slate-200",
+}
+
+const STATUS_CLASS: Record<PaymentLedgerStatus, string> = {
+  paid: "text-success",
+  pending: "text-amber-800",
+  cancelled: "text-destructive",
+}
+
+const selectClass =
+  "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 export function PaymentHistoryView() {
-  const { leads, equipment, settings, instructors } = useApp()
+  const [rows, setRows] = useState<PaymentTransaction[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const months = useMemo(() => {
-    const txs = buildProfitTransactions(
-      leads,
-      equipment,
-      settings.courses,
-      instructors,
-    )
-    return groupProfitByMonth(txs)
-  }, [leads, equipment, settings.courses, instructors])
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [type, setType] = useState<PaymentTransactionType | typeof ALL>(ALL)
+  const [paymentMethod, setPaymentMethod] = useState<string>(ALL)
+  const [receivedBy, setReceivedBy] = useState<string>(ALL)
+  const [search, setSearch] = useState("")
 
-  const [expanded, setExpanded] = useState<string | null>(
-    months[0]?.monthKey ?? null,
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    const res = await getAllPaymentTransactionsAction()
+    if (!res.ok) {
+      setError(res.error || "שגיאה בטעינה")
+      setRows([])
+    } else {
+      setRows(res.data)
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const filtered = useMemo(
+    () =>
+      filterPaymentTransactions(rows, {
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        type,
+        paymentMethod,
+        receivedBy,
+        search,
+      }),
+    [rows, dateFrom, dateTo, type, paymentMethod, receivedBy, search],
   )
 
-  return (
-    <div className="mx-auto max-w-xl space-y-4 p-4">
-      <PageHeader
-        title="היסטוריית תשלומים"
-        subtitle="הדרכות בהן בוצע תשלום בפועל"
-      />
+  const summary = useMemo(
+    () => summarizePaymentTransactions(filtered),
+    [filtered],
+  )
 
-      {months.length === 0 ? (
+  const receivedByOptions = useMemo(() => {
+    const fromData = uniqueReceivedByOptions(rows)
+    const set = new Set([...PAYMENT_RECEIVERS, ...fromData])
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"))
+  }, [rows])
+
+  const hasActiveFilters =
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    type !== ALL ||
+    paymentMethod !== ALL ||
+    receivedBy !== ALL ||
+    Boolean(search.trim())
+
+  function clearFilters() {
+    setDateFrom("")
+    setDateTo("")
+    setType(ALL)
+    setPaymentMethod(ALL)
+    setReceivedBy(ALL)
+    setSearch("")
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-4 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <PageHeader
+          title="היסטוריית תשלומים"
+          subtitle="יומן תשלומים שטוח — כל דיווח ומכירה בשורה נפרדת"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-1 shrink-0"
+          onClick={() => void load()}
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <RefreshCw className="size-4" />
+          )}
+          רענון
+        </Button>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <SummaryCard
+          label="סך הכל נגבה"
+          value={formatCurrency(summary.totalCollected)}
+          hint={`${summary.count} רשומות לפי סינון`}
+          tone="primary"
+        />
+        <SummaryCard
+          label="מזומן"
+          value={formatCurrency(summary.cashTotal)}
+          hint="לפי הסינון הנוכחי"
+          tone="success"
+        />
+        <SummaryCard
+          label="אשראי / העברות / אחר"
+          value={formatCurrency(summary.nonCashTotal)}
+          hint={
+            summary.byMethod.length
+              ? summary.byMethod
+                  .filter((m) => m.method !== "cash")
+                  .slice(0, 3)
+                  .map((m) => `${m.label}: ${formatCurrency(m.amount)}`)
+                  .join(" · ") || "—"
+              : "—"
+          }
+          tone="muted"
+        />
+      </div>
+
+      <div className="space-y-2 rounded-2xl border border-border bg-card p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="חיפוש לפי שם משלם או הדרכה…"
+            className="pr-9"
+          />
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <label className="space-y-1 text-xs text-muted-foreground">
+            מתאריך
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-xs text-muted-foreground">
+            עד תאריך
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-xs text-muted-foreground">
+            סוג תשלום
+            <select
+              className={selectClass}
+              value={type}
+              onChange={(e) =>
+                setType(
+                  e.target.value === ALL
+                    ? ALL
+                    : (e.target.value as PaymentTransactionType),
+                )
+              }
+            >
+              <option value={ALL}>הכל</option>
+              {PAYMENT_TRANSACTION_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {PAYMENT_TRANSACTION_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1 text-xs text-muted-foreground">
+            אמצעי תשלום
+            <select
+              className={selectClass}
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+            >
+              <option value={ALL}>הכל</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+              <option value="__none__">לא צוין</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-xs text-muted-foreground">
+            מי גבה
+            <select
+              className={selectClass}
+              value={receivedBy}
+              onChange={(e) => setReceivedBy(e.target.value)}
+            >
+              <option value={ALL}>הכל</option>
+              {receivedByOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+              <option value="__none__">לא צוין</option>
+            </select>
+          </label>
+        </div>
+        {hasActiveFilters && (
+          <div className="flex justify-end">
+            <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+              נקה סינון
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      {loading && rows.length === 0 ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          טוען תשלומים…
+        </div>
+      ) : filtered.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">
-          עדיין אין תשלומים להצגה
+          {rows.length === 0
+            ? "עדיין אין תשלומים להצגה"
+            : "לא נמצאו רשומות התואמות לסינון"}
         </p>
       ) : (
-        <div className="space-y-2">
-          {months.map((month) => {
-            const isOpen = expanded === month.monthKey
-            return (
-              <div
-                key={month.monthKey}
-                className="overflow-hidden rounded-2xl border border-border bg-card"
-              >
-                <button
-                  type="button"
-                  className="flex w-full flex-col gap-2 p-3 text-right"
-                  onClick={() =>
-                    setExpanded(isOpen ? "" : month.monthKey)
-                  }
-                  aria-expanded={isOpen}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-bold capitalize">
-                      {month.label}
-                    </span>
-                    <ChevronDown
-                      className={cn(
-                        "size-4 shrink-0 text-muted-foreground transition-transform",
-                        isOpen && "rotate-180",
-                      )}
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-1 text-[11px]">
-                    <Metric
-                      label="נגבה"
-                      value={formatCurrency(month.revenue)}
-                      tone="success"
-                    />
-                    <Metric
-                      label="הוצאות"
-                      value={formatCurrency(month.expenses)}
-                      tone="danger"
-                    />
-                    <Metric
-                      label="רווח נקי"
-                      value={formatCurrency(month.netProfit)}
-                      tone="primary"
-                    />
-                  </div>
-                </button>
+        <>
+          {/* מובייל — כרטיסים */}
+          <div className="space-y-2 md:hidden">
+            {filtered.map((tx) => (
+              <MobileTxCard key={tx.id} tx={tx} />
+            ))}
+          </div>
 
-                {isOpen && (
-                  <div className="space-y-2 border-t border-border bg-secondary/30 p-2">
-                    {month.transactions.map((tx) => (
-                      <TxCard key={`${tx.kind}-${tx.id}`} tx={tx} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+          {/* דסקטופ — טבלה */}
+          <div className="hidden overflow-x-auto rounded-2xl border border-border md:block">
+            <table className="w-full min-w-[900px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/40 text-right text-xs text-muted-foreground">
+                  <th className="px-3 py-2 font-medium">תאריך</th>
+                  <th className="px-3 py-2 font-medium">סוג</th>
+                  <th className="px-3 py-2 font-medium">שם משלם</th>
+                  <th className="px-3 py-2 font-medium">שיוך להדרכה</th>
+                  <th className="px-3 py-2 font-medium">אמצעי תשלום</th>
+                  <th className="px-3 py-2 font-medium">מי גבה</th>
+                  <th className="px-3 py-2 font-medium">סכום</th>
+                  <th className="px-3 py-2 font-medium">סטטוס</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((tx) => (
+                  <tr
+                    key={tx.id}
+                    className="border-b border-border/70 last:border-0 hover:bg-secondary/20"
+                  >
+                    <td className="whitespace-nowrap px-3 py-2.5 tabular-nums">
+                      {formatDate(tx.date)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <TypeBadge type={tx.type} />
+                    </td>
+                    <td className="max-w-[140px] truncate px-3 py-2.5 font-medium">
+                      {tx.payerName}
+                    </td>
+                    <td className="max-w-[180px] px-3 py-2.5">
+                      <TrainingCell tx={tx} />
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5">
+                      {paymentMethodLabel(tx.paymentMethod)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5">
+                      {tx.receivedBy}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 font-semibold tabular-nums">
+                      {formatCurrency(tx.amount)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5">
+                      <span
+                        className={cn(
+                          "text-xs font-medium",
+                          STATUS_CLASS[tx.paymentStatus],
+                        )}
+                      >
+                        {PAYMENT_LEDGER_STATUS_LABELS[tx.paymentStatus]}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   )
 }
 
-function TxCard({ tx }: { tx: ProfitTransaction }) {
+function TypeBadge({ type }: { type: PaymentTransactionType }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn("border font-medium", TYPE_BADGE_CLASS[type])}
+    >
+      {PAYMENT_TRANSACTION_TYPE_LABELS[type]}
+    </Badge>
+  )
+}
+
+function TrainingCell({ tx }: { tx: PaymentTransaction }) {
+  if (!tx.trainingId) {
+    return (
+      <span className="text-muted-foreground">
+        {tx.trainingName || "מכירה ללא הדרכה"}
+      </span>
+    )
+  }
   return (
     <Link
-      href={txHref(tx)}
-      className="block rounded-xl border border-border bg-card p-3 transition-transform active:scale-[0.99]"
+      href={`/leads/${tx.trainingId}`}
+      className="truncate text-primary underline-offset-2 hover:underline"
+      title={tx.trainingName}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{tx.itemLabel}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {tx.clientName} · {formatDate(tx.date)}
-          </p>
-        </div>
-        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-          {tx.kind === "course"
-            ? "קורס"
-            : tx.kind === "training_sale"
-              ? "מכירת שטח"
-              : "ציוד"}
-        </span>
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-1 text-[11px]">
-        <div>
-          <p className="text-muted-foreground">נגבה</p>
-          <p className="font-semibold">{formatCurrency(tx.revenue)}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground">הוצאה</p>
-          <p className="font-semibold">{formatCurrency(tx.expenses)}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground">רווח</p>
-          <p
-            className={cn(
-              "font-bold",
-              tx.netProfit >= 0 ? "text-success" : "text-destructive",
-            )}
-          >
-            {formatCurrency(tx.netProfit)}
-          </p>
-        </div>
-      </div>
-      {tx.remaining > 0 && (
-        <p className="mt-1 text-[10px] text-amber-800">
-          יתרה לגבייה: {formatCurrency(tx.remaining)}
-        </p>
-      )}
+      {tx.trainingName}
     </Link>
   )
 }
 
-function txHref(tx: ProfitTransaction): string {
-  if (tx.kind === "course") return `/leads/${tx.id}`
-  if (tx.kind === "equipment") return `/equipment/${tx.id}`
-  return `/clients/${tx.clientId}`
+function MobileTxCard({ tx }: { tx: PaymentTransaction }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{tx.payerName}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatDate(tx.date)} · {paymentMethodLabel(tx.paymentMethod)}
+          </p>
+        </div>
+        <div className="shrink-0 text-left">
+          <p className="text-sm font-bold tabular-nums">
+            {formatCurrency(tx.amount)}
+          </p>
+          <p
+            className={cn(
+              "text-[11px] font-medium",
+              STATUS_CLASS[tx.paymentStatus],
+            )}
+          >
+            {PAYMENT_LEDGER_STATUS_LABELS[tx.paymentStatus]}
+          </p>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <TypeBadge type={tx.type} />
+        <span className="text-[11px] text-muted-foreground">
+          גבה: {tx.receivedBy}
+        </span>
+      </div>
+      <div className="mt-1.5 text-xs">
+        <TrainingCell tx={tx} />
+      </div>
+    </div>
+  )
 }
 
-function Metric({
+function SummaryCard({
   label,
   value,
+  hint,
   tone,
 }: {
   label: string
   value: string
-  tone: "success" | "danger" | "primary"
+  hint: string
+  tone: "primary" | "success" | "muted"
 }) {
-  const toneClass =
-    tone === "success"
-      ? "text-success"
-      : tone === "danger"
-        ? "text-destructive"
-        : "text-primary"
+  const valueClass =
+    tone === "primary"
+      ? "text-primary"
+      : tone === "success"
+        ? "text-success"
+        : "text-foreground"
   return (
-    <div className="rounded-lg bg-secondary/60 px-1.5 py-1">
-      <p className="text-muted-foreground">{label}</p>
-      <p className={cn("font-bold tabular-nums", toneClass)}>{value}</p>
+    <div className="rounded-2xl border border-border bg-card p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={cn("mt-0.5 text-lg font-bold tabular-nums", valueClass)}>
+        {value}
+      </p>
+      <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+        {hint}
+      </p>
     </div>
   )
 }

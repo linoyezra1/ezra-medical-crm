@@ -6,6 +6,7 @@ import {
 import {
   cleanParticipantPhone,
   findParticipantByIdNumber,
+  indexParticipantsByIdNumber,
   isUsableParticipantIdNumber,
   normalizeParticipantIdNumber,
 } from "@/lib/participant-identity"
@@ -79,18 +80,20 @@ type ExistingParticipant = Awaited<
 >[number]
 
 /**
- * התאמה להדרכה: ת״ז היא מפתח ייחודי.
+ * התאמה להדרכה: ת״ז מנורמלת היא מפתח ייחודי.
  * בלי ת״ז בנתוני Wix — נפילה לטלפון/שם רק לתיקון ייבוא ישן.
  */
 function findExistingForWixRow(
   existing: ExistingParticipant[],
+  byId: Map<string, ExistingParticipant>,
   opts: { idNumber: string; phone: string; fullName: string },
 ): ExistingParticipant | undefined {
-  const byId = findParticipantByIdNumber(existing, opts.idNumber)
-  if (byId) return byId
-
-  // יש ת״ז בדוח ואין התאמה — אדם חדש (לא למזג לפי שם בלבד)
-  if (isUsableParticipantIdNumber(opts.idNumber)) return undefined
+  if (isUsableParticipantIdNumber(opts.idNumber)) {
+    return (
+      byId.get(opts.idNumber) ??
+      findParticipantByIdNumber(existing, opts.idNumber)
+    )
+  }
 
   const phone = opts.phone
   const fullName = opts.fullName.trim()
@@ -107,6 +110,21 @@ function findExistingForWixRow(
     if (opts.idNumber && pphone === opts.idNumber) return true
     return false
   })
+}
+
+function rememberParticipant(
+  existing: ExistingParticipant[],
+  byId: Map<string, ExistingParticipant>,
+  row: ExistingParticipant,
+) {
+  const idx = existing.findIndex((p) => p.id === row.id)
+  if (idx >= 0) existing[idx] = row
+  else existing.push(row)
+
+  const id = normalizeParticipantIdNumber(row.idNumber)
+  if (isUsableParticipantIdNumber(id)) {
+    byId.set(id, row)
+  }
 }
 
 /**
@@ -139,8 +157,9 @@ export async function refreshParticipantsFromWix(
 
     const dataRows = isHeaderRow(allRows[0]) ? allRows.slice(1) : allRows
 
+    const trainingKey = String(trainingId).trim()
     const wixRows = dataRows.filter(
-      (row) => cell(row, COL.trainingId) === String(trainingId),
+      (row) => cell(row, COL.trainingId) === trainingKey,
     )
 
     if (!wixRows.length) {
@@ -150,6 +169,7 @@ export async function refreshParticipantsFromWix(
     const existing = await prisma.participant.findMany({
       where: { leadId: trainingId },
     })
+    const byId = indexParticipantsByIdNumber(existing)
 
     let added = 0
     let skipped = 0
@@ -172,7 +192,7 @@ export async function refreshParticipantsFromWix(
         continue
       }
 
-      const match = findExistingForWixRow(existing, {
+      const match = findExistingForWixRow(existing, byId, {
         idNumber,
         phone,
         fullName,
@@ -180,7 +200,9 @@ export async function refreshParticipantsFromWix(
 
       if (match) {
         const nextIdNumber =
-          idNumber || normalizeParticipantIdNumber(match.idNumber) || match.idNumber
+          idNumber ||
+          normalizeParticipantIdNumber(match.idNumber) ||
+          match.idNumber
         const data = {
           fullName: fullName || match.fullName,
           idNumber: nextIdNumber,
@@ -194,23 +216,42 @@ export async function refreshParticipantsFromWix(
           feedback: feedback || match.feedback,
           source: "Wix",
         }
-        await prisma.participant.update({
+        const saved = await prisma.participant.update({
           where: { id: match.id },
           data,
         })
-        match.fullName = data.fullName
-        match.idNumber = data.idNumber
-        match.phone = data.phone
-        match.email = data.email
-        match.courseDate = data.courseDate
-        match.organizerName = data.organizerName
-        match.courseType = data.courseType
-        match.satisfaction = data.satisfaction
-        match.kitInterest = data.kitInterest
-        match.feedback = data.feedback
-        match.source = "Wix"
+        rememberParticipant(existing, byId, saved)
         updated++
         continue
+      }
+
+      // הגנה אחרונה: חיפוש מחדש ב-DB לפי ת״ז מנורמלת (מול רשומות עם פורמט ישן)
+      if (isUsableParticipantIdNumber(idNumber)) {
+        const fresh = await prisma.participant.findMany({
+          where: { leadId: trainingId },
+        })
+        const dbMatch = findParticipantByIdNumber(fresh, idNumber)
+        if (dbMatch) {
+          const saved = await prisma.participant.update({
+            where: { id: dbMatch.id },
+            data: {
+              fullName: fullName || dbMatch.fullName,
+              idNumber,
+              phone: phone || dbMatch.phone,
+              email: email || dbMatch.email,
+              courseDate: courseDate || dbMatch.courseDate,
+              organizerName: organizerName || dbMatch.organizerName,
+              courseType: courseType || dbMatch.courseType,
+              satisfaction: satisfaction || dbMatch.satisfaction,
+              kitInterest: kitInterest || dbMatch.kitInterest,
+              feedback: feedback || dbMatch.feedback,
+              source: "Wix",
+            },
+          })
+          rememberParticipant(existing, byId, saved)
+          updated++
+          continue
+        }
       }
 
       const created = await prisma.participant.create({
@@ -229,7 +270,7 @@ export async function refreshParticipantsFromWix(
           source: "Wix",
         },
       })
-      existing.push(created)
+      rememberParticipant(existing, byId, created)
       added++
     }
 

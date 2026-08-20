@@ -34,6 +34,14 @@ import {
   type TrainingSessionSlot,
 } from "@/lib/payment";
 import { isTrainingFullySettled } from "@/lib/training-profit";
+import {
+  buildEquipmentDealTransaction,
+  buildParticipantTransaction,
+  buildSaleTransaction,
+  buildTrainingBaseTransaction,
+  sortPaymentTransactions,
+  type PaymentTransaction,
+} from "@/lib/payment-transactions";
 import { sanitizePhone } from "@/lib/utils";
 import { validateStatusTransition } from "@/lib/conflicts";
 import type { ConflictHit } from "@/lib/conflicts";
@@ -1194,6 +1202,7 @@ export async function recordLeadPayment(
   revalidatePath("/leads");
   revalidatePath("/dashboard");
   revalidatePath("/calendar");
+  revalidatePath("/payment-history");
   return { ok: true, data: { id: leadId } };
 }
 
@@ -1204,7 +1213,7 @@ async function upsertTraineeFromParticipant(data: {
   phone?: string | null;
 }) {
   const fullName = data.fullName.trim() || "ללא שם";
-  let idNumber = data.idNumber.trim().replace(/[-\s]/g, "");
+  let idNumber = normalizeParticipantIdNumber(data.idNumber);
   const phone = data.phone?.trim() || null;
   const email = data.email?.trim() || null;
 
@@ -1287,7 +1296,7 @@ export async function addParticipant(
   extras?: { phone?: string | null; email?: string | null },
 ) {
   const name = fullName.trim();
-  const id = idNumber.trim().replace(/[-\s]/g, "");
+  const id = normalizeParticipantIdNumber(idNumber);
   const phone = extras?.phone?.trim() || "";
   const email = extras?.email?.trim() || "";
   if (!name && !id && !phone && !email) {
@@ -1368,7 +1377,7 @@ export async function addExternalParticipant(input: {
     }
   }
   const name = (input.fullName || "").trim()
-  const id = (input.idNumber || "").trim().replace(/[-\s]/g, "")
+  const id = normalizeParticipantIdNumber(input.idNumber)
   const phone = (input.phone || "").trim()
   const email = (input.email || "").trim()
   if (!name && !id && !phone && !email) {
@@ -1499,7 +1508,194 @@ export async function recordParticipantPayment(
   revalidatePath("/")
   revalidatePath("/calendar")
   revalidatePath("/dashboard")
+  revalidatePath("/payment-history")
   return { ok: true, data: { id: participantId } }
+}
+
+/**
+ * יומן תשלומים שטוח — משתתפים, מכירות הדרכה, מכירות בודדות ותשלומי בסיס.
+ */
+export async function getAllPaymentTransactionsAction(): Promise<
+  ActionResult<PaymentTransaction[]>
+> {
+  try {
+    const [participants, sales, trainingLeads, equipmentLeads] =
+      await Promise.all([
+        prisma.participant.findMany({
+          where: {
+            isLead: false,
+            OR: [
+              { agreedPrice: { gt: 0 } },
+              { paymentStatus: { not: null } },
+            ],
+          },
+          select: {
+            id: true,
+            fullName: true,
+            isExternal: true,
+            agreedPrice: true,
+            paymentStatus: true,
+            paymentDate: true,
+            paymentMethod: true,
+            paymentReceivedBy: true,
+            createdAt: true,
+            leadId: true,
+            lead: {
+              select: {
+                id: true,
+                fullName: true,
+                activityType: true,
+              },
+            },
+          },
+        }),
+        prisma.trainingSale.findMany({
+          select: {
+            id: true,
+            leadId: true,
+            quantity: true,
+            unitSellingPrice: true,
+            paymentStatus: true,
+            paymentMethod: true,
+            createdAt: true,
+            inventoryItem: { select: { name: true } },
+            participant: { select: { fullName: true } },
+            reportedByInstructor: { select: { name: true } },
+            lead: { select: { id: true, fullName: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.lead.findMany({
+          where: {
+            activityType: { not: "equipment" },
+            OR: [
+              { paymentStatus: PAID_PAYMENT_STATUS },
+              { paymentDate: { not: null } },
+            ],
+          },
+          select: {
+            id: true,
+            fullName: true,
+            agreedPrice: true,
+            paymentStatus: true,
+            paymentDate: true,
+            paymentMethod: true,
+            paymentReceivedBy: true,
+            createdAt: true,
+          },
+        }),
+        prisma.lead.findMany({
+          where: {
+            activityType: { in: ["equipment", "combined"] },
+            OR: [
+              { paymentStatus: PAID_PAYMENT_STATUS },
+              { paymentDate: { not: null } },
+              {
+                equipmentStatus: {
+                  in: [
+                    "completed_paid",
+                    "supplied_invoiced",
+                    "pending_payment",
+                    "requisition_received",
+                    "paid",
+                    "invoice",
+                    "order",
+                  ],
+                },
+              },
+            ],
+          },
+          select: {
+            id: true,
+            fullName: true,
+            reason: true,
+            courseType: true,
+            agreedPrice: true,
+            paymentStatus: true,
+            paymentDate: true,
+            paymentMethod: true,
+            paymentReceivedBy: true,
+            equipmentStatus: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+      ])
+
+    const rows: PaymentTransaction[] = []
+
+    for (const p of participants) {
+      if (p.lead?.activityType === "equipment") continue
+      const row = buildParticipantTransaction({
+        id: p.id,
+        isExternal: p.isExternal,
+        fullName: p.fullName,
+        agreedPrice: p.agreedPrice,
+        paymentStatus: p.paymentStatus,
+        paymentDate: p.paymentDate,
+        paymentMethod: p.paymentMethod,
+        paymentReceivedBy: p.paymentReceivedBy,
+        createdAt: p.createdAt,
+        leadId: p.leadId,
+        leadName: p.lead?.fullName ?? null,
+      })
+      if (row) rows.push(row)
+    }
+
+    for (const s of sales) {
+      rows.push(
+        buildSaleTransaction({
+          id: s.id,
+          leadId: s.leadId,
+          leadName: s.lead?.fullName ?? null,
+          itemName: s.inventoryItem?.name || "פריט",
+          quantity: s.quantity,
+          unitSellingPrice: s.unitSellingPrice,
+          paymentStatus: s.paymentStatus,
+          paymentMethod: s.paymentMethod,
+          participantName: s.participant?.fullName,
+          reportedByName: s.reportedByInstructor?.name,
+          createdAt: s.createdAt,
+        }),
+      )
+    }
+
+    for (const lead of trainingLeads) {
+      const row = buildTrainingBaseTransaction({
+        id: lead.id,
+        fullName: lead.fullName,
+        amount: lead.agreedPrice,
+        paymentStatus: lead.paymentStatus,
+        paymentDate: lead.paymentDate,
+        paymentMethod: lead.paymentMethod,
+        paymentReceivedBy: lead.paymentReceivedBy,
+        createdAt: lead.createdAt,
+      })
+      if (row) rows.push(row)
+    }
+
+    for (const lead of equipmentLeads) {
+      const row = buildEquipmentDealTransaction({
+        id: lead.id,
+        title: lead.reason || lead.courseType || "עסקת ציוד",
+        contactName: lead.fullName,
+        amount: lead.agreedPrice,
+        paymentStatus: lead.paymentStatus,
+        paymentDate: lead.paymentDate,
+        paymentMethod: lead.paymentMethod,
+        paymentReceivedBy: lead.paymentReceivedBy,
+        equipmentStatus: lead.equipmentStatus,
+        createdAt: lead.createdAt,
+        updatedAt: lead.updatedAt,
+      })
+      if (row) rows.push(row)
+    }
+
+    return { ok: true, data: sortPaymentTransactions(rows) }
+  } catch (error) {
+    console.error("[getAllPaymentTransactionsAction]", error)
+    return { ok: false, error: "שגיאה בטעינת היסטוריית תשלומים" }
+  }
 }
 
 export async function setCollectCertificateShipping(
@@ -1779,7 +1975,7 @@ export async function updateTrainee(
 
   const nextIdNumber =
     data.idNumber !== undefined
-      ? data.idNumber.trim().replace(/[-\s]/g, "") || existing.idNumber
+      ? normalizeParticipantIdNumber(data.idNumber) || existing.idNumber
       : existing.idNumber;
   const nextFullName =
     data.fullName !== undefined
@@ -2295,7 +2491,7 @@ export async function createTraineeManual(data: {
   leadId?: string;
 }): Promise<ActionResult<{ traineeId: string; participantId?: string }>> {
   const fullName = data.fullName.trim();
-  const idNumberRaw = data.idNumber.trim().replace(/[-\s]/g, "");
+  const idNumberRaw = normalizeParticipantIdNumber(data.idNumber);
   const phone = data.phone?.trim() || "";
   const email = data.email?.trim() || "";
 
@@ -2392,7 +2588,7 @@ export async function bulkImportTrainees(
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const fullName = row.fullName?.trim() || "";
-    const idNumber = (row.idNumber || "").trim().replace(/[-\s]/g, "");
+    const idNumber = normalizeParticipantIdNumber(row.idNumber);
     if (!fullName) {
       skipped += 1;
       errors.push(`שורה ${i + 1}: חסר שם מלא`);
@@ -2808,6 +3004,7 @@ export async function addTrainingSale(
   revalidatePath("/");
   revalidatePath("/equipment");
   revalidatePath("/instructor/dashboard");
+  revalidatePath("/payment-history");
   return { ok: true, data: { id: created.id } };
 }
 
