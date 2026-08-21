@@ -3,6 +3,7 @@ import {
   getSheetsClient,
   isGoogleSheetsConfigured,
 } from "@/lib/google-sheets/client"
+import { parseSheetDateValue } from "@/lib/google-sheets/sheet-dates"
 import {
   cleanParticipantPhone,
   findParticipantByIdNumber,
@@ -11,6 +12,7 @@ import {
   normalizeParticipantIdNumber,
 } from "@/lib/participant-identity"
 import { syncParticipantContactToTrainee } from "@/lib/trainee-directory"
+import { formatInJerusalem } from "@/lib/timezone"
 
 const DEFAULT_WIX_SPREADSHEET_ID =
   "1vy5gL9PjLQ8scNHvHPHxAtCLfWDRZm0Lr4BfdBK3Nz4"
@@ -51,6 +53,14 @@ const COL = {
 
 function cell(row: unknown[], index: number): string {
   return String(row[index] ?? "").trim()
+}
+
+/** נרמול תאריך מגיליון ל־YYYY-MM-DD לשמירה ב-CRM */
+function normalizeCourseDateForDb(value: string | null | undefined): string | null {
+  if (!value?.trim()) return null
+  const d = parseSheetDateValue(value)
+  if (!d) return value.trim()
+  return formatInJerusalem(d).date || value.trim()
 }
 
 function isHeaderRow(row: unknown[]): boolean {
@@ -179,7 +189,7 @@ export async function refreshParticipantsFromWix(
     for (const row of wixRows) {
       const fullName = cell(row, COL.fullName)
       const idNumber = normalizeParticipantIdNumber(cell(row, COL.idNumber))
-      const courseDate = cell(row, COL.courseDate) || null
+      const courseDate = normalizeCourseDateForDb(cell(row, COL.courseDate))
       const email = cell(row, COL.email)
       const phone = cleanParticipantPhone(cell(row, COL.phone))
       const courseType = cell(row, COL.courseType) || null

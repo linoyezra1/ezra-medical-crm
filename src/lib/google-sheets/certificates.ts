@@ -11,7 +11,10 @@ import {
   isGoogleSheetsConfigured,
   sheetA1,
 } from "@/lib/google-sheets/client"
-import { formatInJerusalem } from "@/lib/timezone"
+import {
+  formatSheetDateDdMmYyyy,
+  formatSheetDateTimeDdMmYyyy,
+} from "@/lib/google-sheets/sheet-dates"
 
 /**
  * כותרות עמודות בגיליון «תעודות» — 15 עמודות בסדר קבוע (A–O)
@@ -93,18 +96,21 @@ async function ensureHeaderRow() {
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range,
-    valueInputOption: "RAW",
+    valueInputOption: "USER_ENTERED",
     requestBody: { values: [[...CERTIFICATE_SHEET_HEADERS]] },
   })
 }
 
+/** תאריך הדרכה לגיליון — תמיד מחרוזת DD/MM/YYYY (לא epoch / ISO) */
 function trainingDateLabel(
   courseDate: string | null | undefined,
   scheduledStart: Date | null | undefined,
 ): string {
-  if (courseDate?.trim()) return courseDate.trim()
+  if (courseDate?.trim()) {
+    return formatSheetDateDdMmYyyy(courseDate.trim()) || courseDate.trim()
+  }
   if (scheduledStart) {
-    return formatInJerusalem(scheduledStart).date || ""
+    return formatSheetDateDdMmYyyy(scheduledStart)
   }
   return ""
 }
@@ -156,13 +162,13 @@ function participantRow(p: {
     certCourse.courseType,
     certCourse.courseTypeOther,
   )
-  const exportTimestamp = new Date().toISOString()
+  const exportTimestamp = formatSheetDateTimeDdMmYyyy(new Date())
 
   // I/J מתחילים ריקים — ממולאים בגיליון; סנכרון קורא משם חזרה ל-CRM
   return [
     p.fullName || "", // A
     p.idNumber || "", // B
-    courseDate, // C
+    courseDate, // C — DD/MM/YYYY
     p.email || "", // D
     p.phone || "", // E
     hoursScope, // F — «22» או «רענון 22» לפי סוג הקורס
@@ -171,7 +177,7 @@ function participantRow(p: {
     "", // I — הודפס כרטיס (מילוי בגיליון)
     "", // J — נשלח במייל (מילוי בגיליון)
     p.organizerName || p.lead?.fullName || "", // K
-    exportTimestamp, // L
+    exportTimestamp, // L — DD/MM/YYYY HH:mm
     p.id, // M — CRM_PARTICIPANT_ID
     "", // N — קישור PDF (מילוי בגיליון / Apps Script)
     attendanceCell(Boolean(p.attended)), // O — נוכחות
@@ -512,7 +518,7 @@ export async function exportTraineesToCertificateSheet(
         "",
         "",
         p?.organizerName || lead?.fullName || "",
-        new Date().toISOString(),
+        formatSheetDateTimeDdMmYyyy(new Date()),
         p?.id || t.id, // M — מזהה משתתף אם יש, אחרת מודרך
         "", // N — קישור PDF
         "TRUE", // O — נוכחות

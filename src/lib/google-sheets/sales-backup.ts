@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/db"
 import { COURSE_CATEGORIES } from "@/lib/constants"
 import { formatCourseTypeLabel } from "@/lib/course-type"
+import { formatSheetDateDdMmYyyy } from "@/lib/google-sheets/sheet-dates"
 import {
   PAYMENT_METHODS,
   TRAINING_SALE_PENDING_PAYMENT,
 } from "@/lib/payment"
-import { formatInJerusalem } from "@/lib/timezone"
 
 export type SalesBackupRow = {
   clientName: string
@@ -48,11 +48,7 @@ function paymentStatusLabel(status?: string | null): string {
 
 /** תאריך מכירה בפורמט DD/MM/YYYY (שעון ישראל) */
 function saleDateLabel(createdAt: Date): string {
-  const { date } = formatInJerusalem(createdAt)
-  if (!date) return ""
-  const [y, m, d] = date.split("-")
-  if (!y || !m || !d) return ""
-  return `${d}/${m}/${y}`
+  return formatSheetDateDdMmYyyy(createdAt)
 }
 
 function courseDetailsLabel(lead: {
