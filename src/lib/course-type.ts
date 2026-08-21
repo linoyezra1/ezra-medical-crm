@@ -123,22 +123,36 @@ export function yossiAmarDetailsTaskTitle(leadName: string): string {
   return `${YOSSI_AMAR_DETAILS_TASK_PREFIX} — ${name}`
 }
 
-/** האם סוג הקורס הוא (או מכיל) רענון עזרה ראשונה + התנהלות בטוחה */
+/** רק הקורס המשולב (רענון עזרה ראשונה + התנהלות בטוחה) — לא «התנהלות בטוחה» לבד */
+function isKindergartenRefreshLabel(raw: string): boolean {
+  const n = raw.replace(/\s+/g, " ").replace(/\s*\+\s*/g, "+").trim()
+  if (!n) return false
+  // במפורש רק התנהלות בטוחה — בלי סשן פרטי מעון
+  if (n === "התנהלות בטוחה") return false
+  if (!n.includes("התנהלות בטוחה")) return false
+  // חייב גם רענון עזרה ראשונה באותה מחרוזת
+  return /רענון\s*עזרה\s*ראשונה/.test(n)
+}
+
+/**
+ * האם סוג הקורס הוא רענון עזרה ראשונה + התנהלות בטוחה
+ * (לא מופעל עבור «התנהלות בטוחה» בלבד).
+ */
 export function isKindergartenRefreshCourseType(
   courseType?: string | null,
   courseTypeOther?: string | null,
 ): boolean {
-  const sources = [
-    formatCourseTypeLabel(courseType, { other: courseTypeOther }),
-    (courseTypeOther || "").trim(),
-    (courseType || "").trim(),
-  ]
-  return sources.some((s) => {
-    const n = s.replace(/\s+/g, " ").trim()
-    if (!n) return false
-    if (/^רענון עזרה ראשונה\s*\+\s*התנהלות בטוחה$/.test(n)) return true
-    return n.includes("רענון עזרה ראשונה") && n.includes("התנהלות בטוחה")
-  })
+  const raw = (courseType || "").trim()
+  const other = (courseTypeOther || "").trim()
+
+  // «אחר» / ריק — בודקים רק את הטקסט החופשי
+  if (!raw || raw === "other" || raw === COURSE_TYPE_OTHER) {
+    return isKindergartenRefreshLabel(other)
+  }
+
+  // סוג קורס מפורש — מתעלמים מ-courseTypeOther ישן שלא נוקה
+  const label = formatCourseTypeLabel(raw)
+  return isKindergartenRefreshLabel(label) || isKindergartenRefreshLabel(raw)
 }
 
 /** האם כל שדות המעון מולאו (לסגירת משימת יוסי עמר) */

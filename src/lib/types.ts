@@ -258,6 +258,8 @@ export interface Lead {
    */
   instructorFeeOverride?: number;
   contactName?: string;
+  /** איש קשר משני — משויך לטלפון המשני */
+  contactNameSecondary?: string;
   notes?: string;
   quoteSentAt?: string;
   kindergartenApproval?: boolean;

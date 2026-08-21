@@ -19,6 +19,8 @@ export function leadToDbPayload(
 
   const raw: Record<string, unknown> = {
     fullName: merged.name,
+    contactName: merged.contactName?.trim() || null,
+    contactNameSecondary: merged.contactNameSecondary?.trim() || null,
     phone: merged.phone,
     phoneSecondary: merged.phoneSecondary?.trim() || null,
     email: merged.email || null,

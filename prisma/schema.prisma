@@ -43,6 +43,10 @@ model Lead {
 
   // Tab 1 – Contact info (denormalized for fast mobile edit)
   fullName   String
+  /** שם איש קשר (נפרד משם הארגון / הלקוח ב-fullName) */
+  contactName String?
+  /** שם איש קשר משני — משויך ל-phoneSecondary */
+  contactNameSecondary String?
   phone      String
   /** טלפון משני אופציונלי */
   phoneSecondary String?

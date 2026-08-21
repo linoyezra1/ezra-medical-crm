@@ -149,7 +149,8 @@ export function mapLead(db: DbLeadFull): Lead {
     instructorId: db.instructorId || db.instructorRef?.id || undefined,
     instructorFeeOverride:
       db.instructorFeeOverride != null ? db.instructorFeeOverride : undefined,
-    contactName: db.fullName,
+    contactName: db.contactName?.trim() || undefined,
+    contactNameSecondary: db.contactNameSecondary?.trim() || undefined,
     notes: db.notes || undefined,
     quoteSentAt: db.quoteSentAt?.toISOString(),
     kindergartenApproval: db.kindergartenApproved,

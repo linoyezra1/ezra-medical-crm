@@ -154,8 +154,9 @@ export function LeadForm({ existing }: Props) {
   const showKindergartenRefreshFields = useMemo(() => {
     if (form.isPrivateCourse) return false
     if (courseTypeSelect === COURSE_TYPE_OTHER) {
-      return isKindergartenRefreshCourseType(courseTypeOther, courseTypeOther)
+      return isKindergartenRefreshCourseType(COURSE_TYPE_OTHER, courseTypeOther)
     }
+    // לא מעבירים courseTypeOther — מונע זיהוי שגוי מערך ישן תקוע
     return isKindergartenRefreshCourseType(courseTypeSelect)
   }, [form.isPrivateCourse, courseTypeSelect, courseTypeOther])
   const [instructorAssign, setInstructorAssign] =
@@ -373,11 +374,22 @@ export function LeadForm({ existing }: Props) {
       if (!contact) return
       const importedName = contact.name?.[0]?.trim() || ""
       const importedTel = contact.tel?.[0]?.trim() || ""
+      if (!importedName && !importedTel) {
+        toast.message("לא נמצאו שם או טלפון באיש הקשר שנבחר")
+        return
+      }
+
+      // מילוי בלי דריסה — רק שדות ריקים
       if (target === "primary") {
-        if (importedName) set("name", importedName)
-        if (importedTel) {
-          const cleaned = cleanPhone(importedTel)
-          set("phone", cleaned)
+        const cleaned = importedTel ? cleanPhone(importedTel) : ""
+        setForm((f) => {
+          const next = { ...f }
+          if (importedName && !f.name.trim()) next.name = importedName
+          if (importedName && !f.contactName?.trim()) next.contactName = importedName
+          if (cleaned && !f.phone.trim()) next.phone = cleaned
+          return next
+        })
+        if (cleaned && !form.phone.trim()) {
           const existingClient = findClientByPhone(cleaned)
           if (
             existingClient &&
@@ -389,14 +401,19 @@ export function LeadForm({ existing }: Props) {
             setDupWarn(null)
           }
         }
-      } else if (importedTel) {
-        set("phoneSecondary", cleanPhone(importedTel))
-      }
-      if (importedName || importedTel) {
-        toast.success("איש הקשר יובא לטופס")
       } else {
-        toast.message("לא נמצאו שם או טלפון באיש הקשר שנבחר")
+        setForm((f) => {
+          const next = { ...f }
+          if (importedName && !f.contactNameSecondary?.trim()) {
+            next.contactNameSecondary = importedName
+          }
+          if (importedTel && !f.phoneSecondary?.trim()) {
+            next.phoneSecondary = cleanPhone(importedTel)
+          }
+          return next
+        })
       }
+      toast.success("איש הקשר יובא לטופס (ללא דריסת שדות קיימים)")
     } catch {
       // ביטול
     }
@@ -651,60 +668,90 @@ export function LeadForm({ existing }: Props) {
             }}
             className="mt-4 scroll-mt-28 space-y-4 overflow-visible"
           >            <Field label="שם הלקוח / הארגון" error={errors.name} required>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={form.name}
-                  onChange={(e) => set("name", e.target.value)}
-                  placeholder="לדוגמה: גן שמש"
-                  className="flex-1"
-                />
+              <Input
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="לדוגמה: גן שמש / מעון הדס"
+              />
+            </Field>
+
+            <div className="space-y-3 rounded-2xl border border-border bg-secondary/20 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-foreground">
+                  איש קשר ראשי
+                </p>
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon"
-                  className="size-10 shrink-0 rounded-xl"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-xl"
                   title="ייבא מאישי קשר"
-                  aria-label="ייבא מאישי קשר"
-                  onClick={() => importFromContacts("primary")}
+                  aria-label="ייבא איש קשר ראשי"
+                  onClick={() => void importFromContacts("primary")}
                 >
-                  <ContactRound className="size-5" />
+                  <ContactRound className="size-4" />
+                  ייבוא
                 </Button>
               </div>
-            </Field>
-            <Field label="טלפון" error={errors.phone} required>
-              <Input
-                value={form.phone}
-                onChange={(e) => set("phone", e.target.value)}
-                onBlur={handlePhoneBlur}
-                placeholder="050-0000000"
-                inputMode="tel"
-                dir="ltr"
-                className="text-right"
-              />
-            </Field>
-            <Field label="טלפון משני (אופציונלי)">
-              <div className="flex items-center gap-2">
+              <Field label="שם איש קשר">
+                <Input
+                  value={form.contactName ?? ""}
+                  onChange={(e) => set("contactName", e.target.value)}
+                  placeholder="שם איש הקשר הראשי"
+                />
+              </Field>
+              <Field label="טלפון" error={errors.phone} required>
+                <Input
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value)}
+                  onBlur={handlePhoneBlur}
+                  placeholder="050-0000000"
+                  inputMode="tel"
+                  dir="ltr"
+                  className="text-right"
+                />
+              </Field>
+            </div>
+
+            <div className="space-y-3 rounded-2xl border border-border bg-secondary/20 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-foreground">
+                  איש קשר משני
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-xl"
+                  title="ייבא מאישי קשר"
+                  aria-label="ייבא איש קשר משני"
+                  onClick={() => void importFromContacts("secondary")}
+                >
+                  <ContactRound className="size-4" />
+                  ייבוא
+                </Button>
+              </div>
+              <Field label="שם איש קשר משני">
+                <Input
+                  value={form.contactNameSecondary ?? ""}
+                  onChange={(e) =>
+                    set("contactNameSecondary", e.target.value)
+                  }
+                  placeholder="שם איש הקשר המשני"
+                />
+              </Field>
+              <Field label="טלפון משני">
                 <Input
                   value={form.phoneSecondary ?? ""}
                   onChange={(e) => set("phoneSecondary", e.target.value)}
                   placeholder="050-0000000"
                   inputMode="tel"
                   dir="ltr"
-                  className="flex-1 text-right"
+                  className="text-right"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-10 shrink-0 rounded-xl"
-                  title="ייבא מאישי קשר"
-                  aria-label="ייבא מאישי קשר לטלפון משני"
-                  onClick={() => importFromContacts("secondary")}
-                >
-                  <ContactRound className="size-5" />
-                </Button>
-              </div>
-            </Field>
+              </Field>
+            </div>
+
             <Field label="דוא״ל">
               <Input
                 value={form.email ?? ""}
@@ -713,13 +760,6 @@ export function LeadForm({ existing }: Props) {
                 inputMode="email"
                 dir="ltr"
                 className="text-right"
-              />
-            </Field>
-            <Field label="איש קשר">
-              <Input
-                value={form.contactName ?? ""}
-                onChange={(e) => set("contactName", e.target.value)}
-                placeholder="שם איש הקשר"
               />
             </Field>
 

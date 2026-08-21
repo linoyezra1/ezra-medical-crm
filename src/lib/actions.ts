@@ -787,6 +787,18 @@ export async function updateLead(
     where: { id: leadId },
     data: {
       fullName,
+      contactName:
+        raw.contactName !== undefined
+          ? raw.contactName
+            ? String(raw.contactName).trim()
+            : null
+          : existing.contactName,
+      contactNameSecondary:
+        raw.contactNameSecondary !== undefined
+          ? raw.contactNameSecondary
+            ? String(raw.contactNameSecondary).trim()
+            : null
+          : existing.contactNameSecondary,
       phone,
       phoneSecondary:
         raw.phoneSecondary !== undefined
