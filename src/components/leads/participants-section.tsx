@@ -81,6 +81,7 @@ import {
 import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
+import { isParticipantPaid } from "@/lib/training-profit"
 import type { Lead, Participant } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -979,7 +980,15 @@ export function ParticipantsSection({
                         >
                           {categoryLabel}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-sm font-semibold tabular-nums text-pink-700">
+                        <td
+                          className={`whitespace-nowrap px-3 py-2 text-sm font-semibold tabular-nums ${
+                            (p.isExternal || p.isLead) && p.agreedPrice != null
+                              ? isParticipantPaid(p)
+                                ? "text-emerald-700"
+                                : "text-red-600"
+                              : "text-muted-foreground"
+                          }`}
+                        >
                           {(p.isExternal || p.isLead) && p.agreedPrice != null
                             ? formatCurrency(p.agreedPrice)
                             : "—"}
@@ -1179,7 +1188,15 @@ export function ParticipantsSection({
                   {open && (
                     <div className="space-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
                       {p.isExternal || p.isLead ? (
-                        <p className="rounded-lg bg-pink-50 px-2 py-1.5 text-sm font-bold text-pink-800">
+                        <p
+                          className={`rounded-lg px-2 py-1.5 text-sm font-bold ${
+                            p.agreedPrice != null && isParticipantPaid(p)
+                              ? "bg-emerald-50 text-emerald-800"
+                              : p.agreedPrice != null
+                                ? "bg-red-50 text-red-700"
+                                : "bg-secondary text-muted-foreground"
+                          }`}
+                        >
                           {p.isLead ? "מחיר אופציה: " : "מחיר: "}
                           {p.agreedPrice != null
                             ? formatCurrency(p.agreedPrice)
