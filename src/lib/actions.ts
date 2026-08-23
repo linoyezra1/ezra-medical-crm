@@ -613,11 +613,17 @@ export async function updateLead(
   } as typeof existing;
 
   // Coerce numeric / date fields — מחרוזות ללא offset נחשבות שעון ישראל
-  if (raw.scheduledStart != null && raw.scheduledStart !== "") {
-    merged.scheduledStart = parseIncomingDateTime(raw.scheduledStart) ?? existing.scheduledStart;
+  if (raw.scheduledStart === null || raw.scheduledStart === "") {
+    merged.scheduledStart = null;
+  } else if (raw.scheduledStart != null) {
+    merged.scheduledStart =
+      parseIncomingDateTime(raw.scheduledStart) ?? existing.scheduledStart;
   }
-  if (raw.scheduledEnd != null && raw.scheduledEnd !== "") {
-    merged.scheduledEnd = parseIncomingDateTime(raw.scheduledEnd) ?? existing.scheduledEnd;
+  if (raw.scheduledEnd === null || raw.scheduledEnd === "") {
+    merged.scheduledEnd = null;
+  } else if (raw.scheduledEnd != null) {
+    merged.scheduledEnd =
+      parseIncomingDateTime(raw.scheduledEnd) ?? existing.scheduledEnd;
   }
   if (raw.expectedParticipants != null && raw.expectedParticipants !== "") {
     merged.expectedParticipants = Number(raw.expectedParticipants);

@@ -103,6 +103,10 @@ export function leadToDbPayload(
         raw.scheduledEnd = new Date(startMs + 60 * 60 * 1000).toISOString()
       }
     }
+  } else {
+    // ניקוי תאריך/שעה בטופס — מאפסים ב-DB (למשל אחרי שכפול בלי תאריך חדש)
+    raw.scheduledStart = null
+    raw.scheduledEnd = null
   }
 
   return raw

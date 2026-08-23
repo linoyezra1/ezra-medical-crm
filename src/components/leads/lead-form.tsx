@@ -198,7 +198,7 @@ export function LeadForm({ existing }: Props) {
   const sessionSlots = useMemo(() => {
     const existingSessions = form.sessions?.length
       ? form.sessions
-      : form.date && form.time
+      : form.date || form.time
         ? [
             {
               date: form.date,
@@ -212,10 +212,11 @@ export function LeadForm({ existing }: Props) {
         : []
     return Array.from({ length: resolvedSessionsCount }, (_, i) => {
       const s = existingSessions[i]
+      // אם יש רשומת מפגש — מכבדים גם מחרוזת ריקה (ניקוי), בלי נפילה ל-form.date
       return {
-        date: s?.date || (i === 0 ? form.date || "" : ""),
-        time: s?.time || (i === 0 ? form.time || "" : ""),
-        endTime: s?.endTime || (i === 0 ? form.endTime || "" : ""),
+        date: s ? String(s.date ?? "") : i === 0 ? form.date || "" : "",
+        time: s ? String(s.time ?? "") : i === 0 ? form.time || "" : "",
+        endTime: s ? String(s.endTime ?? "") : i === 0 ? form.endTime || "" : "",
         isZoom: Boolean(s?.isZoom),
         zoomLink: s?.zoomLink || "",
         city: s?.city || (i === 0 ? form.address.city || "" : ""),
@@ -252,7 +253,9 @@ export function LeadForm({ existing }: Props) {
       if (i !== index) return s
       const merged = { ...s, ...patch }
       if (patch.time != null && patch.endTime === undefined) {
-        merged.endTime = addHoursToTime(patch.time, 4)
+        merged.endTime = patch.time.trim()
+          ? addHoursToTime(patch.time, 4)
+          : ""
       }
       return merged
     })
@@ -261,9 +264,10 @@ export function LeadForm({ existing }: Props) {
       ...f,
       sessionsCount: resolvedSessionsCount,
       sessions: next,
-      date: first?.date || f.date,
-      time: next[0]?.time || f.time,
-      endTime: next[0]?.endTime || f.endTime,
+      // מאפשרים ניקוי מלא של תאריך/שעה ("" לא נופל חזרה לערך ישן)
+      date: first?.date ?? "",
+      time: first?.time ?? "",
+      endTime: first?.endTime ?? "",
       address:
         index === 0 && !first?.isZoom
           ? {
@@ -544,9 +548,9 @@ export function LeadForm({ existing }: Props) {
           street: s.isZoom ? undefined : s.street || undefined,
           houseNumber: s.isZoom ? undefined : s.houseNumber || undefined,
         })),
-        date: sessionSlots[0]?.date || form.date,
-        time: sessionSlots[0]?.time || form.time,
-        endTime: sessionSlots[0]?.endTime || form.endTime,
+        date: sessionSlots[0]?.date ?? "",
+        time: sessionSlots[0]?.time ?? "",
+        endTime: sessionSlots[0]?.endTime ?? "",
         address: (() => {
           const physical = sessionSlots.find((s) => !s.isZoom)
           return {
@@ -1066,7 +1070,7 @@ export function LeadForm({ existing }: Props) {
                         const base =
                           f.sessions?.length
                             ? f.sessions
-                            : f.date && f.time
+                            : f.date || f.time
                               ? [
                                   {
                                     date: f.date,
@@ -1076,19 +1080,32 @@ export function LeadForm({ existing }: Props) {
                                 ]
                               : []
                         const next = Array.from({ length: count }, (_, i) => ({
-                          date: base[i]?.date || (i === 0 ? f.date || "" : ""),
-                          time: base[i]?.time || (i === 0 ? f.time || "" : ""),
+                          date:
+                            base[i]?.date != null
+                              ? String(base[i]?.date ?? "")
+                              : i === 0
+                                ? f.date || ""
+                                : "",
+                          time:
+                            base[i]?.time != null
+                              ? String(base[i]?.time ?? "")
+                              : i === 0
+                                ? f.time || ""
+                                : "",
                           endTime:
-                            base[i]?.endTime ||
-                            (i === 0 ? f.endTime || "" : ""),
+                            base[i]?.endTime != null
+                              ? String(base[i]?.endTime ?? "")
+                              : i === 0
+                                ? f.endTime || ""
+                                : "",
                         }))
                         return {
                           ...f,
                           sessionsCount: count,
                           sessions: next,
-                          date: next[0]?.date || f.date,
-                          time: next[0]?.time || f.time,
-                          endTime: next[0]?.endTime || f.endTime,
+                          date: next[0]?.date ?? "",
+                          time: next[0]?.time ?? "",
+                          endTime: next[0]?.endTime ?? "",
                         }
                       })
                     }}
@@ -1122,7 +1139,7 @@ export function LeadForm({ existing }: Props) {
                         const base =
                           f.sessions?.length
                             ? f.sessions
-                            : f.date && f.time
+                            : f.date || f.time
                               ? [
                                   {
                                     date: f.date,
@@ -1135,18 +1152,32 @@ export function LeadForm({ existing }: Props) {
                           { length: count },
                           (_, i) => ({
                             date:
-                              base[i]?.date || (i === 0 ? f.date || "" : ""),
+                              base[i]?.date != null
+                                ? String(base[i]?.date ?? "")
+                                : i === 0
+                                  ? f.date || ""
+                                  : "",
                             time:
-                              base[i]?.time || (i === 0 ? f.time || "" : ""),
+                              base[i]?.time != null
+                                ? String(base[i]?.time ?? "")
+                                : i === 0
+                                  ? f.time || ""
+                                  : "",
                             endTime:
-                              base[i]?.endTime ||
-                              (i === 0 ? f.endTime || "" : ""),
+                              base[i]?.endTime != null
+                                ? String(base[i]?.endTime ?? "")
+                                : i === 0
+                                  ? f.endTime || ""
+                                  : "",
                           }),
                         )
                         return {
                           ...f,
                           sessionsCount: count,
                           sessions: next,
+                          date: next[0]?.date ?? "",
+                          time: next[0]?.time ?? "",
+                          endTime: next[0]?.endTime ?? "",
                         }
                       })
                     }}
@@ -1167,7 +1198,11 @@ export function LeadForm({ existing }: Props) {
                     : "מפגש הדרכה"}
                 </p>
                 <div className="grid grid-cols-3 gap-3">
-                  <Field label="תאריך" error={errors[`session_${idx}`]} required>
+                  <Field
+                    label="תאריך"
+                    error={errors[`session_${idx}`]}
+                    required={resolvedSessionsCount >= 2}
+                  >
                     <Input
                       type="date"
                       value={slot.date}
@@ -1177,7 +1212,11 @@ export function LeadForm({ existing }: Props) {
                       dir="ltr"
                     />
                   </Field>
-                  <Field label="משעה" error={errors[`session_${idx}`]} required>
+                  <Field
+                    label="משעה"
+                    error={errors[`session_${idx}`]}
+                    required={resolvedSessionsCount >= 2}
+                  >
                     <Input
                       type="time"
                       value={slot.time}
