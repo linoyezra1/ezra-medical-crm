@@ -15,12 +15,14 @@ import {
   formatSheetDateDdMmYyyy,
   formatSheetDateTimeDdMmYyyy,
 } from "@/lib/google-sheets/sheet-dates"
+import { formatLeadCategory } from "@/lib/helpers"
 
 /**
- * כותרות עמודות בגיליון «תעודות» — 19 עמודות בסדר קבוע (A–S)
+ * כותרות עמודות בגיליון «תעודות» — 20 עמודות בסדר קבוע (A–T)
  * G–H / N ממולאים בגיליון או ע״י Apps Script
  * O = נוכחות (TRUE / לא נכח)
  * P–S = כתובת מגורים של המודרך
+ * T = קטגוריה
  */
 export const CERTIFICATE_SHEET_HEADERS = [
   "שם מלא", // A
@@ -42,6 +44,7 @@ export const CERTIFICATE_SHEET_HEADERS = [
   "כתובת / רחוב", // Q
   "מספר בית", // R
   "מיקוד", // S
+  "קטגוריה", // T
 ] as const
 
 /** אינדקסים 0-based לפי מבנה הגיליון */
@@ -65,14 +68,15 @@ const COL = {
   street: 16, // Q
   houseNumber: 17, // R
   zipCode: 18, // S
+  category: 19, // T
 } as const
 
-const SHEET_RANGE_HEADER = "A1:S1"
-const SHEET_RANGE_DATA = "A2:S"
-const SHEET_RANGE_APPEND = "A:S"
+const SHEET_RANGE_HEADER = "A1:T1"
+const SHEET_RANGE_DATA = "A2:T"
+const SHEET_RANGE_APPEND = "A:T"
 /** עמודת מזהה משתתף למניעת כפילויות */
 const SHEET_RANGE_CRM_IDS = "M:M"
-/** כותרות כתובת בלבד (הרחבה לגיליונות ישנים A–O) */
+/** כותרות A–O לפני הרחבת כתובת/קטגוריה */
 const LEGACY_HEADER_COLS = 15
 
 function truthyCell(value: unknown): boolean {
@@ -103,11 +107,22 @@ async function ensureHeaderRow() {
   const row = existing.data.values?.[0] || []
   if (row.length >= CERTIFICATE_SHEET_HEADERS.length) return
 
-  // גיליון ישן A–O — מוסיפים רק כותרות P–S בלי לדרוס A–O
+  // גיליון עם A–S בלבד — מוסיפים כותרת T
+  if (row.length >= 19) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: sheetA1(tab, "T1"),
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [[CERTIFICATE_SHEET_HEADERS[19]]] },
+    })
+    return
+  }
+
+  // גיליון ישן A–O — מוסיפים כותרות P–T בלי לדרוס A–O
   if (row.length >= LEGACY_HEADER_COLS) {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: sheetA1(tab, "P1:S1"),
+      range: sheetA1(tab, "P1:T1"),
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[...CERTIFICATE_SHEET_HEADERS.slice(LEGACY_HEADER_COLS)]],
@@ -141,6 +156,44 @@ function addressCells(p: {
     sheetText(p.shippingHouseNo),
     sheetText(p.shippingZip),
   ]
+}
+
+/** קטגוריה לתצוגה בגיליון (עמודה T) */
+function categoryCell(p: {
+  isExternal?: boolean | null
+  courseCategory?: string | null
+  lead?: {
+    courseCategory?: string | null
+    courseCategoryOther?: string | null
+  } | null
+}): string {
+  const raw =
+    (p.isExternal && p.courseCategory?.trim()
+      ? p.courseCategory.trim()
+      : "") ||
+    p.lead?.courseCategoryOther?.trim() ||
+    p.lead?.courseCategory?.trim() ||
+    p.courseCategory?.trim() ||
+    ""
+  if (!raw) return ""
+  const label = formatLeadCategory(raw)
+  return label === "—" ? raw : label
+}
+
+/** P–T: כתובת + קטגוריה */
+function addressAndCategoryCells(p: {
+  shippingCity?: string | null
+  shippingStreet?: string | null
+  shippingHouseNo?: string | null
+  shippingZip?: string | null
+  isExternal?: boolean | null
+  courseCategory?: string | null
+  lead?: {
+    courseCategory?: string | null
+    courseCategoryOther?: string | null
+  } | null
+}): string[] {
+  return [...addressCells(p), categoryCell(p)]
 }
 
 /** תאריך הדרכה לגיליון — תמיד מחרוזת DD/MM/YYYY (לא epoch / ISO) */
@@ -187,6 +240,7 @@ function participantRow(p: {
   attended?: boolean | null
   isExternal?: boolean | null
   courseType?: string | null
+  courseCategory?: string | null
   shippingCity?: string | null
   shippingStreet?: string | null
   shippingHouseNo?: string | null
@@ -200,6 +254,8 @@ function participantRow(p: {
     scheduledStart: Date | null
     courseType: string | null
     courseTypeOther: string | null
+    courseCategory?: string | null
+    courseCategoryOther?: string | null
   } | null
 }): (string | boolean)[] {
   const courseDate = trainingDateLabel(p.courseDate, p.lead?.scheduledStart)
@@ -227,7 +283,7 @@ function participantRow(p: {
     p.id, // M — CRM_PARTICIPANT_ID
     "", // N — קישור PDF (מילוי בגיליון / Apps Script)
     attendanceCell(Boolean(p.attended)), // O — נוכחות
-    ...addressCells(p), // P–S עיר / רחוב / מספר בית / מיקוד
+    ...addressAndCategoryCells(p), // P–T עיר / רחוב / בית / מיקוד / קטגוריה
   ]
 }
 
@@ -284,6 +340,8 @@ export async function exportLeadParticipantsToSheets(
             scheduledStart: true,
             courseType: true,
             courseTypeOther: true,
+            courseCategory: true,
+            courseCategoryOther: true,
           },
         },
       },
@@ -313,8 +371,8 @@ export async function exportLeadParticipantsToSheets(
         values: [[attendanceCell(Boolean(p.attended))]],
       })
       addressUpdates.push({
-        range: sheetA1(tab, `P${rowIndex}:S${rowIndex}`),
-        values: [addressCells(p)],
+        range: sheetA1(tab, `P${rowIndex}:T${rowIndex}`),
+        values: [addressAndCategoryCells(p)],
       })
     }
     const sheetUpdates = [...attendanceUpdates, ...addressUpdates]
@@ -431,6 +489,8 @@ export async function syncParticipantAttendanceToSheets(
             scheduledStart: true,
             courseType: true,
             courseTypeOther: true,
+            courseCategory: true,
+            courseCategoryOther: true,
           },
         },
       },
@@ -534,6 +594,8 @@ export async function exportTraineesToCertificateSheet(
                 scheduledStart: true,
                 courseType: true,
                 courseTypeOther: true,
+                courseCategory: true,
+                courseCategoryOther: true,
               },
             },
           },
@@ -575,7 +637,7 @@ export async function exportTraineesToCertificateSheet(
         p?.id || t.id, // M — מזהה משתתף אם יש, אחרת מודרך
         "", // N — קישור PDF
         "TRUE", // O — נוכחות
-        ...addressCells(p || {}), // P–S
+        ...addressAndCategoryCells(p || {}), // P–T
       ]
     })
 
@@ -628,6 +690,8 @@ export async function exportMissingAttendedToSheets(): Promise<
             scheduledStart: true,
             courseType: true,
             courseTypeOther: true,
+            courseCategory: true,
+            courseCategoryOther: true,
           },
         },
       },

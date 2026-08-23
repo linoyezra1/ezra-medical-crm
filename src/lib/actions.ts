@@ -2098,6 +2098,8 @@ export async function triggerRemoteCertificates(input: {
       phone: true,
       email: true,
       courseDate: true,
+      organizerName: true,
+      attended: true,
       shippingCity: true,
       shippingStreet: true,
       shippingHouseNo: true,
@@ -2107,6 +2109,7 @@ export async function triggerRemoteCertificates(input: {
       courseCategory: true,
       lead: {
         select: {
+          fullName: true,
           courseType: true,
           courseTypeOther: true,
           courseCategory: true,
@@ -2139,6 +2142,8 @@ export async function triggerRemoteCertificates(input: {
             phone: true,
             email: true,
             courseDate: true,
+            organizerName: true,
+            attended: true,
             shippingCity: true,
             shippingStreet: true,
             shippingHouseNo: true,
@@ -2148,6 +2153,7 @@ export async function triggerRemoteCertificates(input: {
             courseCategory: true,
             lead: {
               select: {
+                fullName: true,
                 courseType: true,
                 courseTypeOther: true,
                 courseCategory: true,
@@ -2199,20 +2205,29 @@ export async function triggerRemoteCertificates(input: {
       scope.includes("רענון") ? scope : label === "קורס" ? "" : label;
     const street = sheetText(p.shippingStreet);
     const zip = sheetText(p.shippingZip);
+    const inviter = sheetText(p.organizerName) || sheetText(p.lead?.fullName);
+    const attendanceStatus = p.attended ? "TRUE" : "לא נכח";
     return {
       id: p.id,
+      crmId: p.id,
       fullName: sheetText(p.fullName),
       idNumber: sheetText(p.idNumber),
       phone: sheetText(p.phone),
       email: sheetText(p.email),
       courseDate: sheetText(p.courseDate),
-      // כתובת מגורים — תמיד מחרוזת (ריקה אם חסר)
+      // כתובת מגורים — תמיד מחרוזת (ריקה אם חסר) → עמודות P–S
       city: sheetText(p.shippingCity),
       address: street,
       street,
       houseNumber: sheetText(p.shippingHouseNo),
       zipCode: zip,
       postalCode: zip,
+      inviterName: inviter,
+      organizerName: inviter,
+      hours: scope,
+      hoursScope: scope,
+      attendance: Boolean(p.attended),
+      attendanceStatus,
       isExternal: Boolean(p.isExternal),
       isRefresh: isRefreshCourseType(cert.courseType, cert.courseTypeOther),
       isBls: templateType === "BLS",
@@ -2221,7 +2236,6 @@ export async function triggerRemoteCertificates(input: {
           ? p.courseType.trim()
           : cert.courseType,
       courseTypeLabel,
-      hoursScope: scope,
       courseCategory:
         p.isExternal && p.courseCategory?.trim()
           ? p.courseCategory.trim()
@@ -2287,6 +2301,8 @@ export async function triggerRemoteCertificates(input: {
     };
   }
 
+  // חשוב: לא לשלוח participantsToAdd כאן —
+  // הסקריפט מפרש participantsToAdd כ־action=sync ודולג על הנפקת תעודות.
   const payload = {
     action: "generateCertificates",
     templateType,
@@ -2295,8 +2311,6 @@ export async function triggerRemoteCertificates(input: {
     pin,
     leadId: leadIdFilter || ownedParticipants[0]?.leadId || null,
     participants: participantPayload,
-    /** תאימות ל-Apps Script שמסתנכרן עם action=sync / participantsToAdd */
-    participantsToAdd: participantPayload,
   };
 
   try {
