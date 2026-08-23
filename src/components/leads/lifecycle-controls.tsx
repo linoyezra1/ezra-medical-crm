@@ -17,7 +17,6 @@ import {
 import {
   downloadLeadIcs,
   findConflicts,
-  formatDate,
   missingForClose,
   requiresPhysicalAddress,
 } from "@/lib/helpers"
@@ -71,19 +70,26 @@ export function LifecycleControls({
       ? LEAD_STATUS_ORDER[currentIdx + 1]
       : null
 
-  const conflicts = findConflicts(leads, lead.date ?? "", lead.time ?? "", lead.id)
+  const conflicts = findConflicts(
+    leads,
+    lead.date ?? "",
+    lead.time ?? "",
+    lead.id,
+    lead.endTime,
+  )
 
-  const commitClose = (bypassConflict = false) => {
-    updateLead(lead.id, {
+  const commitClose = async (acknowledgedConflict = false) => {
+    const ok = await updateLead(lead.id, {
       status: "closed",
-      ...(bypassConflict ? { conflictBypass: true } : {}),
+      ...(acknowledgedConflict ? { conflictBypass: true } : {}),
     } as Partial<Lead>)
+    if (!ok) return
     toast.success("ההדרכה נסגרה / אושרה")
     setGoogleCalOpen(true)
   }
 
   const advance = (target: LeadStatus) => {
-    // מעבר ל"נסגר": דורש תאריך/שעה/כתובת + בדיקת חפיפה
+    // מעבר ל"נסגר": דורש תאריך/שעה/כתובת; חפיפה ביומן = אזהרה בלבד
     if (target === "closed") {
       const missing = missingForClose(lead)
       if (missing.length) {
@@ -98,7 +104,7 @@ export function LifecycleControls({
         setConflictOpen(true)
         return
       }
-      commitClose()
+      void commitClose()
       return
     }
 
@@ -249,18 +255,19 @@ export function LifecycleControls({
         </>
       )}
 
-      {/* פופאפ חפיפה */}
+      {/* פופאפ חפיפה — אזהרה בלבד, לא חסימה */}
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-right text-warning-foreground">
               <AlertTriangle className="size-5" />
-              זוהתה חפיפה ביומן
+              אזהרה: חפיפה ביומן
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              קיימות הדרכות בטווח שעה מ{formatDate(lead.date)} {lead.time}:
+              זוהתה התנגשות בלוח הזמנים (± שעה) עם הדרכות אחרות. זו אזהרה
+              בלבד — אפשר בכל זאת לסגור ביומן:
             </p>
             {conflicts.map((c) => (
               <div
@@ -280,16 +287,16 @@ export function LifecycleControls({
               className="flex-1"
               onClick={() => setConflictOpen(false)}
             >
-              ביטול ולא לשמור
+              ביטול
             </Button>
             <Button
               className="flex-1"
               onClick={() => {
                 setConflictOpen(false)
-                commitClose(true)
+                void commitClose(true)
               }}
             >
-              אשר בכל זאת ושמור
+              אשר בכל זאת וסגור ביומן
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -40,7 +40,7 @@ export function ConflictModal({ conflicts, current, onCancel, onConfirm }: Props
           אזהרה: זוהתה התנגשות בלוח הזמנים
         </h3>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          קיים קורס בטווח הבופר (± שעה):
+          זו אזהרה בלבד — ניתן לאשר ולשמור בכל זאת. קיים קורס בטווח הבופר (± שעה):
         </p>
         <ul className="mt-3 space-y-2 text-sm">
           {conflicts.map((c) => (

@@ -98,20 +98,7 @@ export async function validateStatusTransition(
         message: "לא ניתן לסגור קורס ללא מיקום / עיר (מפגשי זום פטורים)",
       };
     }
-    if (!opts.bypassConflict) {
-      const conflicts = await findScheduleConflicts({
-        leadId: lead.id,
-        start: lead.scheduledStart,
-        end: lead.scheduledEnd,
-      });
-      if (conflicts.length > 0) {
-        return {
-          code: "conflict",
-          message: "זוהתה התנגשות בלוח הזמנים (± שעה)",
-          conflicts,
-        };
-      }
-    }
+    // התנגשות ביומן = אזהרה בצד הלקוח בלבד (לא חוסמת מעבר ל«סגרנו ביומן»)
   }
 
   if (

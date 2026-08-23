@@ -183,19 +183,34 @@ export function findConflicts(
   leads: Lead[],
   date: string,
   time: string,
-  excludeId?: string
+  excludeId?: string,
+  endTime?: string,
 ): Lead[] {
   if (!date || !time) return [];
-  const target = jerusalemLocalToUtcDate(date, time).getTime();
-  if (Number.isNaN(target)) return [];
+  const targetStart = jerusalemLocalToUtcDate(date, time).getTime();
+  if (Number.isNaN(targetStart)) return [];
   const windowMs = 60 * 60 * 1000;
+  const defaultDurationMs = 2 * 60 * 60 * 1000;
+  const targetEnd = endTime
+    ? jerusalemLocalToUtcDate(date, endTime).getTime()
+    : targetStart + defaultDurationMs;
+  if (Number.isNaN(targetEnd)) return [];
+
   return leads.filter((l) => {
     if (l.id === excludeId) return false;
     if (l.status === "lost" || l.status === "new") return false;
     if (!l.date || !l.time) return false;
-    const t = jerusalemLocalToUtcDate(l.date, l.time).getTime();
-    if (Number.isNaN(t)) return false;
-    return Math.abs(t - target) <= windowMs;
+    const otherStart = jerusalemLocalToUtcDate(l.date, l.time).getTime();
+    if (Number.isNaN(otherStart)) return false;
+    const otherEnd = l.endTime
+      ? jerusalemLocalToUtcDate(l.date, l.endTime).getTime()
+      : otherStart + defaultDurationMs;
+    if (Number.isNaN(otherEnd)) return false;
+    const aStart = targetStart - windowMs;
+    const aEnd = targetEnd + windowMs;
+    const bStart = otherStart - windowMs;
+    const bEnd = otherEnd + windowMs;
+    return aStart < bEnd && aEnd > bStart;
   });
 }
 
