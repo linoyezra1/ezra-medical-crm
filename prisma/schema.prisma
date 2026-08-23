@@ -399,3 +399,27 @@ model Settings {
   lmsLoginUrl   String?
   calendarEnabled Boolean @default(false)
 }
+
+/** לידים לשיווק / יצירת קשר (נפרד מלידי הדרכה) */
+model OutreachLead {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String
+  organization String?
+  category     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([category])
+  @@index([phone])
+  @@index([createdAt])
+}
+
+/** תבנית הודעת וואטסאפ לפי קטגוריה — קטגוריה אחת לתבנית אחת */
+model OutreachMessageTemplate {
+  id           String   @id @default(cuid())
+  category     String   @unique
+  templateText String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

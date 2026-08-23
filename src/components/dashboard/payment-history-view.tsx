@@ -18,6 +18,11 @@ import {
   type PaymentTransaction,
   type PaymentTransactionType,
 } from "@/lib/payment-transactions"
+import {
+  buildProfitTransactions,
+  type ProfitTransaction,
+} from "@/lib/profit-history"
+import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/app-shell"
 import { Badge } from "@/components/ui/badge"
@@ -43,7 +48,47 @@ const STATUS_CLASS: Record<PaymentLedgerStatus, string> = {
 const selectClass =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
+/** רווח נקי — אותה לוגיקה כמו בדשבורד (`buildProfitTransactions`), מסונן לפי מסנני העמוד */
+function netProfitForPaymentFilters(
+  profitTxs: ProfitTransaction[],
+  filteredPayments: PaymentTransaction[],
+  opts: {
+    dateFrom?: string
+    dateTo?: string
+    hasNonDateFilters: boolean
+  },
+): number {
+  let txs = profitTxs
+  if (opts.dateFrom) {
+    txs = txs.filter((t) => t.date >= opts.dateFrom!)
+  }
+  if (opts.dateTo) {
+    txs = txs.filter((t) => t.date <= opts.dateTo!)
+  }
+
+  if (opts.hasNonDateFilters) {
+    const trainingIds = new Set(
+      filteredPayments
+        .map((p) => p.trainingId)
+        .filter((id): id is string => Boolean(id)),
+    )
+    const equipmentIds = new Set(
+      filteredPayments
+        .filter((p) => p.id.startsWith("equipment:"))
+        .map((p) => p.id.slice("equipment:".length)),
+    )
+    txs = txs.filter((t) => {
+      if (t.kind === "course") return trainingIds.has(t.id)
+      if (t.kind === "equipment") return equipmentIds.has(t.id)
+      return false
+    })
+  }
+
+  return txs.reduce((sum, t) => sum + t.netProfit, 0)
+}
+
 export function PaymentHistoryView() {
+  const { leads, equipment, settings, instructors } = useApp()
   const [rows, setRows] = useState<PaymentTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -103,6 +148,34 @@ export function PaymentHistoryView() {
     [filtered],
   )
 
+  const profitTxs = useMemo(
+    () =>
+      buildProfitTransactions(
+        leads,
+        equipment,
+        settings.courses,
+        instructors,
+      ),
+    [leads, equipment, settings.courses, instructors],
+  )
+
+  const hasNonDateFilters =
+    type !== ALL ||
+    paymentMethod !== ALL ||
+    receivedBy !== ALL ||
+    paymentStatus !== ALL ||
+    Boolean(search.trim())
+
+  const netProfit = useMemo(
+    () =>
+      netProfitForPaymentFilters(profitTxs, filtered, {
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        hasNonDateFilters,
+      }),
+    [profitTxs, filtered, dateFrom, dateTo, hasNonDateFilters],
+  )
+
   const receivedByOptions = useMemo(() => {
     const fromData = uniqueReceivedByOptions(rows)
     const set = new Set([...PAYMENT_RECEIVERS, ...fromData])
@@ -152,7 +225,7 @@ export function PaymentHistoryView() {
         </Button>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-2 sm:grid-cols-2">
         <SummaryCard
           label="סך הכל נגבה"
           value={formatCurrency(summary.totalCollected)}
@@ -160,45 +233,10 @@ export function PaymentHistoryView() {
           tone="primary"
         />
         <SummaryCard
-          label="מזומן"
-          value={formatCurrency(summary.cashTotal)}
-          hint="שולם במזומן"
-          tone="success"
-        />
-        <SummaryCard
-          label="ביט"
-          value={formatCurrency(summary.bitTotal)}
-          hint="שולם בביט"
-          tone="success"
-        />
-        <SummaryCard
-          label="העברה בנקאית"
-          value={formatCurrency(summary.bankTransferTotal)}
-          hint="שולם בהעברה"
-          tone="success"
-        />
-        <SummaryCard
-          label="אחר שנגבה"
-          value={formatCurrency(summary.otherCollectedTotal)}
-          hint={
-            summary.byMethod
-              .filter(
-                (m) =>
-                  m.method !== "cash" &&
-                  m.method !== "bit" &&
-                  m.method !== "bank_transfer",
-              )
-              .slice(0, 2)
-              .map((m) => `${m.label}: ${formatCurrency(m.amount)}`)
-              .join(" · ") || "פייבוקס / צ׳ק / אחר"
-          }
-          tone="muted"
-        />
-        <SummaryCard
-          label="ממתין לתשלום"
-          value={formatCurrency(summary.pendingTotal)}
-          hint={`${summary.pendingCount} רשומות · ללא הדרכות אבודות`}
-          tone="warning"
+          label="רווח נקי"
+          value={formatCurrency(netProfit)}
+          hint="לפי אותה לוגיקה כמו בדשבורד · מסונן לפי המסננים"
+          tone={netProfit >= 0 ? "success" : "warning"}
         />
       </div>
 
