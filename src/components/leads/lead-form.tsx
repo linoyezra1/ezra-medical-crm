@@ -196,7 +196,16 @@ export function LeadForm({ existing }: Props) {
   }, [sessionsMode, sessionsOtherCount])
 
   const sessionSlots = useMemo(() => {
-    const existingSessions = form.sessions?.length
+    const existingSessions: Array<{
+      date?: string
+      time?: string
+      endTime?: string
+      isZoom?: boolean
+      zoomLink?: string
+      city?: string
+      street?: string
+      houseNumber?: string
+    }> = form.sessions?.length
       ? form.sessions
       : form.date || form.time
         ? [
@@ -204,6 +213,8 @@ export function LeadForm({ existing }: Props) {
               date: form.date,
               time: form.time,
               endTime: form.endTime,
+              isZoom: false,
+              zoomLink: "",
               city: form.address.city,
               street: form.address.street,
               houseNumber: form.address.houseNumber,
