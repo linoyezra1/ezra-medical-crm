@@ -110,7 +110,7 @@ export function extractCourseHoursDigits(
   return anyDigits?.[1] || ""
 }
 
-/** סוג קורס מעון: רענון עזרה ראשונה + התנהלות בטוחה */
+/** קורסי מעון/גן שדורשים פרטי מנהלת (התנהלות בטוחה או רענון משולב) */
 export const KINDERGARTEN_REFRESH_COURSE_LABEL =
   "רענון עזרה ראשונה+התנהלות בטוחה"
 
@@ -123,20 +123,19 @@ export function yossiAmarDetailsTaskTitle(leadName: string): string {
   return `${YOSSI_AMAR_DETAILS_TASK_PREFIX} — ${name}`
 }
 
-/** רק הקורס המשולב (רענון עזרה ראשונה + התנהלות בטוחה) — לא «התנהלות בטוחה» לבד */
+/** התנהלות בטוחה לבד, או רענון עזרה ראשונה + התנהלות בטוחה */
 function isKindergartenRefreshLabel(raw: string): boolean {
   const n = raw.replace(/\s+/g, " ").replace(/\s*\+\s*/g, "+").trim()
   if (!n) return false
-  // במפורש רק התנהלות בטוחה — בלי סשן פרטי מעון
-  if (n === "התנהלות בטוחה") return false
+  if (n === "התנהלות בטוחה") return true
   if (!n.includes("התנהלות בטוחה")) return false
-  // חייב גם רענון עזרה ראשונה באותה מחרוזת
+  // הקורס המשולב: רענון עזרה ראשונה + התנהלות בטוחה
   return /רענון\s*עזרה\s*ראשונה/.test(n)
 }
 
 /**
- * האם סוג הקורס הוא רענון עזרה ראשונה + התנהלות בטוחה
- * (לא מופעל עבור «התנהלות בטוחה» בלבד).
+ * האם סוג הקורס דורש סשן פרטי מעון / גן
+ * («התנהלות בטוחה» או «רענון עזרה ראשונה+התנהלות בטוחה»).
  */
 export function isKindergartenRefreshCourseType(
   courseType?: string | null,

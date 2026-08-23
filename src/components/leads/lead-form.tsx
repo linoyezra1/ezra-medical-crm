@@ -23,7 +23,6 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   COURSE_TYPE_FORMAT_ERROR,
   COURSE_TYPE_OTHER,
-  KINDERGARTEN_REFRESH_COURSE_LABEL,
   collectCourseTypeOptions,
   findCourseCatalog,
   formatLeadCourseType,
@@ -852,7 +851,7 @@ export function LeadForm({ existing }: Props) {
             {showKindergartenRefreshFields ? (
               <div className="space-y-4 rounded-2xl border border-amber-200/80 bg-amber-50/50 p-4">
                 <p className="text-sm font-semibold text-amber-950">
-                  פרטי מעון / גן — {KINDERGARTEN_REFRESH_COURSE_LABEL}
+                  פרטי מעון / גן
                 </p>
                 <p className="text-xs text-muted-foreground">
                   שדות אופציונליים לשליחה ליוסי עמר

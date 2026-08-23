@@ -263,7 +263,7 @@ export interface Lead {
   notes?: string;
   quoteSentAt?: string;
   kindergartenApproval?: boolean;
-  /** פרטי מעון — לרענון עזרה ראשונה+התנהלות בטוחה */
+  /** פרטי מעון — להתנהלות בטוחה / רענון עזרה ראשונה+התנהלות בטוחה */
   kindergartenManagerName?: string;
   kindergartenManagerPhone?: string;
   institutionSymbol?: string;

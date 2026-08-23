@@ -2087,6 +2087,15 @@ export async function triggerRemoteCertificates(input: {
       id: true,
       leadId: true,
       traineeId: true,
+      fullName: true,
+      idNumber: true,
+      phone: true,
+      email: true,
+      courseDate: true,
+      shippingCity: true,
+      shippingStreet: true,
+      shippingHouseNo: true,
+      shippingZip: true,
       isExternal: true,
       courseType: true,
       courseCategory: true,
@@ -2115,7 +2124,31 @@ export async function triggerRemoteCertificates(input: {
     ownedTrainees.length > 0
       ? await prisma.participant.findMany({
           where: { traineeId: { in: ownedTrainees.map((t) => t.id) } },
-          select: { id: true },
+          select: {
+            id: true,
+            leadId: true,
+            traineeId: true,
+            fullName: true,
+            idNumber: true,
+            phone: true,
+            email: true,
+            courseDate: true,
+            shippingCity: true,
+            shippingStreet: true,
+            shippingHouseNo: true,
+            shippingZip: true,
+            isExternal: true,
+            courseType: true,
+            courseCategory: true,
+            lead: {
+              select: {
+                courseType: true,
+                courseTypeOther: true,
+                courseCategory: true,
+                courseCategoryOther: true,
+              },
+            },
+          },
         })
       : [];
 
@@ -2140,7 +2173,14 @@ export async function triggerRemoteCertificates(input: {
     };
   }
 
-  const participantPayload = ownedParticipants.map((p) => {
+  const sheetText = (value: string | null | undefined): string =>
+    value?.trim() ? value.trim() : "";
+
+  const participantsById = new Map(
+    [...ownedParticipants, ...linkedFromTrainees].map((p) => [p.id, p]),
+  );
+
+  const participantPayload = [...participantsById.values()].map((p) => {
     const cert = resolveParticipantCertificateCourseType(p);
     const scope = certificateScopeForSheet(
       cert.courseType,
@@ -2151,8 +2191,22 @@ export async function triggerRemoteCertificates(input: {
     });
     const courseTypeLabel =
       scope.includes("רענון") ? scope : label === "קורס" ? "" : label;
+    const street = sheetText(p.shippingStreet);
+    const zip = sheetText(p.shippingZip);
     return {
       id: p.id,
+      fullName: sheetText(p.fullName),
+      idNumber: sheetText(p.idNumber),
+      phone: sheetText(p.phone),
+      email: sheetText(p.email),
+      courseDate: sheetText(p.courseDate),
+      // כתובת מגורים — תמיד מחרוזת (ריקה אם חסר)
+      city: sheetText(p.shippingCity),
+      address: street,
+      street,
+      houseNumber: sheetText(p.shippingHouseNo),
+      zipCode: zip,
+      postalCode: zip,
       isExternal: Boolean(p.isExternal),
       isRefresh: isRefreshCourseType(cert.courseType, cert.courseTypeOther),
       isBls: templateType === "BLS",
@@ -2178,7 +2232,11 @@ export async function triggerRemoteCertificates(input: {
 
   // ייצוא חסרים לגיליון לפני ההנפקה
   if (isGoogleSheetsConfigured()) {
-    const leadIds = [...new Set(ownedParticipants.map((p) => p.leadId))];
+    const leadIds = [
+      ...new Set(
+        [...ownedParticipants, ...linkedFromTrainees].map((p) => p.leadId),
+      ),
+    ];
     for (const lid of leadIds) {
       const exportRes = await exportLeadParticipantsToSheets(lid);
       if (!exportRes.ok) {
@@ -2231,6 +2289,8 @@ export async function triggerRemoteCertificates(input: {
     pin,
     leadId: leadIdFilter || ownedParticipants[0]?.leadId || null,
     participants: participantPayload,
+    /** תאימות ל-Apps Script שמסתנכרן עם action=sync / participantsToAdd */
+    participantsToAdd: participantPayload,
   };
 
   try {
