@@ -17,9 +17,10 @@ import {
 } from "@/lib/google-sheets/sheet-dates"
 
 /**
- * כותרות עמודות בגיליון «תעודות» — 15 עמודות בסדר קבוע (A–O)
+ * כותרות עמודות בגיליון «תעודות» — 19 עמודות בסדר קבוע (A–S)
  * G–H / N ממולאים בגיליון או ע״י Apps Script
  * O = נוכחות (TRUE / לא נכח)
+ * P–S = כתובת מגורים של המודרך
  */
 export const CERTIFICATE_SHEET_HEADERS = [
   "שם מלא", // A
@@ -37,6 +38,10 @@ export const CERTIFICATE_SHEET_HEADERS = [
   "מזהה משתתף (ID)", // M — CRM_PARTICIPANT_ID
   "קישור PDF לתעודה", // N — certificateUrl
   "נוכחות", // O — attended
+  "עיר", // P
+  "כתובת / רחוב", // Q
+  "מספר בית", // R
+  "מיקוד", // S
 ] as const
 
 /** אינדקסים 0-based לפי מבנה הגיליון */
@@ -56,13 +61,19 @@ const COL = {
   crmId: 12, // M — CRM_PARTICIPANT_ID
   pdfUrl: 13, // N — קישור PDF
   attended: 14, // O — נוכחות
+  city: 15, // P
+  street: 16, // Q
+  houseNumber: 17, // R
+  zipCode: 18, // S
 } as const
 
-const SHEET_RANGE_HEADER = "A1:O1"
-const SHEET_RANGE_DATA = "A2:O"
-const SHEET_RANGE_APPEND = "A:O"
+const SHEET_RANGE_HEADER = "A1:S1"
+const SHEET_RANGE_DATA = "A2:S"
+const SHEET_RANGE_APPEND = "A:S"
 /** עמודת מזהה משתתף למניעת כפילויות */
 const SHEET_RANGE_CRM_IDS = "M:M"
+/** כותרות כתובת בלבד (הרחבה לגיליונות ישנים A–O) */
+const LEGACY_HEADER_COLS = 15
 
 function truthyCell(value: unknown): boolean {
   if (value === true || value === 1) return true
@@ -89,9 +100,21 @@ async function ensureHeaderRow() {
     spreadsheetId,
     range,
   })
-  const row = existing.data.values?.[0]
-  // אם יש כבר שורת כותרת מלאה (A–O) — לא דורסים
-  if (row && row.length >= CERTIFICATE_SHEET_HEADERS.length) return
+  const row = existing.data.values?.[0] || []
+  if (row.length >= CERTIFICATE_SHEET_HEADERS.length) return
+
+  // גיליון ישן A–O — מוסיפים רק כותרות P–S בלי לדרוס A–O
+  if (row.length >= LEGACY_HEADER_COLS) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: sheetA1(tab, "P1:S1"),
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[...CERTIFICATE_SHEET_HEADERS.slice(LEGACY_HEADER_COLS)]],
+      },
+    })
+    return
+  }
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -99,6 +122,25 @@ async function ensureHeaderRow() {
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [[...CERTIFICATE_SHEET_HEADERS]] },
   })
+}
+
+function sheetText(value: string | null | undefined): string {
+  return value?.trim() ? value.trim() : ""
+}
+
+/** תאי כתובת מגורים — P עיר | Q רחוב | R מספר בית | S מיקוד */
+function addressCells(p: {
+  shippingCity?: string | null
+  shippingStreet?: string | null
+  shippingHouseNo?: string | null
+  shippingZip?: string | null
+}): string[] {
+  return [
+    sheetText(p.shippingCity),
+    sheetText(p.shippingStreet),
+    sheetText(p.shippingHouseNo),
+    sheetText(p.shippingZip),
+  ]
 }
 
 /** תאריך הדרכה לגיליון — תמיד מחרוזת DD/MM/YYYY (לא epoch / ISO) */
@@ -145,6 +187,10 @@ function participantRow(p: {
   attended?: boolean | null
   isExternal?: boolean | null
   courseType?: string | null
+  shippingCity?: string | null
+  shippingStreet?: string | null
+  shippingHouseNo?: string | null
+  shippingZip?: string | null
   trainee?: {
     certificateEmailSent: boolean
     certificateCardPrinted: boolean
@@ -181,6 +227,7 @@ function participantRow(p: {
     p.id, // M — CRM_PARTICIPANT_ID
     "", // N — קישור PDF (מילוי בגיליון / Apps Script)
     attendanceCell(Boolean(p.attended)), // O — נוכחות
+    ...addressCells(p), // P–S עיר / רחוב / מספר בית / מיקוד
   ]
 }
 
@@ -257,6 +304,7 @@ export async function exportLeadParticipantsToSheets(
       rowById.get(p.id) || (p.traineeId ? rowById.get(p.traineeId) : undefined)
 
     const attendanceUpdates: { range: string; values: string[][] }[] = []
+    const addressUpdates: { range: string; values: string[][] }[] = []
     for (const p of participants) {
       const rowIndex = rowIndexFor(p)
       if (!rowIndex) continue
@@ -264,13 +312,18 @@ export async function exportLeadParticipantsToSheets(
         range: sheetA1(tab, `O${rowIndex}`),
         values: [[attendanceCell(Boolean(p.attended))]],
       })
+      addressUpdates.push({
+        range: sheetA1(tab, `P${rowIndex}:S${rowIndex}`),
+        values: [addressCells(p)],
+      })
     }
-    if (attendanceUpdates.length) {
+    const sheetUpdates = [...attendanceUpdates, ...addressUpdates]
+    if (sheetUpdates.length) {
       await sheets.spreadsheets.values.batchUpdate({
         spreadsheetId,
         requestBody: {
           valueInputOption: "USER_ENTERED",
-          data: attendanceUpdates,
+          data: sheetUpdates,
         },
       })
     }
@@ -522,6 +575,7 @@ export async function exportTraineesToCertificateSheet(
         p?.id || t.id, // M — מזהה משתתף אם יש, אחרת מודרך
         "", // N — קישור PDF
         "TRUE", // O — נוכחות
+        ...addressCells(p || {}), // P–S
       ]
     })
 
