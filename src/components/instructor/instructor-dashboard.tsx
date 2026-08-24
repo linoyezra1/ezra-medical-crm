@@ -11,6 +11,7 @@ import {
   MonitorPlay,
   Package,
   RefreshCw,
+  Users,
   Video,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -155,17 +156,12 @@ export function InstructorDashboard() {
           </p>
         ) : (
           list.map((lead) => (
-            <Link
+            <TrainingCard
               key={lead.id}
-              href={`/instructor/training/${lead.id}`}
-              className="block"
-            >
-              <TrainingCard
-                lead={lead}
-                commissionPct={data?.instructor.salesCommissionPercentage ?? 0}
-                onReportSale={() => setReportLead(lead)}
-              />
-            </Link>
+              lead={lead}
+              commissionPct={data?.instructor.salesCommissionPercentage ?? 0}
+              onReportSale={() => setReportLead(lead)}
+            />
           ))
         )}
       </div>
@@ -313,16 +309,19 @@ function TrainingCard({
         />
       </div>
 
+      <Link
+        href={`/instructor/training/${lead.id}`}
+        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-secondary px-3 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80 active:scale-[0.99]"
+      >
+        <Users className="size-4" />
+        רשימת משתתפים
+      </Link>
+
       <Button
         type="button"
         variant="outline"
         className="min-h-12 w-full gap-2 rounded-xl text-sm font-semibold"
-        onClick={(e) => {
-          // Clicking this button should not trigger navigation to the participants screen.
-          e.preventDefault()
-          e.stopPropagation()
-          onReportSale()
-        }}
+        onClick={onReportSale}
       >
         <Package className="size-4" />
         דווח מכירת ציוד

@@ -6,6 +6,7 @@ import {
   BadgeCheck,
   CheckCheck,
   FileCheck,
+  FileSpreadsheet,
   GraduationCap,
   MessageCircle,
   MoreVertical,
@@ -20,6 +21,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
+import * as XLSX from "xlsx"
 import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
 import { ParticipantPaymentDialog } from "@/components/leads/participant-payment-dialog"
 import {
@@ -67,6 +69,7 @@ import {
   COURSE_TYPE_OTHER,
   collectCourseTypeOptions,
   formatCourseTypeLabel,
+  formatLeadCourseType,
   isAllowedCourseTypeValue,
 } from "@/lib/course-type"
 import {
@@ -750,17 +753,67 @@ export function ParticipantsSection({
     sendZoomWhatsApp(p)
   }
 
+  const exportParticipantsExcel = () => {
+    if (!participants.length) {
+      toast.error("אין משתתפים לייצוא")
+      return
+    }
+
+    const rows = participants.map((p) => ({
+      "שם מלא": (p.name || "").trim(),
+      "תעודת זהות": (p.idNumber || "").trim(),
+    }))
+
+    const sheet = XLSX.utils.json_to_sheet(rows, {
+      header: ["שם מלא", "תעודת זהות"],
+    })
+    sheet["!cols"] = [{ wch: 28 }, { wch: 16 }]
+
+    const book = XLSX.utils.book_new()
+    book.Workbook = book.Workbook || {}
+    book.Workbook.Views = [{ RTL: true }]
+    XLSX.utils.book_append_sheet(book, sheet, "משתתפים")
+
+    const trainingTitle = formatLeadCourseType(lead, settings.courses) ||
+      lead.name ||
+      "הדרכה"
+    const datePart =
+      lead.date || new Date().toISOString().slice(0, 10)
+    const safeTitle = trainingTitle
+      .replace(/[\\/:*?"<>|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80)
+    const filename = `משתתפים - ${safeTitle} - ${datePart}.xlsx`
+
+    XLSX.writeFile(book, filename)
+    toast.success(`יוצאו ${participants.length} משתתפים`)
+  }
+
   const toolbar = participants.length > 0 && (
     <div className="mb-3 space-y-2">
-      <div className="relative">
-        <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="חיפוש לפי שם, טלפון או ת״ז"
-          className="h-9 pr-9 text-sm"
-          inputMode="search"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="חיפוש לפי שם, טלפון או ת״ז"
+            className="h-9 pr-9 text-sm"
+            inputMode="search"
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="size-9 shrink-0 rounded-xl"
+          title="ייצוא משתתפים לאקסל"
+          aria-label="ייצוא משתתפים לאקסל"
+          onClick={exportParticipantsExcel}
+        >
+          <FileSpreadsheet className="size-4" />
+        </Button>
       </div>
       <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
         <span className="inline-flex items-center gap-1.5 rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">

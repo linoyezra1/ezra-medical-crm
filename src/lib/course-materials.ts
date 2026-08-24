@@ -62,19 +62,9 @@ export function booklet44Mailto(params: {
   return `mailto:${params.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
-/** האם סוג הקורס הוא 44 שעות (יש קבצי public סטטיים) */
-function isFortyFourHourCourse(courseType: string | null | undefined): boolean {
-  const t = (courseType || "").trim().toLowerCase()
-  if (!t) return false
-  return (
-    t === "44_hours" ||
-    t.includes("44") ||
-    t.includes("ארבעים וארבע")
-  )
-}
-
 /**
- * קישורי מצגת/חוברת להדרכה — מהגדרות הקורס, עם נפילה לקבצי public לקורס 44.
+ * קישורי מצגת/חוברת לפתיחה ישירה.
+ * עדיפות: קישור מהגדרות הקורס → אותם קבצי public כמו «שלח חוברת» / «מצגת קורס 44» בפעולות מהירות.
  */
 export function resolveCourseMaterialOpenUrls(opts: {
   courseType?: string | null
@@ -82,20 +72,15 @@ export function resolveCourseMaterialOpenUrls(opts: {
   bookletUrl?: string | null
   baseUrl?: string
 }): { presentationUrl: string | null; bookletUrl: string | null } {
-  let presentation = (opts.presentationUrl || "").trim()
-  let booklet = (opts.bookletUrl || "").trim()
+  const fromCatalogPresentation = (opts.presentationUrl || "").trim()
+  const fromCatalogBooklet = (opts.bookletUrl || "").trim()
 
-  if (isFortyFourHourCourse(opts.courseType)) {
-    if (!presentation) {
-      presentation = courseMaterialUrl("presentation44Pdf", opts.baseUrl)
-    }
-    if (!booklet) {
-      booklet = courseMaterialUrl("booklet44Pdf", opts.baseUrl)
-    }
-  }
+  // אותם קישורים כמו בכפתורים המהירים באדמין (שלח חוברת / מצגת 44 PDF)
+  const adminBooklet = courseMaterialUrl("booklet44Pdf", opts.baseUrl)
+  const adminPresentation = courseMaterialUrl("presentation44Pdf", opts.baseUrl)
 
   return {
-    presentationUrl: presentation || null,
-    bookletUrl: booklet || null,
+    presentationUrl: fromCatalogPresentation || adminPresentation || null,
+    bookletUrl: fromCatalogBooklet || adminBooklet || null,
   }
 }

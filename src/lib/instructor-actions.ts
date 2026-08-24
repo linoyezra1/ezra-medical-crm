@@ -86,6 +86,8 @@ function toTrainingCard(
     courseType: lead.courseType,
     presentationUrl: catalog?.presentationUrl,
     bookletUrl: catalog?.bookletUrl,
+    // יחסי לאותו דומיין — אותם קבצי public כמו בפעולות המהירות
+    baseUrl: "",
   })
 
   return {
