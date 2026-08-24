@@ -337,9 +337,44 @@ export function isLeadAssignableForTrainee(status: string): boolean {
 }
 
 const ID_IN_LINE_RE = /\b(\d{7,9})\b/
-const PHONE_IN_LINE_RE = /05\d-?\d{7}/
 const EMAIL_IN_LINE_RE =
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
+/**
+ * טלפון ישראלי בשורה (לא בולע ת״ז סמוכה):
+ * 055-881-7221 | 0558817221 | +972 55-881-7221 | +972-55-881-7221
+ */
+const PHONE_IN_LINE_RE =
+  /\+972[\s-]*0?5\d[\s-]?\d{3}[\s-]?\d{4}|0\d{2}[\s-]?\d{3}[\s-]?\d{4}|05\d{8}/
+
+/** מסיר תווי כיוון/בקרת יוניקוד שנדבקים בהעתקה מווטסאפ/וויקס */
+function stripInvisibleChars(s: string): string {
+  return s.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+}
+
+/** נרמול טלפון מיובא לפורמט מקומי (05…) */
+export function normalizeImportedPhone(raw: string): string {
+  let digits = (raw || "").replace(/\D/g, "")
+  if (!digits) return ""
+  if (digits.startsWith("972")) {
+    digits = digits.slice(3)
+    if (!digits.startsWith("0")) digits = `0${digits}`
+  }
+  // נייד ישראלי טיפוסי: 10 ספרות שמתחילות ב-05
+  if (/^05\d{8}$/.test(digits)) return digits
+  // קווי / אחר — אם יצא באורך סביר נשמור
+  if (digits.length >= 9 && digits.length <= 12) return digits
+  return digits
+}
+
+function extractPhoneFromLine(
+  line: string,
+): { phone: string; raw: string } | null {
+  const match = line.match(PHONE_IN_LINE_RE)
+  if (!match?.[0]) return null
+  const phone = normalizeImportedPhone(match[0])
+  if (!phone || phone.length < 9) return null
+  return { phone, raw: match[0] }
+}
 
 /**
  * ייבוא חכם מטקסט חופשי — שורה = שם + ת״ז (+ טלפון/אימייל אופציונלי).
@@ -355,32 +390,33 @@ export function parseParticipantsFromFreeText(
   let idx = 0
 
   for (const line of lines) {
-    const trimmed = line.replace(/\t/g, " ").trim()
-    if (!trimmed) continue
+    let work = stripInvisibleChars(line).replace(/\t/g, " ").trim()
+    if (!work) continue
 
-    const idMatch = trimmed.match(ID_IN_LINE_RE)
+    const emailMatch = work.match(EMAIL_IN_LINE_RE)
+    const email = emailMatch?.[0] || ""
+    if (email) {
+      work = work.replace(email, " ")
+    }
+
+    // טלפון לפני ת״ז — כדי שלא ייחשב חלק מהת״ז / לא ייבלע בה
+    const phoneHit = extractPhoneFromLine(work)
+    const phone = phoneHit?.phone || ""
+    if (phoneHit) {
+      work = work.replace(phoneHit.raw, " ")
+    }
+
+    const idMatch = work.match(ID_IN_LINE_RE)
     if (!idMatch?.[1]) continue
     const idNumber = idMatch[1]
 
-    const phoneMatch = trimmed.match(PHONE_IN_LINE_RE)
-    const phone = phoneMatch?.[0]?.replace(/-/g, "") || ""
-
-    const emailMatch = trimmed.match(EMAIL_IN_LINE_RE)
-    const email = emailMatch?.[0] || ""
-
-    let namePart = trimmed
+    let namePart = work
     // הסרת ת״ז והערות בסוגריים אחריה (למשל מספר ביטוח לאומי)
     namePart = namePart.replace(
       new RegExp(`${idNumber}\\s*\\([^)]*\\)?`, "g"),
       " ",
     )
     namePart = namePart.replace(new RegExp(idNumber, "g"), " ")
-    if (phoneMatch?.[0]) {
-      namePart = namePart.replace(phoneMatch[0], " ")
-    }
-    if (email) {
-      namePart = namePart.replace(email, " ")
-    }
     namePart = namePart
       .replace(/\([^)]*\)/g, " ")
       .replace(/[,;|]+/g, " ")

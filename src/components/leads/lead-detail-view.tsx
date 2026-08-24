@@ -335,11 +335,6 @@ export function LeadDetailView({
         open={collectOpen}
         onOpenChange={setCollectOpen}
         onManualParticipant={() => setManualParticipantOpen(true)}
-        onExcelImport={() => {
-          setPreviewRows(null)
-          setExcelImportOpen(true)
-        }}
-        onTextImport={() => setTextImportOpen(true)}
       />
       <ExternalParticipantDialog
         open={manualParticipantOpen}
@@ -607,7 +602,7 @@ function ParticipantsTab({
           <div className="min-w-0">
             <h2 className="text-sm font-bold">כלי רישום משתתפים</h2>
             <p className="text-xs text-muted-foreground">
-              QR, ייבוא מאקסל / טקסט, והוספת משתתף ידני
+              QR, העתקת קישור והוספת משתתף ידני
             </p>
           </div>
           {(lead.status === "pending_certificates" ||
@@ -627,40 +622,35 @@ function ParticipantsTab({
             </Button>
           )}
         </div>
-        <Button
-          className="h-12 w-full gap-2 rounded-2xl text-base font-bold"
-          onClick={onCollect}
-        >
-          <UserPlus className="size-5" />
-          פתח אפשרויות רישום
-        </Button>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="flex items-center gap-2">
           <Button
-            type="button"
-            variant="outline"
-            className="h-11 gap-2 rounded-xl"
+            className="h-12 min-w-0 flex-1 gap-2 rounded-2xl text-base font-bold"
             onClick={onCollect}
           >
-            <UserPlus className="size-4" />
-            הוסף משתתף
+            <UserPlus className="size-5" />
+            פתח אפשרויות רישום
           </Button>
           <Button
             type="button"
             variant="outline"
-            className="h-11 gap-2 rounded-xl"
+            size="icon"
+            className="size-12 shrink-0 rounded-2xl"
             onClick={onExcelImport}
+            aria-label="ייבוא מאקסל"
+            title="ייבוא מאקסל"
           >
-            <Upload className="size-4" />
-            ייבוא מאקסל
+            <Upload className="size-5" />
           </Button>
           <Button
             type="button"
             variant="outline"
-            className="h-11 gap-2 rounded-xl"
+            size="icon"
+            className="size-12 shrink-0 rounded-2xl"
             onClick={onTextImport}
+            aria-label="ייבוא מטקסט חופשי"
+            title="ייבוא מטקסט חופשי"
           >
-            <ClipboardPaste className="size-4" />
-            ייבוא מטקסט חופשי
+            <ClipboardPaste className="size-5" />
           </Button>
         </div>
       </Card>
