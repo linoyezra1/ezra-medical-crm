@@ -4,13 +4,14 @@ import { useCallback, useEffect, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
+  BookOpen,
   Loader2,
   LogOut,
   MapPin,
+  MonitorPlay,
   Package,
   RefreshCw,
   Video,
-  Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
 import { InstructorReportSaleDialog } from "@/components/instructor/instructor-report-sale-dialog"
@@ -297,6 +298,21 @@ function TrainingCard({
         )}
       </div>
 
+      <div className="grid grid-cols-2 gap-2">
+        <MaterialOpenButton
+          href={lead.presentationUrl}
+          label="פתח מצגת"
+          icon={MonitorPlay}
+          missingTitle="לא הוגדר קישור מצגת לקורס זה"
+        />
+        <MaterialOpenButton
+          href={lead.bookletUrl}
+          label="פתח חוברת"
+          icon={BookOpen}
+          missingTitle="לא הוגדרה חוברת לקורס זה"
+        />
+      </div>
+
       <Button
         type="button"
         variant="outline"
@@ -317,5 +333,43 @@ function TrainingCard({
         )}
       </Button>
     </Card>
+  )
+}
+
+function MaterialOpenButton({
+  href,
+  label,
+  icon: Icon,
+  missingTitle,
+}: {
+  href: string | null
+  label: string
+  icon: React.ElementType
+  missingTitle: string
+}) {
+  const enabled = Boolean(href?.trim())
+
+  return (
+    <button
+      type="button"
+      disabled={!enabled}
+      title={enabled ? label : missingTitle}
+      aria-label={enabled ? label : missingTitle}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (!href?.trim()) return
+        window.open(href, "_blank", "noopener,noreferrer")
+      }}
+      className={cn(
+        "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-2 text-xs font-semibold",
+        enabled
+          ? "border-primary/20 bg-primary/10 text-primary active:scale-[0.98]"
+          : "cursor-not-allowed border-border bg-secondary/40 text-muted-foreground/50",
+      )}
+    >
+      <Icon className="size-3.5 shrink-0" />
+      {label}
+    </button>
   )
 }

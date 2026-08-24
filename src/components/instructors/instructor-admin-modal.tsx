@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -13,9 +14,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  fetchInventoryCatalogForInstructors,
   upsertInstructorAdmin,
   type InstructorAdminRow,
+  type InventoryCatalogItem,
 } from "@/lib/instructor-actions"
+import { formatCurrency } from "@/lib/helpers"
+import { cn } from "@/lib/utils"
 
 export function InstructorAdminModal({
   open,
@@ -34,6 +39,9 @@ export function InstructorAdminModal({
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [commission, setCommission] = useState("0")
+  const [allowedIds, setAllowedIds] = useState<string[]>([])
+  const [catalog, setCatalog] = useState<InventoryCatalogItem[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -46,7 +54,26 @@ export function InstructorAdminModal({
     setCommission(
       existing ? String(existing.salesCommissionPercentage) : "0",
     )
+    setAllowedIds(existing?.allowedEquipmentIds ?? [])
+
+    setCatalogLoading(true)
+    void fetchInventoryCatalogForInstructors().then((res) => {
+      setCatalogLoading(false)
+      if (!res.ok) {
+        toast.error(res.error)
+        setCatalog([])
+        return
+      }
+      setCatalog(res.data)
+    })
   }, [open, existing])
+
+  const toggleAllowed = (id: string, checked: boolean) => {
+    setAllowedIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id]
+      return prev.filter((x) => x !== id)
+    })
+  }
 
   const submit = async () => {
     setBusy(true)
@@ -59,6 +86,7 @@ export function InstructorAdminModal({
       password,
       salesCommissionPercentage: Number(commission) || 0,
       active: existing?.active !== false,
+      allowedEquipmentIds: allowedIds,
     })
     setBusy(false)
     if (!res.ok) {
@@ -126,6 +154,60 @@ export function InstructorAdminModal({
               dir="ltr"
             />
           </Field>
+
+          <div className="space-y-2">
+            <Label>מוצרים זמינים למדריך למכירה</Label>
+            <p className="text-[11px] text-muted-foreground">
+              רק הפריטים המסומנים יופיעו באזור האישי בדיווח מכירה
+            </p>
+            <div
+              className={cn(
+                "max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-secondary/20 p-2",
+              )}
+            >
+              {catalogLoading ? (
+                <p className="flex items-center gap-2 p-2 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  טוען מלאי…
+                </p>
+              ) : catalog.length === 0 ? (
+                <p className="p-2 text-xs text-muted-foreground">
+                  אין פריטי מלאי במערכת
+                </p>
+              ) : (
+                catalog.map((item) => {
+                  const checked = allowedIds.includes(item.id)
+                  return (
+                    <label
+                      key={item.id}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-secondary/60"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) =>
+                          toggleAllowed(item.id, v === true)
+                        }
+                      />
+                      <span className="min-w-0 flex-1 text-sm font-medium">
+                        {item.name}
+                      </span>
+                      <span
+                        className="shrink-0 text-xs tabular-nums text-muted-foreground"
+                        dir="ltr"
+                      >
+                        {formatCurrency(item.sellingPrice)}
+                      </span>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+            {allowedIds.length > 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                נבחרו {allowedIds.length} מוצרים
+              </p>
+            ) : null}
+          </div>
 
           <Button
             type="button"

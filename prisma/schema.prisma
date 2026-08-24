@@ -198,6 +198,8 @@ model Instructor {
   salesCommissionPercentage Float          @default(0)
   role                      String         @default("INSTRUCTOR")
   active                    Boolean        @default(true)
+  /** מזהי פריטי מלאי שמותר למדריך למכור באזור האישי */
+  allowedEquipmentIds       String[]       @default([])
   createdAt                 DateTime       @default(now())
   updatedAt                 DateTime       @updatedAt
   leads                     Lead[]
@@ -407,12 +409,19 @@ model OutreachLead {
   phone        String
   organization String?
   category     String
+  /** אין וואטסאפ — אייקון וואטסאפ מושבת; מומלץ להתקשר */
+  whatsappBlocked Boolean @default(false)
+  /** הערות אחרי שיחה */
+  notes        String?
+  /** לא רלוונטי — נשמר גם בייבוא חוזר מאקסל ולא מוצג ברשימת רלוונטיים */
+  irrelevant   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([category])
   @@index([phone])
   @@index([createdAt])
+  @@index([irrelevant])
 }
 
 /** תבנית הודעת וואטסאפ לפי קטגוריה — קטגוריה אחת לתבנית אחת */

@@ -58,6 +58,13 @@ export function mapInstructor(db: DbInstructor): InstructorProfile {
       (db as { salesCommissionPercentage?: number | null })
         .salesCommissionPercentage ?? 0,
     role: (db as { role?: string | null }).role || "INSTRUCTOR",
+    allowedEquipmentIds: Array.isArray(
+      (db as { allowedEquipmentIds?: string[] | null }).allowedEquipmentIds,
+    )
+      ? ((db as { allowedEquipmentIds: string[] }).allowedEquipmentIds || []).filter(
+          Boolean,
+        )
+      : [],
   };
 }
 

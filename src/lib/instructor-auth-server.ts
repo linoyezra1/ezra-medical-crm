@@ -13,6 +13,7 @@ export type AuthenticatedInstructor = {
   username: string
   salesCommissionPercentage: number
   role: string
+  allowedEquipmentIds: string[]
 }
 
 export async function getInstructorSessionId(): Promise<string | null> {
@@ -53,6 +54,7 @@ export async function getAuthenticatedInstructor(): Promise<AuthenticatedInstruc
       username: true,
       salesCommissionPercentage: true,
       role: true,
+      allowedEquipmentIds: true,
     },
   })
 
@@ -66,6 +68,9 @@ export async function getAuthenticatedInstructor(): Promise<AuthenticatedInstruc
     username: row.username.trim(),
     salesCommissionPercentage: row.salesCommissionPercentage || 0,
     role: row.role || "INSTRUCTOR",
+    allowedEquipmentIds: Array.isArray(row.allowedEquipmentIds)
+      ? row.allowedEquipmentIds.filter(Boolean)
+      : [],
   }
 }
 

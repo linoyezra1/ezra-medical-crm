@@ -36,7 +36,7 @@ export function InstructorReportSaleDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   lead: InstructorTrainingCard
-  inventory: Array<{ id: string; name: string }>
+  inventory: Array<{ id: string; name: string; sellingPrice: number }>
   commissionPct: number
   onSuccess: () => void
 }) {
@@ -50,15 +50,24 @@ export function InstructorReportSaleDialog({
   const lineTotal = unitPrice * qtyNum
   const commission = Math.round((lineTotal * commissionPct) / 100)
 
-  const itemOptions = useMemo(
-    () => inventory.map((i) => ({ value: i.id, label: i.name })),
-    [inventory],
+  const selectedItem = useMemo(
+    () => inventory.find((i) => i.id === itemId),
+    [inventory, itemId],
   )
 
   const reset = () => {
     setItemId("")
     setQty("1")
     setAmount("")
+  }
+
+  const onSelectItem = (id: string | null) => {
+    const nextId = id ?? ""
+    setItemId(nextId)
+    const item = inventory.find((i) => i.id === nextId)
+    if (item && item.sellingPrice > 0) {
+      setAmount(String(item.sellingPrice))
+    }
   }
 
   const submit = async () => {
@@ -106,21 +115,36 @@ export function InstructorReportSaleDialog({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>פריט ציוד</Label>
-            <Select
-              value={itemId || undefined}
-              onValueChange={(v) => setItemId(v ?? "")}
-            >
-              <SelectTrigger className="h-12">
-                <SelectValue placeholder="בחר פריט מהמלאי" />
-              </SelectTrigger>
-              <SelectContent>
-                {itemOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {inventory.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border bg-secondary/30 px-3 py-3 text-xs text-muted-foreground">
+                לא הוגדרו עבורך מוצרים למכירה. פנו למנהל המערכת.
+              </p>
+            ) : (
+              <Select
+                value={itemId || undefined}
+                onValueChange={onSelectItem}
+              >
+                <SelectTrigger className="h-12">
+                  <SelectValue placeholder="בחר פריט מורשה" />
+                </SelectTrigger>
+                <SelectContent>
+                  {inventory.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.name}
+                      {o.sellingPrice > 0
+                        ? ` · ${formatCurrency(o.sellingPrice)}`
+                        : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {selectedItem && selectedItem.sellingPrice > 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                מחיר מומלץ: {formatCurrency(selectedItem.sellingPrice)} (ניתן
+                לעריכה)
+              </p>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -156,15 +180,9 @@ export function InstructorReportSaleDialog({
                 סכום מכירה:{" "}
                 <span className="font-bold">{formatCurrency(lineTotal)}</span>
               </p>
-              <p className="mt-1 text-primary">
-                העמלה שלך:{" "}
-                <span className="font-bold">{formatCurrency(commission)}</span>
-                {commissionPct > 0 && (
-                  <span className="text-muted-foreground">
-                    {" "}
-                    (לפי {commissionPct}%)
-                  </span>
-                )}
+              <p className="mt-1 font-medium text-primary">
+                עמלה שתתווסף לשכרך: {formatCurrency(commission)} (לפי{" "}
+                {commissionPct}%)
               </p>
             </div>
           )}
@@ -172,7 +190,7 @@ export function InstructorReportSaleDialog({
           <Button
             type="button"
             className="h-12 w-full rounded-xl font-bold"
-            disabled={busy}
+            disabled={busy || inventory.length === 0}
             onClick={() => void submit()}
           >
             {busy ? (

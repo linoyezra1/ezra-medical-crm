@@ -105,7 +105,8 @@ export function InstructorsAdminView() {
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     שכר: {formatCurrency(row.fee)} · עמלה:{" "}
-                    {row.salesCommissionPercentage}%
+                    {row.salesCommissionPercentage}% · מוצרים למכירה:{" "}
+                    {row.allowedEquipmentIds?.length ?? 0}
                   </p>
                   {row.username && (
                     <p className="text-xs text-muted-foreground" dir="ltr">

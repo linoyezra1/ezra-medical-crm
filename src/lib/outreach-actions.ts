@@ -20,6 +20,9 @@ export async function listOutreachLeadsAction(): Promise<
       phone: string
       organization: string | null
       category: string
+      whatsappBlocked: boolean
+      notes: string | null
+      irrelevant: boolean
       createdAt: string
     }[]
   >
@@ -36,12 +39,66 @@ export async function listOutreachLeadsAction(): Promise<
         phone: r.phone,
         organization: r.organization,
         category: r.category,
+        whatsappBlocked: r.whatsappBlocked,
+        notes: r.notes,
+        irrelevant: r.irrelevant,
         createdAt: r.createdAt.toISOString(),
       })),
     }
   } catch (err) {
     console.error("[listOutreachLeadsAction]", err)
     return { ok: false, error: "שגיאה בטעינת לידים" }
+  }
+}
+
+export async function toggleOutreachWhatsAppBlockedAction(
+  id: string,
+): Promise<ActionResult<{ id: string; whatsappBlocked: boolean }>> {
+  try {
+    const existing = await prisma.outreachLead.findUnique({
+      where: { id },
+      select: { id: true, whatsappBlocked: true },
+    })
+    if (!existing) return { ok: false, error: "ליד לא נמצא" }
+
+    const updated = await prisma.outreachLead.update({
+      where: { id },
+      data: { whatsappBlocked: !existing.whatsappBlocked },
+      select: { id: true, whatsappBlocked: true },
+    })
+    revalidatePath("/outreach-leads")
+    return { ok: true, data: updated }
+  } catch (err) {
+    console.error("[toggleOutreachWhatsAppBlockedAction]", err)
+    return { ok: false, error: "שגיאה בעדכון חסימת וואטסאפ" }
+  }
+}
+
+export async function updateOutreachLeadNotesAction(
+  id: string,
+  notes: string,
+  irrelevant?: boolean,
+): Promise<
+  ActionResult<{ id: string; notes: string | null; irrelevant: boolean }>
+> {
+  try {
+    const trimmed = String(notes ?? "").trim()
+    const data: { notes: string | null; irrelevant?: boolean } = {
+      notes: trimmed || null,
+    }
+    if (typeof irrelevant === "boolean") {
+      data.irrelevant = irrelevant
+    }
+    const updated = await prisma.outreachLead.update({
+      where: { id },
+      data,
+      select: { id: true, notes: true, irrelevant: true },
+    })
+    revalidatePath("/outreach-leads")
+    return { ok: true, data: updated }
+  } catch (err) {
+    console.error("[updateOutreachLeadNotesAction]", err)
+    return { ok: false, error: "שגיאה בשמירת ההערות" }
   }
 }
 
@@ -151,10 +208,15 @@ export async function importOutreachLeadsAction(
     category: string
   }[],
 ): Promise<
-  ActionResult<{ imported: number; skipped: number }>
+  ActionResult<{
+    imported: number
+    skipped: number
+    keptIrrelevant: number
+  }>
 > {
   let imported = 0
   let skipped = 0
+  let keptIrrelevant = 0
 
   try {
     for (const row of rows) {
@@ -169,22 +231,46 @@ export async function importOutreachLeadsAction(
 
       const existing = await prisma.outreachLead.findFirst({
         where: { phone, category },
-        select: { id: true },
+        select: { id: true, irrelevant: true },
       })
+
+      /** מספר שכבר סומן לא רלוונטי (גם בקטגוריה אחרת) — נשמר כלא רלוונטי */
+      const phoneWasIrrelevant = existing?.irrelevant
+        ? true
+        : Boolean(
+            await prisma.outreachLead.findFirst({
+              where: { phone, irrelevant: true },
+              select: { id: true },
+            }),
+          )
+
       if (existing) {
         await prisma.outreachLead.update({
           where: { id: existing.id },
-          data: { name, organization, category },
+          data: {
+            name,
+            organization,
+            category,
+            // לא מאפסים irrelevant בייבוא חוזר
+          },
         })
+        if (existing.irrelevant) keptIrrelevant++
       } else {
         await prisma.outreachLead.create({
-          data: { name, phone, organization, category },
+          data: {
+            name,
+            phone,
+            organization,
+            category,
+            irrelevant: phoneWasIrrelevant,
+          },
         })
+        if (phoneWasIrrelevant) keptIrrelevant++
       }
       imported++
     }
     revalidatePath("/outreach-leads")
-    return { ok: true, data: { imported, skipped } }
+    return { ok: true, data: { imported, skipped, keptIrrelevant } }
   } catch (err) {
     console.error("[importOutreachLeadsAction]", err)
     return { ok: false, error: "שגיאה בייבוא הלידים" }

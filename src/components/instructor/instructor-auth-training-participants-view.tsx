@@ -1,25 +1,24 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { CheckCheck, RefreshCw, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
+import { ArrowRight, Loader2, RefreshCw, UserRound } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import {
-  fetchLeadParticipants,
-  refreshWixParticipantsAction,
-  removeParticipant,
-  setParticipantAttended,
-} from "@/lib/actions"
+import { fetchLeadParticipants } from "@/lib/actions"
+import { formatPhone } from "@/lib/helpers"
 import type { Participant } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+/** תצוגת ת״ז מלאה או ממוסכת חלקית */
+function formatIdNumber(idNumber: string | undefined): string {
+  const raw = (idNumber || "").trim()
+  if (!raw) return "—"
+  if (raw.length <= 4) return raw
+  return `${"*".repeat(Math.max(0, raw.length - 4))}${raw.slice(-4)}`
+}
 
 export function InstructorAuthTrainingParticipantsView({
   leadId,
@@ -28,235 +27,112 @@ export function InstructorAuthTrainingParticipantsView({
 }) {
   const [loading, setLoading] = useState(true)
   const [participants, setParticipants] = useState<Participant[]>([])
-  const [refreshingWix, setRefreshingWix] = useState(false)
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Participant | null>(null)
-
-  const wixParticipants = useMemo(
-    () =>
-      participants.filter((p) => {
-        const src = (p.source || "").trim().toLowerCase()
-        return src === "wix"
-      }),
-    [participants],
-  )
 
   const load = useCallback(async () => {
     setLoading(true)
-    const rows = await fetchLeadParticipants(leadId)
-    setParticipants(rows)
-    setLoading(false)
+    try {
+      const rows = await fetchLeadParticipants(leadId)
+      setParticipants(rows)
+    } catch {
+      toast.error("שגיאה בטעינת משתתפים")
+      setParticipants([])
+    } finally {
+      setLoading(false)
+    }
   }, [leadId])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const refreshFromWix = async () => {
-    setRefreshingWix(true)
-    const res = await refreshWixParticipantsAction(leadId)
-    setRefreshingWix(false)
-
-    if (!res.ok) {
-      toast.error(res.error)
-      return
-    }
-
-    await load()
-    toast.success(
-      `Wix: נוספו ${res.data.added} · עודכנו ${res.data.updated} · דולגו ${res.data.skipped}`,
-    )
-  }
-
-  const toggleAttendance = async (p: Participant) => {
-    const next = !Boolean(p.attended)
-    setBusyId(p.id)
-    const res = await setParticipantAttended(p.id, leadId, next)
-    setBusyId(null)
-
-    if (!res.ok) {
-      toast.error(res.error)
-      return
-    }
-
-    setParticipants((prev) =>
-      prev.map((x) => (x.id === p.id ? { ...x, attended: next } : x)),
-    )
-    setSelected((cur) =>
-      cur?.id === p.id ? { ...cur, attended: next } : cur,
-    )
-  }
-
-  const remove = async (p: Participant) => {
-    const ok = window.confirm(`למחוק את ${p.name} מרשימת המשתתפים?`)
-    if (!ok) return
-    try {
-      setBusyId(p.id)
-      await removeParticipant(p.id, leadId)
-      setParticipants((prev) => prev.filter((x) => x.id !== p.id))
-      if (selected?.id === p.id) setSelected(null)
-      toast.success("המשתתף נמחק")
-    } catch {
-      toast.error("שגיאה במחיקה")
-    } finally {
-      setBusyId(null)
-    }
-  }
-
   return (
     <div className="min-h-dvh bg-background">
-      <PageHeader title="משתתפי הדרכה" subtitle="פאנל מדריך (Wix)" />
-
-      <div className="space-y-3 p-4">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/95 px-4 py-3 backdrop-blur-md">
         <div className="flex items-center justify-between gap-2">
+          <Link
+            href="/instructor/dashboard"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary"
+          >
+            <ArrowRight className="size-4" />
+            חזרה
+          </Link>
           <Button
             type="button"
-            variant="outline"
-            className="gap-2 rounded-xl"
-            disabled={refreshingWix}
-            onClick={() => void refreshFromWix()}
+            size="icon"
+            variant="ghost"
+            className="size-10 rounded-full"
+            aria-label="רענון"
+            onClick={() => void load()}
+            disabled={loading}
           >
-            <RefreshCw
-              className={cn("size-4", (refreshingWix || loading) && "animate-spin")}
-            />
-            רענון מ-Wix
+            <RefreshCw className={cn("size-5", loading && "animate-spin")} />
           </Button>
         </div>
+      </header>
+
+      <div className="space-y-3 p-4 pb-8">
+        <PageHeader
+          title="רשימת משתתפים"
+          subtitle={`${participants.length} משתתפים · לתצוגה בלבד במהלך ההדרכה`}
+        />
 
         {loading ? (
-          <Card className="p-4 text-center text-sm text-muted-foreground">
+          <Card className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+            <Loader2 className="size-5 animate-spin" />
             טוען…
           </Card>
-        ) : wixParticipants.length === 0 ? (
-          <Card className="p-4 text-center text-sm text-muted-foreground">
-            אין כרגע משתתפי Wix בהדרכה זו
+        ) : participants.length === 0 ? (
+          <Card className="p-8 text-center text-sm text-muted-foreground">
+            אין משתתפים רשומים להדרכה זו
           </Card>
         ) : (
           <ul className="space-y-2">
-            {wixParticipants.map((p) => {
-              const busy = busyId === p.id
-              return (
-                <li key={p.id}>
-                  <Card className="p-3">
-                    <button
-                      type="button"
-                      className="flex w-full items-start justify-between gap-3 text-right"
-                      onClick={() => setSelected(p)}
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold">{p.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {p.phone || "—"} · {p.idNumber || "—"}
-                        </p>
-                        {p.feedback?.trim() ? (
-                          <p className="mt-1 line-clamp-1 text-[11px] text-amber-800">
-                            משוב: {p.feedback.trim()}
-                          </p>
-                        ) : null}
-                      </div>
-
-                      <span className="shrink-0 rounded bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-                        Wix
-                      </span>
-                    </button>
-
-                    <div className="mt-3 flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={p.attended ? "default" : "outline"}
-                        className="h-9 flex-1 gap-1.5 rounded-xl"
-                        disabled={busy}
-                        onClick={() => void toggleAttendance(p)}
-                      >
-                        <CheckCheck className="size-4" />
-                        {p.attended ? "נוכח" : "סמן נוכחות"}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-9 gap-1.5 rounded-xl text-destructive"
-                        disabled={busy}
-                        onClick={() => void remove(p)}
-                      >
-                        <Trash2 className="size-4" />
-                        מחיקה
-                      </Button>
+            {participants.map((p, index) => (
+              <li key={p.id}>
+                <Card className="gap-2 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 text-right">
+                      <p className="flex items-center justify-end gap-1.5 text-sm font-bold">
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {index + 1}.
+                        </span>
+                        {p.name || "—"}
+                      </p>
+                      <dl className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+                        <div className="flex items-center justify-end gap-2">
+                          <dd className="font-medium text-foreground" dir="ltr">
+                            {formatIdNumber(p.idNumber)}
+                          </dd>
+                          <dt>ת״ז</dt>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <dd className="font-medium text-foreground" dir="ltr">
+                            {p.phone ? formatPhone(p.phone) : "—"}
+                          </dd>
+                          <dt>טלפון</dt>
+                        </div>
+                      </dl>
                     </div>
-                  </Card>
-                </li>
-              )
-            })}
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <UserRound className="size-4 text-muted-foreground" />
+                      {p.isExternal ? (
+                        <span className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-800">
+                          חיצוני
+                        </span>
+                      ) : null}
+                      {p.isLead ? (
+                        <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                          אופציה
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </Card>
+              </li>
+            ))}
           </ul>
         )}
       </div>
-
-      <InstructorParticipantDrawer
-        participant={selected}
-        onOpenChange={(open) => {
-          if (!open) setSelected(null)
-        }}
-      />
-    </div>
-  )
-}
-
-function InstructorParticipantDrawer({
-  participant,
-  onOpenChange,
-}: {
-  participant: Participant | null
-  onOpenChange: (open: boolean) => void
-}) {
-  const p = participant
-  return (
-    <Sheet open={Boolean(p)} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="max-h-[min(85dvh,520px)] gap-0 rounded-t-3xl p-0"
-      >
-        <SheetHeader className="border-b border-border px-4 py-3 text-right">
-          <SheetTitle className="text-base">
-            {p?.name || "פרטי מודרך"}
-          </SheetTitle>
-        </SheetHeader>
-        {p ? (
-          <div className="space-y-3 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-right text-sm">
-            <DetailRow label="טלפון" value={p.phone || "—"} dir="ltr" />
-            <DetailRow label="ת״ז" value={p.idNumber || "—"} dir="ltr" />
-            <DetailRow label="דוא״ל" value={p.email || "—"} dir="ltr" />
-            {p.organizerName?.trim() ? (
-              <DetailRow label="מארגן" value={p.organizerName.trim()} />
-            ) : null}
-            <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-amber-950">
-              <p className="text-xs font-semibold text-amber-800">משוב</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">
-                {p.feedback?.trim() || "לא נרשם משוב"}
-              </p>
-            </div>
-          </div>
-        ) : null}
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function DetailRow({
-  label,
-  value,
-  dir,
-}: {
-  label: string
-  value: string
-  dir?: "ltr" | "rtl"
-}) {
-  return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-medium" dir={dir}>
-        {value}
-      </p>
     </div>
   )
 }

@@ -464,4 +464,6 @@ export interface InstructorProfile {
   username?: string;
   salesCommissionPercentage?: number;
   role?: string;
+  /** מזהי פריטי מלאי שמותר למכור באזור האישי */
+  allowedEquipmentIds?: string[];
 }

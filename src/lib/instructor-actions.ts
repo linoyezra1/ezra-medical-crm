@@ -2,16 +2,17 @@
 
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db"
-import { formatCourseTypeLabel } from "@/lib/course-type"
+import { formatCourseTypeLabel, findCourseCatalog } from "@/lib/course-type"
+import { resolveCourseMaterialOpenUrls } from "@/lib/course-materials"
 import {
   clearInstructorSession,
   getAuthenticatedInstructor,
   requireAuthenticatedInstructor,
   setInstructorSession,
 } from "@/lib/instructor-auth-server"
-import { mapLead, mapInstructor } from "@/lib/mappers"
+import { mapLead, mapInstructor, mapSettings } from "@/lib/mappers"
 import { resolveInstructorFee } from "@/lib/training-profit"
-import type { InstructorProfile, Lead } from "@/lib/types"
+import type { CourseCatalogItem, InstructorProfile, Lead } from "@/lib/types"
 import type { TrainingSessionSlot } from "@/lib/payment"
 import { addTrainingSale, type ActionResult } from "@/lib/actions"
 import { cleanPhone } from "@/lib/helpers"
@@ -29,6 +30,10 @@ export type InstructorTrainingCard = {
   zoomLink?: string
   wazeUrl?: string
   sessions: TrainingSessionSlot[]
+  /** קישור ישיר למצגת (פתיחה בטאב חדש) */
+  presentationUrl: string | null
+  /** קישור ישיר לחוברת (פתיחה בטאב חדש) */
+  bookletUrl: string | null
 }
 
 export type InstructorDashboardData = {
@@ -45,7 +50,7 @@ export type InstructorDashboardData = {
   }
   upcoming: InstructorTrainingCard[]
   completed: InstructorTrainingCard[]
-  inventory: Array<{ id: string; name: string }>
+  inventory: Array<{ id: string; name: string; sellingPrice: number }>
 }
 
 function wazeUrlForAddress(parts: {
@@ -64,6 +69,7 @@ function wazeUrlForAddress(parts: {
 function toTrainingCard(
   lead: Lead,
   instructors: Array<{ id: string; name: string; fee: number; active: boolean }>,
+  courses: CourseCatalogItem[],
 ): InstructorTrainingCard {
   const session = lead.sessions?.[0]
   const isZoom = Boolean(session?.isZoom || lead.sessions?.every((s) => s.isZoom))
@@ -74,6 +80,13 @@ function toTrainingCard(
   const addressLine = isZoom
     ? "זום"
     : [street, houseNumber, city].filter(Boolean).join(" ") || "—"
+
+  const catalog = findCourseCatalog(lead.courseType, courses)
+  const materials = resolveCourseMaterialOpenUrls({
+    courseType: lead.courseType,
+    presentationUrl: catalog?.presentationUrl,
+    bookletUrl: catalog?.bookletUrl,
+  })
 
   return {
     id: lead.id,
@@ -90,6 +103,8 @@ function toTrainingCard(
     zoomLink,
     wazeUrl: isZoom ? undefined : wazeUrlForAddress({ city, street, houseNumber }),
     sessions: lead.sessions || [],
+    presentationUrl: materials.presentationUrl,
+    bookletUrl: materials.bookletUrl,
   }
 }
 
@@ -129,7 +144,8 @@ export async function fetchInstructorDashboard(): Promise<
   try {
     const auth = await requireAuthenticatedInstructor()
 
-    const [leadsDb, inventoryDb, commissionAgg] = await Promise.all([
+    const [leadsDb, inventoryDb, commissionAgg, courseAssets, settingsRow] =
+      await Promise.all([
       prisma.lead.findMany({
         where: {
           instructorId: auth.id,
@@ -153,12 +169,14 @@ export async function fetchInstructorDashboard(): Promise<
       }),
       prisma.inventoryItem.findMany({
         orderBy: { name: "asc" },
-        select: { id: true, name: true },
+        select: { id: true, name: true, sellingPrice: true },
       }),
       prisma.trainingSale.aggregate({
         where: { reportedByInstructorId: auth.id },
         _sum: { instructorCommissionAmount: true },
       }),
+      prisma.courseAsset.findMany(),
+      prisma.settings.findFirst(),
     ])
 
     const instructors = [
@@ -170,6 +188,10 @@ export async function fetchInstructorDashboard(): Promise<
       },
     ]
     const leads = leadsDb.map((l) => mapLead(l))
+    const courses = mapSettings(settingsRow, courseAssets).courses
+
+    const allowedIds = new Set(auth.allowedEquipmentIds)
+    const allowedInventory = inventoryDb.filter((i) => allowedIds.has(i.id))
 
     const feeStatuses = new Set<Lead["status"]>([
       "closed",
@@ -184,14 +206,14 @@ export async function fetchInstructorDashboard(): Promise<
 
     const upcoming = leads
       .filter((l) => l.status === "closed")
-      .map((l) => toTrainingCard(l, instructors))
+      .map((l) => toTrainingCard(l, instructors, courses))
 
     const completed = leads
       .filter((l) =>
         ["pending_certificates", "completed"].includes(l.status),
       )
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
-      .map((l) => toTrainingCard(l, instructors))
+      .map((l) => toTrainingCard(l, instructors, courses))
 
     return {
       ok: true,
@@ -209,9 +231,10 @@ export async function fetchInstructorDashboard(): Promise<
         },
         upcoming,
         completed,
-        inventory: inventoryDb.map((i) => ({
+        inventory: allowedInventory.map((i) => ({
           id: i.id,
           name: i.name?.trim() || "פריט",
+          sellingPrice: Number(i.sellingPrice) || 0,
         })),
       },
     }
@@ -238,6 +261,10 @@ export async function reportInstructorTrainingSale(input: {
     })
     if (!lead) {
       return { ok: false, error: "אין הרשאה לדווח מכירה להדרכה זו" }
+    }
+
+    if (!auth.allowedEquipmentIds.includes(input.inventoryItemId)) {
+      return { ok: false, error: "פריט זה אינו מורשה למכירה עבורך" }
     }
 
     const qty = Math.max(1, Math.floor(Number(input.quantity) || 0))
@@ -290,6 +317,35 @@ export type InstructorAdminRow = {
   password?: string
   salesCommissionPercentage: number
   active: boolean
+  allowedEquipmentIds: string[]
+}
+
+export type InventoryCatalogItem = {
+  id: string
+  name: string
+  sellingPrice: number
+}
+
+export async function fetchInventoryCatalogForInstructors(): Promise<
+  ActionResult<InventoryCatalogItem[]>
+> {
+  try {
+    const rows = await prisma.inventoryItem.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, sellingPrice: true },
+    })
+    return {
+      ok: true,
+      data: rows.map((r) => ({
+        id: r.id,
+        name: r.name?.trim() || "פריט",
+        sellingPrice: Number(r.sellingPrice) || 0,
+      })),
+    }
+  } catch (err) {
+    console.error("[fetchInventoryCatalogForInstructors]", err)
+    return { ok: false, error: "לא ניתן לטעון מלאי" }
+  }
 }
 
 export async function fetchInstructorsAdmin(): Promise<
@@ -310,6 +366,9 @@ export async function fetchInstructorsAdmin(): Promise<
         password: r.password || undefined,
         salesCommissionPercentage: r.salesCommissionPercentage || 0,
         active: r.active,
+        allowedEquipmentIds: Array.isArray(r.allowedEquipmentIds)
+          ? r.allowedEquipmentIds.filter(Boolean)
+          : [],
       })),
     }
   } catch (err) {
@@ -327,6 +386,7 @@ export async function upsertInstructorAdmin(input: {
   password: string
   salesCommissionPercentage: number
   active?: boolean
+  allowedEquipmentIds?: string[]
 }): Promise<ActionResult<{ id: string }>> {
   const name = input.name.trim()
   const username = input.username.trim()
@@ -334,6 +394,14 @@ export async function upsertInstructorAdmin(input: {
   if (!name) return { ok: false, error: "שם מדריך חובה" }
   if (!username) return { ok: false, error: "שם משתמש חובה" }
   if (!password) return { ok: false, error: "סיסמה חובה" }
+
+  const allowedEquipmentIds = Array.from(
+    new Set(
+      (input.allowedEquipmentIds || [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    ),
+  )
 
   try {
     const data = {
@@ -348,6 +416,7 @@ export async function upsertInstructorAdmin(input: {
       ),
       active: input.active !== false,
       role: "INSTRUCTOR",
+      allowedEquipmentIds,
     }
 
     if (input.id) {
@@ -356,12 +425,14 @@ export async function upsertInstructorAdmin(input: {
         data,
       })
       revalidatePath("/instructors")
+      revalidatePath("/instructor/dashboard")
       revalidatePath("/")
       return { ok: true, data: { id: updated.id } }
     }
 
     const created = await prisma.instructor.create({ data })
     revalidatePath("/instructors")
+    revalidatePath("/instructor/dashboard")
     revalidatePath("/")
     return { ok: true, data: { id: created.id } }
   } catch (err) {

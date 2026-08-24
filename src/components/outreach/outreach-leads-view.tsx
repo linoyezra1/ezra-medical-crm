@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  Ban,
   FileSpreadsheet,
   MessageSquareText,
+  NotebookPen,
   Pencil,
   Phone,
   Plus,
@@ -15,6 +17,7 @@ import { PageHeader } from "@/components/app-shell"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -31,6 +34,8 @@ import {
   importOutreachLeadsAction,
   listOutreachLeadsAction,
   listOutreachTemplatesAction,
+  toggleOutreachWhatsAppBlockedAction,
+  updateOutreachLeadNotesAction,
   upsertOutreachTemplateAction,
 } from "@/lib/outreach-actions"
 import {
@@ -48,8 +53,13 @@ type LeadRow = {
   phone: string
   organization: string | null
   category: string
+  whatsappBlocked: boolean
+  notes: string | null
+  irrelevant: boolean
   createdAt: string
 }
+
+type RelevanceFilter = "relevant" | "irrelevant"
 
 type TemplateRow = {
   id: string
@@ -82,6 +92,8 @@ export function OutreachLeadsView() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [relevanceFilter, setRelevanceFilter] =
+    useState<RelevanceFilter>("relevant")
 
   const [templateOpen, setTemplateOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(
@@ -93,6 +105,10 @@ export function OutreachLeadsView() {
   })
   const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null)
   const [deleteLeadId, setDeleteLeadId] = useState<string | null>(null)
+  const [notesLead, setNotesLead] = useState<LeadRow | null>(null)
+  const [notesDraft, setNotesDraft] = useState("")
+  const [irrelevantDraft, setIrrelevantDraft] = useState(false)
+  const [savingNotes, setSavingNotes] = useState(false)
 
   const [importPreview, setImportPreview] = useState<OutreachImportRow[] | null>(
     null,
@@ -132,12 +148,25 @@ export function OutreachLeadsView() {
   const filteredLeads = useMemo(() => {
     const q = filter.trim().toLowerCase()
     return leads.filter((l) => {
+      if (relevanceFilter === "relevant" && l.irrelevant) return false
+      if (relevanceFilter === "irrelevant" && !l.irrelevant) return false
       if (categoryFilter !== "all" && l.category !== categoryFilter) return false
       if (!q) return true
-      const hay = `${l.name} ${l.phone} ${l.organization || ""} ${l.category}`.toLowerCase()
+      const hay =
+        `${l.name} ${l.phone} ${l.organization || ""} ${l.category} ${l.notes || ""}`.toLowerCase()
       return hay.includes(q)
     })
-  }, [leads, filter, categoryFilter])
+  }, [leads, filter, categoryFilter, relevanceFilter])
+
+  const relevanceCounts = useMemo(() => {
+    let relevant = 0
+    let irrelevant = 0
+    for (const l of leads) {
+      if (l.irrelevant) irrelevant++
+      else relevant++
+    }
+    return { relevant, irrelevant }
+  }, [leads])
 
   const openNewTemplate = () => {
     setEditingTemplate(null)
@@ -190,6 +219,75 @@ export function OutreachLeadsView() {
     void refresh()
   }
 
+  const toggleWhatsAppBlocked = async (leadId: string) => {
+    const prev = leads.find((l) => l.id === leadId)
+    if (!prev) return
+    const nextBlocked = !prev.whatsappBlocked
+    setLeads((list) =>
+      list.map((l) =>
+        l.id === leadId ? { ...l, whatsappBlocked: nextBlocked } : l,
+      ),
+    )
+    const res = await toggleOutreachWhatsAppBlockedAction(leadId)
+    if (!res.ok) {
+      setLeads((list) =>
+        list.map((l) =>
+          l.id === leadId ? { ...l, whatsappBlocked: prev.whatsappBlocked } : l,
+        ),
+      )
+      toast.error(res.error)
+      return
+    }
+    setLeads((list) =>
+      list.map((l) =>
+        l.id === leadId
+          ? { ...l, whatsappBlocked: res.data.whatsappBlocked }
+          : l,
+      ),
+    )
+    toast.success(
+      res.data.whatsappBlocked
+        ? "סומן ללא וואטסאפ — מומלץ להתקשר"
+        : "וואטסאפ זמין שוב",
+    )
+  }
+
+  const openNotes = (lead: LeadRow) => {
+    setNotesLead(lead)
+    setNotesDraft(lead.notes || "")
+    setIrrelevantDraft(lead.irrelevant)
+  }
+
+  const saveNotes = async () => {
+    if (!notesLead) return
+    setSavingNotes(true)
+    const res = await updateOutreachLeadNotesAction(
+      notesLead.id,
+      notesDraft,
+      irrelevantDraft,
+    )
+    setSavingNotes(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    setLeads((list) =>
+      list.map((l) =>
+        l.id === notesLead.id
+          ? {
+              ...l,
+              notes: res.data.notes,
+              irrelevant: res.data.irrelevant,
+            }
+          : l,
+      ),
+    )
+    setNotesLead(null)
+    toast.success(
+      res.data.irrelevant ? "נשמר כלא רלוונטי" : "ההערות נשמרו",
+    )
+  }
+
   const onPickFile = async (file: File | null) => {
     if (!file) return
     try {
@@ -229,7 +327,10 @@ export function OutreachLeadsView() {
     }
     toast.success(
       `יובאו ${res.data.imported} לידים` +
-        (res.data.skipped ? ` · דולגו ${res.data.skipped}` : ""),
+        (res.data.skipped ? ` · דולגו ${res.data.skipped}` : "") +
+        (res.data.keptIrrelevant
+          ? ` · ${res.data.keptIrrelevant} נשארו לא רלוונטיים`
+          : ""),
     )
     setImportPreview(null)
     void refresh()
@@ -347,6 +448,21 @@ export function OutreachLeadsView() {
           placeholder="חיפוש שם / טלפון / ארגון…"
           className="max-w-xs rounded-xl"
         />
+        <select
+          className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
+          value={relevanceFilter}
+          onChange={(e) =>
+            setRelevanceFilter(e.target.value as RelevanceFilter)
+          }
+          aria-label="סינון רלוונטיות"
+        >
+          <option value="relevant">
+            רלוונטיים ({relevanceCounts.relevant})
+          </option>
+          <option value="irrelevant">
+            לא רלוונטיים ({relevanceCounts.irrelevant})
+          </option>
+        </select>
         {categories.length > 0 ? (
           <select
             className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
@@ -372,19 +488,21 @@ export function OutreachLeadsView() {
             <p className="p-4 text-sm text-muted-foreground">טוען…</p>
           ) : filteredLeads.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">
-              אין לידים להצגה — ייבאו קובץ Excel/CSV עם העמודות name, phone,
-              organization, category.
+              {relevanceFilter === "irrelevant"
+                ? "אין לידים לא רלוונטיים להצגה."
+                : "אין לידים רלוונטיים להצגה — ייבאו קובץ Excel/CSV עם העמודות name, phone, organization, category."}
             </p>
           ) : (
             <>
               {/* Desktop table */}
-              <table className="hidden w-full min-w-[640px] text-right text-sm md:table">
+              <table className="hidden w-full min-w-[720px] text-right text-sm md:table">
                 <thead>
                   <tr className="border-b border-border text-xs text-muted-foreground">
                     <th className="px-3 py-2 font-semibold">שם</th>
                     <th className="px-3 py-2 font-semibold">טלפון</th>
                     <th className="px-3 py-2 font-semibold">ארגון</th>
                     <th className="px-3 py-2 font-semibold">קטגוריה</th>
+                    <th className="px-3 py-2 font-semibold">הערות</th>
                     <th className="px-3 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
@@ -409,10 +527,30 @@ export function OutreachLeadsView() {
                           {lead.category}
                         </span>
                       </td>
+                      <td className="max-w-[180px] px-3 py-2.5">
+                        {lead.notes?.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => openNotes(lead)}
+                            className="line-clamp-2 text-right text-xs text-muted-foreground hover:text-foreground"
+                            title={lead.notes}
+                          >
+                            {lead.notes}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/60">
+                            —
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5">
                         <LeadActions
                           lead={lead}
                           waHref={waHrefForLead(lead)}
+                          onEditNotes={() => openNotes(lead)}
+                          onToggleWhatsAppBlocked={() =>
+                            void toggleWhatsAppBlocked(lead.id)
+                          }
                           onDelete={() => setDeleteLeadId(lead.id)}
                         />
                       </td>
@@ -439,10 +577,19 @@ export function OutreachLeadsView() {
                         <p className="mt-0.5 text-sm tabular-nums" dir="ltr">
                           {formatPhoneDisplay(lead.phone)}
                         </p>
+                        {lead.notes?.trim() ? (
+                          <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
+                            {lead.notes}
+                          </p>
+                        ) : null}
                       </div>
                       <LeadActions
                         lead={lead}
                         waHref={waHrefForLead(lead)}
+                        onEditNotes={() => openNotes(lead)}
+                        onToggleWhatsAppBlocked={() =>
+                          void toggleWhatsAppBlocked(lead.id)
+                        }
                         onDelete={() => setDeleteLeadId(lead.id)}
                       />
                     </div>
@@ -581,6 +728,60 @@ export function OutreachLeadsView() {
         description="למחוק את הליד מרשימת השיווק?"
         onConfirm={() => void confirmDeleteLead()}
       />
+
+      <Dialog
+        open={Boolean(notesLead)}
+        onOpenChange={(o) => {
+          if (!o) setNotesLead(null)
+        }}
+      >
+        <DialogContent className="rounded-2xl">
+          <DialogHeader className="text-right">
+            <DialogTitle>
+              הערות אחרי שיחה
+              {notesLead ? ` · ${notesLead.name}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="mb-1.5 block text-sm">מה עלה בשיחה</Label>
+              <Textarea
+                rows={6}
+                value={notesDraft}
+                onChange={(e) => setNotesDraft(e.target.value)}
+                placeholder="לדוגמה: לא מעוניינת כרגע, לחזור בעוד חודש…"
+              />
+            </div>
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-border bg-secondary/30 px-3 py-2.5 text-sm">
+              <Checkbox
+                checked={irrelevantDraft}
+                onCheckedChange={(v) => setIrrelevantDraft(v === true)}
+              />
+              <span className="font-medium">לא רלוונטי</span>
+              <span className="text-xs text-muted-foreground">
+                יוסתר מרשימת הרלוונטיים; בייבוא חוזר יישאר לא רלוונטי
+              </span>
+            </label>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button
+              type="button"
+              onClick={() => void saveNotes()}
+              disabled={savingNotes}
+            >
+              {savingNotes ? "שומר…" : "שמירה"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setNotesLead(null)}
+              disabled={savingNotes}
+            >
+              ביטול
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -588,12 +789,19 @@ export function OutreachLeadsView() {
 function LeadActions({
   lead,
   waHref,
+  onEditNotes,
+  onToggleWhatsAppBlocked,
   onDelete,
 }: {
   lead: LeadRow
   waHref: string
+  onEditNotes: () => void
+  onToggleWhatsAppBlocked: () => void
   onDelete: () => void
 }) {
+  const blocked = lead.whatsappBlocked
+  const hasNotes = Boolean(lead.notes?.trim())
+  const isIrrelevant = lead.irrelevant
   return (
     <div className="flex items-center justify-end gap-1">
       <a
@@ -604,16 +812,61 @@ function LeadActions({
       >
         <Phone className="size-4" />
       </a>
-      <a
-        href={waHref}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex size-9 items-center justify-center rounded-xl text-[#25D366] hover:bg-[#25D366]/15"
-        aria-label={`וואטסאפ ל${lead.name}`}
-        title="וואטסאפ"
+      {blocked ? (
+        <span
+          className="flex size-9 cursor-not-allowed items-center justify-center rounded-xl text-muted-foreground/40"
+          aria-label="אין וואטסאפ — התקשרי"
+          title="אין וואטסאפ — התקשרי"
+        >
+          <WhatsAppIcon className="size-5" />
+        </span>
+      ) : (
+        <a
+          href={waHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex size-9 items-center justify-center rounded-xl text-[#25D366] hover:bg-[#25D366]/15"
+          aria-label={`וואטסאפ ל${lead.name}`}
+          title="וואטסאפ"
+        >
+          <WhatsAppIcon className="size-5" />
+        </a>
+      )}
+      <button
+        type="button"
+        className={cn(
+          "flex size-9 items-center justify-center rounded-xl transition-colors",
+          blocked
+            ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
+            : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+        )}
+        onClick={onToggleWhatsAppBlocked}
+        aria-label={blocked ? "שחרור חסימת וואטסאפ" : "סימון ללא וואטסאפ"}
+        aria-pressed={blocked}
+        title={
+          blocked
+            ? "שחרור חסימה — וואטסאפ זמין שוב"
+            : "אין וואטסאפ — השבתת האייקון"
+        }
       >
-        <WhatsAppIcon className="size-5" />
-      </a>
+        <Ban className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        className={cn(
+          "flex size-9 items-center justify-center rounded-xl transition-colors",
+          isIrrelevant
+            ? "bg-slate-500/15 text-slate-700 hover:bg-slate-500/25"
+            : hasNotes
+              ? "bg-amber-500/15 text-amber-800 hover:bg-amber-500/25"
+              : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+        )}
+        onClick={onEditNotes}
+        aria-label="הערות אחרי שיחה"
+        title={isIrrelevant ? "לא רלוונטי · עריכת הערות" : "הערות אחרי שיחה"}
+      >
+        <NotebookPen className="size-3.5" />
+      </button>
       <button
         type="button"
         className="flex size-9 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
