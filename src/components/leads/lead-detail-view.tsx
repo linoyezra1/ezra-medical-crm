@@ -6,6 +6,7 @@ import { useState } from "react"
 import {
   ArrowRight,
   CalendarPlus,
+  ClipboardPaste,
   CreditCard,
   FileSpreadsheet,
   LayoutDashboard,
@@ -13,12 +14,14 @@ import {
   Pencil,
   Phone,
   Send,
+  Upload,
   UserPlus,
   Users,
   Video,
   Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
+import { TraineeImportDialog } from "@/components/clients/trainee-import-dialog"
 import { InstructorAssignmentWidget } from "@/components/instructors/instructor-assignment-widget"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { CollectParticipantsDialog } from "@/components/leads/collect-participants-dialog"
@@ -27,6 +30,7 @@ import { LeadPaymentDialog } from "@/components/leads/lead-payment-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
 import { ParticipantsSection } from "@/components/leads/participants-section"
+import { TextImportModal } from "@/components/leads/text-import-modal"
 import { TrainingSalesSection } from "@/components/leads/training-sales-section"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -47,6 +51,7 @@ import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
 import { isInstructorUnassigned, isOwnerInstructor, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import { computeTrainingProfit, computeTrainingPaymentSummary } from "@/lib/training-profit"
+import type { TraineeImportRow } from "@/lib/trainee-import"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type { Lead } from "@/lib/types"
@@ -68,6 +73,12 @@ export function LeadDetailView({
   const [manualParticipantOpen, setManualParticipantOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [detailTab, setDetailTab] = useState<DetailTab>("home")
+  const [excelImportOpen, setExcelImportOpen] = useState(false)
+  const [textImportOpen, setTextImportOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewRows, setPreviewRows] = useState<TraineeImportRow[] | null>(
+    null,
+  )
 
   if (!lead) {
     return (
@@ -305,6 +316,11 @@ export function LeadDetailView({
               lead={lead}
               active={detailTab === "participants"}
               onCollect={() => setCollectOpen(true)}
+              onExcelImport={() => {
+                setPreviewRows(null)
+                setExcelImportOpen(true)
+              }}
+              onTextImport={() => setTextImportOpen(true)}
             />
           </TabsContent>
 
@@ -319,6 +335,11 @@ export function LeadDetailView({
         open={collectOpen}
         onOpenChange={setCollectOpen}
         onManualParticipant={() => setManualParticipantOpen(true)}
+        onExcelImport={() => {
+          setPreviewRows(null)
+          setExcelImportOpen(true)
+        }}
+        onTextImport={() => setTextImportOpen(true)}
       />
       <ExternalParticipantDialog
         open={manualParticipantOpen}
@@ -332,6 +353,34 @@ export function LeadDetailView({
         lead={lead}
         open={paymentOpen}
         onOpenChange={setPaymentOpen}
+      />
+      <TraineeImportDialog
+        open={excelImportOpen}
+        onOpenChange={setExcelImportOpen}
+        lockedLeadId={lead.id}
+        title="ייבוא משתתפים מאקסל"
+        confirmLabel="אשר וייבא משתתפים"
+      />
+      <TextImportModal
+        open={textImportOpen}
+        onOpenChange={setTextImportOpen}
+        leadId={lead.id}
+        onParsed={(rows) => {
+          setPreviewRows(rows)
+          setPreviewOpen(true)
+        }}
+      />
+      <TraineeImportDialog
+        open={previewOpen}
+        onOpenChange={(o) => {
+          setPreviewOpen(o)
+          if (!o) setPreviewRows(null)
+        }}
+        lockedLeadId={lead.id}
+        initialRows={previewRows}
+        hideFilePicker
+        title="תצוגה מקדימה — ייבוא מטקסט"
+        confirmLabel="אשר וייבא משתתפים"
       />
     </div>
   )
@@ -520,10 +569,14 @@ function ParticipantsTab({
   lead,
   active,
   onCollect,
+  onExcelImport,
+  onTextImport,
 }: {
   lead: Lead
   active: boolean
   onCollect: () => void
+  onExcelImport: () => void
+  onTextImport: () => void
 }) {
   const [exporting, setExporting] = useState(false)
 
@@ -554,7 +607,7 @@ function ParticipantsTab({
           <div className="min-w-0">
             <h2 className="text-sm font-bold">כלי רישום משתתפים</h2>
             <p className="text-xs text-muted-foreground">
-              QR, העתקת קישור, שליחה בוואטסאפ והוספת משתתף ידני
+              QR, ייבוא מאקסל / טקסט, והוספת משתתף ידני
             </p>
           </div>
           {(lead.status === "pending_certificates" ||
@@ -581,6 +634,35 @@ function ParticipantsTab({
           <UserPlus className="size-5" />
           פתח אפשרויות רישום
         </Button>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 gap-2 rounded-xl"
+            onClick={onCollect}
+          >
+            <UserPlus className="size-4" />
+            הוסף משתתף
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 gap-2 rounded-xl"
+            onClick={onExcelImport}
+          >
+            <Upload className="size-4" />
+            ייבוא מאקסל
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 gap-2 rounded-xl"
+            onClick={onTextImport}
+          >
+            <ClipboardPaste className="size-4" />
+            ייבוא מטקסט חופשי
+          </Button>
+        </div>
       </Card>
 
       <ParticipantsSection lead={lead} active={active} />

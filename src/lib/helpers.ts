@@ -48,6 +48,15 @@ export function formatCurrency(n: number): string {
   }).format(n || 0);
 }
 
+/** תצוגת מטבע בשקלים שלמים בלבד (כרטיסיות KPI בדשבורד) */
+export function formatCurrencyWhole(n: number): string {
+  return new Intl.NumberFormat("he-IL", {
+    style: "currency",
+    currency: "ILS",
+    maximumFractionDigits: 0,
+  }).format(Math.round(n || 0));
+}
+
 /** משימה פתוחה — לדשבורד וללוח זמנים (ארכיון נשאר בעמוד המשימות) */
 export function isOpenTask(
   task: Pick<Task, "done"> & {

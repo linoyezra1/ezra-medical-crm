@@ -21,7 +21,7 @@ import { ExternalParticipantDialog } from "@/components/leads/external-participa
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useApp } from "@/lib/store"
-import { formatCurrency, formatDate, isOpenTask } from "@/lib/helpers"
+import { formatCurrencyWhole, formatDate, isOpenTask } from "@/lib/helpers"
 import { computeCurrentMonthRealizedKpi } from "@/lib/profit-history"
 import { computeDashboardKpis } from "@/lib/training-profit"
 import { cn } from "@/lib/utils"
@@ -93,7 +93,7 @@ export function DashboardView() {
           <KpiCard
             icon={Wallet}
             label={`רווח נקי · ${realizedMonth.monthLabel}`}
-            primary={formatCurrency(realizedMonth.netProfit)}
+            primary={formatCurrencyWhole(realizedMonth.netProfit)}
             subtitle={
               <>
                 מתוך{" "}
@@ -116,7 +116,7 @@ export function DashboardView() {
                 <>
                   רווח צפוי:{" "}
                   <span className="font-semibold text-foreground">
-                    {formatCurrency(kpis.booked.expectedNetProfit)}
+                    {formatCurrencyWhole(kpis.booked.expectedNetProfit)}
                   </span>
                 </>
               }
@@ -134,7 +134,7 @@ export function DashboardView() {
                 <>
                   רווח צפוי:{" "}
                   <span className="font-semibold text-foreground">
-                    {formatCurrency(kpis.pipeline.expectedNetProfit)}
+                    {formatCurrencyWhole(kpis.pipeline.expectedNetProfit)}
                   </span>
                 </>
               }

@@ -55,6 +55,18 @@ export function InstructorReportSaleDialog({
     [inventory, itemId],
   )
 
+  const selectItems = useMemo(
+    () =>
+      inventory.map((o) => ({
+        value: o.id,
+        label:
+          o.sellingPrice > 0
+            ? `${o.name} · ${formatCurrency(o.sellingPrice)}`
+            : o.name,
+      })),
+    [inventory],
+  )
+
   const reset = () => {
     setItemId("")
     setQty("1")
@@ -121,19 +133,17 @@ export function InstructorReportSaleDialog({
               </p>
             ) : (
               <Select
-                value={itemId || undefined}
+                items={selectItems}
+                value={itemId || null}
                 onValueChange={onSelectItem}
               >
-                <SelectTrigger className="h-12">
+                <SelectTrigger className="h-12 w-full">
                   <SelectValue placeholder="בחר פריט מורשה" />
                 </SelectTrigger>
                 <SelectContent>
-                  {inventory.map((o) => (
-                    <SelectItem key={o.id} value={o.id}>
-                      {o.name}
-                      {o.sellingPrice > 0
-                        ? ` · ${formatCurrency(o.sellingPrice)}`
-                        : ""}
+                  {selectItems.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

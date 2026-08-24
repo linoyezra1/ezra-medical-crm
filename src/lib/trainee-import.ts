@@ -335,3 +335,86 @@ export const ASSIGNABLE_LEAD_DB_STATUSES = [
 export function isLeadAssignableForTrainee(status: string): boolean {
   return (ASSIGNABLE_LEAD_STATUSES as readonly string[]).includes(status)
 }
+
+const ID_IN_LINE_RE = /\b(\d{7,9})\b/
+const PHONE_IN_LINE_RE = /05\d-?\d{7}/
+const EMAIL_IN_LINE_RE =
+  /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
+
+/**
+ * ייבוא חכם מטקסט חופשי — שורה = שם + ת״ז (+ טלפון/אימייל אופציונלי).
+ * מדלג על שורות בלי שם ות״ז תקינים.
+ */
+export function parseParticipantsFromFreeText(
+  raw: string,
+  opts?: { leadId?: string },
+): TraineeImportRow[] {
+  const leadId = opts?.leadId?.trim() || ""
+  const lines = raw.split(/\r?\n/)
+  const rows: TraineeImportRow[] = []
+  let idx = 0
+
+  for (const line of lines) {
+    const trimmed = line.replace(/\t/g, " ").trim()
+    if (!trimmed) continue
+
+    const idMatch = trimmed.match(ID_IN_LINE_RE)
+    if (!idMatch?.[1]) continue
+    const idNumber = idMatch[1]
+
+    const phoneMatch = trimmed.match(PHONE_IN_LINE_RE)
+    const phone = phoneMatch?.[0]?.replace(/-/g, "") || ""
+
+    const emailMatch = trimmed.match(EMAIL_IN_LINE_RE)
+    const email = emailMatch?.[0] || ""
+
+    let namePart = trimmed
+    // הסרת ת״ז והערות בסוגריים אחריה (למשל מספר ביטוח לאומי)
+    namePart = namePart.replace(
+      new RegExp(`${idNumber}\\s*\\([^)]*\\)?`, "g"),
+      " ",
+    )
+    namePart = namePart.replace(new RegExp(idNumber, "g"), " ")
+    if (phoneMatch?.[0]) {
+      namePart = namePart.replace(phoneMatch[0], " ")
+    }
+    if (email) {
+      namePart = namePart.replace(email, " ")
+    }
+    namePart = namePart
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/[,;|]+/g, " ")
+      .replace(/[-–—]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    if (!namePart) continue
+
+    const base: Omit<TraineeImportRow, "errors" | "warnings" | "key"> = {
+      fullName: namePart,
+      idNumber,
+      phone,
+      email,
+      organizerName: "",
+      trainingDate: "",
+      courseType: "",
+      satisfaction: "",
+      feedback: "",
+      interestedInFirstAidKit: "",
+      leadId,
+    }
+    const { errors, warnings } = validateImportRow(base)
+    // בייבוא מטקסט — חובה גם ת״ז (לא רק אזהרה)
+    if (!idNumber.trim()) continue
+    if (errors.length > 0) continue
+
+    rows.push({
+      key: `text-${Date.now()}-${idx++}`,
+      ...base,
+      errors,
+      warnings,
+    })
+  }
+
+  return rows
+}

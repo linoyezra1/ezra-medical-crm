@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ArrowRight, Check, Copy, Link2, MessageCircle, QrCode, Star, UserPlus } from "lucide-react"
+import { ArrowRight, Check, ClipboardPaste, Copy, Link2, MessageCircle, QrCode, Star, Upload, UserPlus } from "lucide-react"
 import QRCode from "qrcode"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,8 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onManualParticipant?: () => void
+  onExcelImport?: () => void
+  onTextImport?: () => void
 }
 
 export function CollectParticipantsDialog({
@@ -30,6 +32,8 @@ export function CollectParticipantsDialog({
   open,
   onOpenChange,
   onManualParticipant,
+  onExcelImport,
+  onTextImport,
 }: Props) {
   const { updateLead, settings } = useApp()
   const [step, setStep] = useState<"choose" | "detail">("choose")
@@ -217,6 +221,24 @@ export function CollectParticipantsDialog({
               onClick={() => {
                 onOpenChange(false)
                 onManualParticipant?.()
+              }}
+            />
+            <OptionButton
+              icon={Upload}
+              title="ייבוא מאקסל"
+              desc="העלאת קובץ Excel / CSV ותצוגה מקדימה"
+              onClick={() => {
+                onOpenChange(false)
+                onExcelImport?.()
+              }}
+            />
+            <OptionButton
+              icon={ClipboardPaste}
+              title="ייבוא מטקסט חופשי"
+              desc="הדבקת רשימת שמות ות״ז מכל מקור"
+              onClick={() => {
+                onOpenChange(false)
+                onTextImport?.()
               }}
             />
           </div>
