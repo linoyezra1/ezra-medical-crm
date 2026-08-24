@@ -176,12 +176,6 @@ function ParticipantMobileKebab({
             {p.isLead ? (
               <p className="text-xs font-medium text-violet-700">★ מסומן כליד</p>
             ) : null}
-            {p.feedback?.trim() ? (
-              <p className="mt-1 rounded-lg bg-amber-50 px-2.5 py-2 text-sm font-normal text-amber-950">
-                <span className="font-semibold">הערות: </span>
-                {p.feedback.trim()}
-              </p>
-            ) : null}
           </SheetHeader>
           <div className="flex max-h-[min(70dvh,480px)] flex-col gap-1 overflow-y-auto overscroll-contain p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {p.phone?.trim() ? (
@@ -321,7 +315,6 @@ export function ParticipantsSection({
     idNumber: "",
     phone: "",
     email: "",
-    feedback: "",
     isExternal: false,
     isLead: false,
     courseType: "",
@@ -605,7 +598,6 @@ export function ParticipantsSection({
       idNumber: p.idNumber,
       phone: p.phone || "",
       email: p.email || "",
-      feedback: p.feedback || "",
       isExternal: Boolean(p.isExternal),
       isLead: Boolean(p.isLead),
       courseType: inList
@@ -661,7 +653,6 @@ export function ParticipantsSection({
       idNumber: editForm.idNumber,
       phone: editForm.phone,
       email: editForm.email,
-      feedback: editForm.feedback,
       isExternal: editForm.isExternal,
       isLead: editForm.isLead,
       courseType,
@@ -1269,12 +1260,6 @@ export function ParticipantsSection({
                       ) : null}
                       <p>טלפון: {p.phone || "—"}</p>
                       <p>דוא״ל: {p.email || "—"}</p>
-                      {p.feedback?.trim() ? (
-                        <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-sm text-amber-950">
-                          <span className="font-semibold">הערות: </span>
-                          {p.feedback.trim()}
-                        </p>
-                      ) : null}
                       {p.isLead ? (
                         <p className="font-medium text-violet-700">★ מסומן כליד</p>
                       ) : null}
@@ -1334,16 +1319,6 @@ export function ParticipantsSection({
               placeholder="דוא״ל"
               dir="ltr"
             />
-            <div>
-              <Label className="mb-1.5 block text-sm">הערות</Label>
-              <Input
-                value={editForm.feedback}
-                onChange={(e) =>
-                  setEditForm((f) => ({ ...f, feedback: e.target.value }))
-                }
-                placeholder="הערות"
-              />
-            </div>
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox
                 checked={editForm.isExternal}

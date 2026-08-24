@@ -56,7 +56,6 @@ const EMPTY_FORM = {
   courseCategory: "",
   courseCategoryOther: "",
   agreedPrice: "",
-  feedback: "",
 }
 
 const CATEGORY_OTHER = "אחר"
@@ -152,7 +151,6 @@ export function ExternalParticipantDialog({
         email: form.email,
         isExternal: true,
         isLead: form.isLead,
-        feedback: form.feedback,
       })
     } else {
       res = await addExternalParticipant({
@@ -163,7 +161,6 @@ export function ExternalParticipantDialog({
         email: form.email,
         isExternal: false,
         isLead: form.isLead,
-        feedback: form.feedback,
         agreedPrice: form.isLead && form.agreedPrice
           ? Number(form.agreedPrice)
           : undefined,
@@ -282,16 +279,6 @@ export function ExternalParticipantDialog({
             />
             סמן כליד
           </label>
-          <div>
-            <Label className="mb-1.5 block text-sm">הערות</Label>
-            <Input
-              value={form.feedback}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, feedback: e.target.value }))
-              }
-              placeholder="הערות"
-            />
-          </div>
           {form.isExternal ? (
             <>
               <div>

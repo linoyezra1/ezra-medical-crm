@@ -19,6 +19,7 @@ import {
   deleteExpense,
   deleteScheduleEvent,
   removeParticipant,
+  updateExpense,
   updateLead as updateLeadAction,
   updateSettings as updateSettingsAction,
 } from "@/lib/actions";
@@ -162,15 +163,32 @@ export function AppProvider({
 
   const syncExpenseDiffs = useCallback(
     async (id: string, current: Lead, nextExpenses: Lead["expenses"]) => {
-      const prevIds = new Set(current.expenses.map((e) => e.id));
+      const prevById = new Map(current.expenses.map((e) => [e.id, e]));
       const nextIds = new Set(nextExpenses.map((e) => e.id));
-      const added = nextExpenses.filter((e) => !prevIds.has(e.id));
+      const added = nextExpenses.filter((e) => !prevById.has(e.id));
       const removed = current.expenses.filter((e) => !nextIds.has(e.id));
+      const updated = nextExpenses.filter((e) => {
+        const prev = prevById.get(e.id);
+        if (!prev) return false;
+        return (
+          prev.type !== e.type ||
+          prev.amount !== e.amount ||
+          prev.hasReceipt !== e.hasReceipt
+        );
+      });
       for (const e of added) {
         const res = await addExpense(id, {
           type: e.type,
           amount: e.amount,
           notes: e.hasReceipt ? "קבלה מצורפת" : undefined,
+        });
+        if (!res.ok) toast.error(res.error);
+      }
+      for (const e of updated) {
+        const res = await updateExpense(e.id, id, {
+          type: e.type,
+          amount: e.amount,
+          notes: e.hasReceipt ? "קבלה מצורפת" : null,
         });
         if (!res.ok) toast.error(res.error);
       }

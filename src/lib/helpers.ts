@@ -402,6 +402,38 @@ export function collectLeadCategoryOptions(
   return uniqueSorted([...fromCatalog, ...fromDb]);
 }
 
+/** סוגי הוצאה קבועים + «אחר» */
+export const EXPENSE_TYPE_PRESETS = ["דלק", "מדריך", "אח"] as const
+export const EXPENSE_TYPE_OTHER = "אחר"
+
+/**
+ * רשימת סוגי הוצאה לדרופדאון — כמו קטגוריה:
+ * presets + סוגים מותאמים שנשמרו בעבר מ־«אחר».
+ */
+export function collectExpenseTypeOptions(
+  leads: Array<{ expenses?: Array<{ type: string }> }>,
+): string[] {
+  const presetSet = new Set<string>([
+    ...EXPENSE_TYPE_PRESETS,
+    EXPENSE_TYPE_OTHER,
+    "instructor_fee",
+    "instructor",
+  ])
+  const custom: string[] = []
+  for (const lead of leads) {
+    for (const e of lead.expenses || []) {
+      const t = (e.type || "").trim()
+      if (!t || presetSet.has(t)) continue
+      custom.push(t)
+    }
+  }
+  return [
+    ...EXPENSE_TYPE_PRESETS,
+    ...uniqueSorted(custom),
+    EXPENSE_TYPE_OTHER,
+  ]
+}
+
 export function uid(prefix = "id"): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }

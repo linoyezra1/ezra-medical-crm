@@ -189,7 +189,7 @@ export function InstructorTrainingParticipantsView({
 
         <Card className="p-3 text-xs text-muted-foreground">
           מוצגים רק משתתפים שמקורם ב-Wix עבור הדרכה זו ({wixParticipants.length}
-          ). לחצו על שם המודרך לפתיחת פרטים ומשוב.
+          ). לחצו על שם המודרך לפתיחת פרטים.
         </Card>
 
         {loading && wixParticipants.length === 0 ? (
@@ -216,11 +216,6 @@ export function InstructorTrainingParticipantsView({
                       <p className="truncate text-xs text-muted-foreground">
                         {p.phone || "—"} · {p.idNumber || "—"}
                       </p>
-                      {p.feedback?.trim() ? (
-                        <p className="mt-1 line-clamp-1 text-[11px] text-amber-800">
-                          משוב: {p.feedback.trim()}
-                        </p>
-                      ) : null}
                     </div>
                     <span className="rounded bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
                       Wix
@@ -298,12 +293,6 @@ export function InstructorTrainingParticipantsView({
                   <p className="font-medium">{selected.organizerName.trim()}</p>
                 </div>
               ) : null}
-              <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-amber-950">
-                <p className="text-xs font-semibold text-amber-800">משוב</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">
-                  {selected.feedback?.trim() || "לא נרשם משוב"}
-                </p>
-              </div>
             </div>
           ) : null}
         </SheetContent>

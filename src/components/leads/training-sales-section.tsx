@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Link2, Minus, Plus, Trash2 } from "lucide-react"
+import { CreditCard, Link2, Minus, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -22,14 +23,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { addTrainingSale, deleteTrainingSale } from "@/lib/actions"
+import {
+  addTrainingSale,
+  deleteTrainingSale,
+  recordTrainingSalePayment,
+  updateTrainingSale,
+} from "@/lib/actions"
 import { formatCurrency } from "@/lib/helpers"
 import {
   PAYMENT_METHODS,
   TRAINING_SALE_PENDING_PAYMENT,
 } from "@/lib/payment"
 import { useApp } from "@/lib/store"
-import type { Lead } from "@/lib/types"
+import type { Lead, TrainingSale } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 function costOf(item: { costPrice: number; sellingPrice: number }) {
   return Number(item.costPrice) || Number(item.sellingPrice) || 0
@@ -51,6 +58,7 @@ export function TrainingSalesSection({
   const sales = lead.trainingSales || []
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingSale, setEditingSale] = useState<TrainingSale | null>(null)
   const [salePrice, setSalePrice] = useState("")
   const [itemId, setItemId] = useState<string>("")
   const [qty, setQty] = useState("1")
@@ -61,6 +69,12 @@ export function TrainingSalesSection({
   const [saving, setSaving] = useState(false)
   const [deleteSaleId, setDeleteSaleId] = useState<string | null>(null)
   const [deletingSale, setDeletingSale] = useState(false)
+
+  const [paySale, setPaySale] = useState<TrainingSale | null>(null)
+  const [payMethod, setPayMethod] = useState("bit")
+  const [payReceipt, setPayReceipt] = useState(false)
+  const [payAmount, setPayAmount] = useState("")
+  const [paySaving, setPaySaving] = useState(false)
 
   const selectItems = useMemo(
     () =>
@@ -80,14 +94,14 @@ export function TrainingSalesSection({
   const qtyNum = Math.max(1, Math.floor(Number(qty) || 1))
   const unitPrice = Number(salePrice) || 0
   const lineTotal = unitPrice * qtyNum
+  const isEdit = Boolean(editingSale)
 
-  // בבחירת פריט — טעינת מחיר מכירה אחרון שנשמר עליו
   useEffect(() => {
-    if (!selected) return
+    if (!selected || isEdit) return
     if (selected.sellingPrice > 0) {
       setSalePrice(String(selected.sellingPrice))
     }
-  }, [selected?.id])
+  }, [selected?.id, isEdit])
 
   const totalSale = sales.reduce(
     (s, x) => s + x.unitSellingPrice * x.quantity,
@@ -99,8 +113,12 @@ export function TrainingSalesSection({
     0,
   )
   const profit = totalSale - totalCost - totalCommissions
+  const pendingCount = sales.filter(
+    (s) => s.paymentStatus === TRAINING_SALE_PENDING_PAYMENT,
+  ).length
 
   const resetForm = () => {
+    setEditingSale(null)
     setItemId("")
     setQty("1")
     setSalePrice("")
@@ -110,16 +128,34 @@ export function TrainingSalesSection({
     setReceiptIssued(false)
   }
 
-  const openModal = () => {
+  const openAddModal = () => {
     resetForm()
-    // ברירת מחדל: מחיר מהמכירה האחרונה בהדרכה (אם אין פריט נבחר)
     if (sales.length) {
       setSalePrice(String(sales[sales.length - 1].unitSellingPrice ?? ""))
     }
     setModalOpen(true)
   }
 
-  const add = async () => {
+  const openEditModal = (sale: TrainingSale) => {
+    setEditingSale(sale)
+    setItemId(sale.inventoryItemId)
+    setQty(String(sale.quantity))
+    setSalePrice(String(sale.unitSellingPrice))
+    setPaymentMethod(sale.paymentMethod || "bit")
+    setUnpaid(sale.paymentStatus === TRAINING_SALE_PENDING_PAYMENT)
+    setParticipantId(sale.participantId || "")
+    setReceiptIssued(Boolean(sale.receiptIssued))
+    setModalOpen(true)
+  }
+
+  const openPayModal = (sale: TrainingSale) => {
+    setPaySale(sale)
+    setPayMethod(sale.paymentMethod || "bit")
+    setPayReceipt(Boolean(sale.receiptIssued))
+    setPayAmount(String(sale.unitSellingPrice * sale.quantity))
+  }
+
+  const saveSale = async () => {
     if (!itemId) {
       toast.error("יש לבחור פריט")
       return
@@ -134,22 +170,61 @@ export function TrainingSalesSection({
       return
     }
     setSaving(true)
-    const res = await addTrainingSale(lead.id, itemId, qtyNum, price, {
+    const payload = {
       unpaid,
       paymentMethod: unpaid ? null : paymentMethod,
       participantId: participantId || null,
       receiptIssued,
-    })
+    }
+    const res = editingSale
+      ? await updateTrainingSale(editingSale.id, lead.id, {
+          inventoryItemId: itemId,
+          quantity: qtyNum,
+          unitSellingPrice: price,
+          ...payload,
+        })
+      : await addTrainingSale(lead.id, itemId, qtyNum, price, payload)
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
     toast.success(
-      unpaid ? "המכירה נוספה — נוצרה משימת מעקב גבייה" : "המכירה נוספה",
+      editingSale
+        ? "המכירה עודכנה"
+        : unpaid
+          ? "המכירה נוספה — נוצרה משימת מעקב גבייה"
+          : "המכירה נוספה",
     )
     setModalOpen(false)
     resetForm()
+    refresh()
+  }
+
+  const savePayment = async () => {
+    if (!paySale) return
+    if (!payMethod) {
+      toast.error("יש לבחור איך שולם")
+      return
+    }
+    setPaySaving(true)
+    const totalRaw = Number(payAmount)
+    const unitFromTotal =
+      Number.isFinite(totalRaw) && totalRaw >= 0 && paySale.quantity > 0
+        ? totalRaw / paySale.quantity
+        : undefined
+    const res = await recordTrainingSalePayment(paySale.id, lead.id, {
+      paymentMethod: payMethod,
+      receiptIssued: payReceipt,
+      unitSellingPrice: unitFromTotal,
+    })
+    setPaySaving(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success("תשלום על הציוד נרשם")
+    setPaySale(null)
     refresh()
   }
 
@@ -172,7 +247,9 @@ export function TrainingSalesSection({
       title="מכירות ציוד בהדרכה"
       subtitle={
         sales.length
-          ? `${sales.length} מכירות · רווח ${formatCurrency(profit)}`
+          ? `${sales.length} מכירות · רווח ${formatCurrency(profit)}${
+              pendingCount ? ` · ${pendingCount} ממתינים לתשלום` : ""
+            }`
           : "אין מכירות עדיין"
       }
       defaultOpen={alwaysOpen}
@@ -182,7 +259,7 @@ export function TrainingSalesSection({
           type="button"
           size="sm"
           className="h-9 gap-1.5 rounded-xl px-3"
-          onClick={openModal}
+          onClick={openAddModal}
           disabled={!inventory.length}
         >
           <Plus className="size-4" />
@@ -211,7 +288,7 @@ export function TrainingSalesSection({
                   <th className="px-3 py-2 font-semibold">מחיר יח׳</th>
                   <th className="px-3 py-2 font-semibold">תשלום</th>
                   <th className="px-3 py-2 font-semibold">סה״כ</th>
-                  <th className="w-10 px-2 py-2" />
+                  <th className="w-[7.5rem] px-2 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -223,11 +300,12 @@ export function TrainingSalesSection({
                     <tr key={s.id} className="border-t border-border">
                       <td className="px-3 py-2.5 font-medium">
                         <div>{s.itemName || "פריט"}</div>
-                        {s.isInstructorReported && s.reportedByInstructorName && (
-                          <span className="mt-0.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
-                            🏷️ דיווח מדריך: {s.reportedByInstructorName}
-                          </span>
-                        )}
+                        {s.isInstructorReported &&
+                          s.reportedByInstructorName && (
+                            <span className="mt-0.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+                              🏷️ דיווח מדריך: {s.reportedByInstructorName}
+                            </span>
+                          )}
                       </td>
                       <td className="px-3 py-2.5" dir="ltr">
                         {s.quantity}
@@ -248,14 +326,48 @@ export function TrainingSalesSection({
                         {formatCurrency(sale)}
                       </td>
                       <td className="px-2 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setDeleteSaleId(s.id)}
-                          className="flex size-8 items-center justify-center rounded-lg text-destructive"
-                          aria-label="מחק"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => openPayModal(s)}
+                            className={cn(
+                              "flex size-8 items-center justify-center rounded-lg",
+                              pending
+                                ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                                : "text-primary hover:bg-primary/10",
+                            )}
+                            aria-label={
+                              pending
+                                ? "רישום תשלום על ציוד"
+                                : "עדכון תשלום על ציוד"
+                            }
+                            title={
+                              pending
+                                ? "רישום תשלום על ציוד"
+                                : "עדכון תשלום על ציוד"
+                            }
+                          >
+                            <CreditCard className="size-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(s)}
+                            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+                            aria-label="עריכת מכירה"
+                            title="עריכת מכירה"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteSaleId(s.id)}
+                            className="flex size-8 items-center justify-center rounded-lg text-destructive"
+                            aria-label="מחק"
+                            title="מחיקה"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -295,7 +407,9 @@ export function TrainingSalesSection({
       >
         <DialogContent className="max-w-[calc(100%-2rem)] gap-5 rounded-2xl p-5 sm:max-w-md md:max-w-lg">
           <DialogHeader className="text-right">
-            <DialogTitle className="text-lg font-bold">הוספת מכירה</DialogTitle>
+            <DialogTitle className="text-lg font-bold">
+              {isEdit ? "עריכת מכירה" : "הוספת מכירה"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -331,14 +445,15 @@ export function TrainingSalesSection({
                   <button
                     type="button"
                     className="flex size-9 items-center justify-center rounded-lg hover:bg-secondary"
-                    onClick={() =>
-                      setQty(String(Math.max(1, qtyNum - 1)))
-                    }
+                    onClick={() => setQty(String(Math.max(1, qtyNum - 1)))}
                     aria-label="הקטן כמות"
                   >
                     <Minus className="size-4" />
                   </button>
-                  <span className="flex-1 text-center font-semibold tabular-nums" dir="ltr">
+                  <span
+                    className="flex-1 text-center font-semibold tabular-nums"
+                    dir="ltr"
+                  >
                     {qtyNum}
                   </span>
                   <button
@@ -441,12 +556,85 @@ export function TrainingSalesSection({
 
             <Button
               className="h-12 w-full rounded-2xl text-base font-bold"
-              onClick={() => void add()}
+              onClick={() => void saveSale()}
               disabled={saving || !inventory.length}
             >
-              {saving ? "שומר…" : "אישור והוספה"}
+              {saving ? "שומר…" : isEdit ? "שמירת שינויים" : "אישור והוספה"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(paySale)}
+        onOpenChange={(open) => {
+          if (!open) setPaySale(null)
+        }}
+      >
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader className="text-right">
+            <DialogTitle>רישום תשלום על ציוד</DialogTitle>
+            {paySale ? (
+              <p className="text-xs text-muted-foreground">
+                {paySale.itemName || "פריט"} · כמות {paySale.quantity}
+              </p>
+            ) : null}
+          </DialogHeader>
+          {paySale ? (
+            <div className="space-y-3">
+              <div>
+                <Label className="mb-1.5 block text-sm">סכום שנגבה (₪)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  dir="ltr"
+                  className="h-11"
+                />
+              </div>
+              <div>
+                <Label className="mb-1.5 block text-sm">אופן תשלום</Label>
+                <select
+                  value={payMethod}
+                  onChange={(e) => setPayMethod(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                >
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={payReceipt}
+                  onCheckedChange={(v) => setPayReceipt(Boolean(v))}
+                />
+                הופקה קבלה
+              </label>
+              <DialogFooter className="flex-row gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setPaySale(null)}
+                >
+                  ביטול
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1"
+                  disabled={paySaving}
+                  onClick={() => void savePayment()}
+                >
+                  {paySaving ? "שומר…" : "שמירת תשלום"}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 

@@ -1685,9 +1685,9 @@ export type PublicParticipantInput = {
   courseDate: string;
   email: string;
   phone: string;
-  satisfaction: string;
-  feedback: string;
-  kitInterest: string;
+  satisfaction?: string;
+  feedback?: string;
+  kitInterest?: string;
   shippingCity?: string;
   shippingStreet?: string;
   shippingHouseNo?: string;
@@ -1709,9 +1709,6 @@ export async function submitPublicParticipant(
   }
   if (!data.email?.trim() || !data.phone?.trim()) {
     return { ok: false, error: "דוא״ל וטלפון הם שדות חובה" };
-  }
-  if (!data.satisfaction?.trim() || !data.kitInterest?.trim()) {
-    return { ok: false, error: "יש לבחור שביעות רצון והתעניינות בתיק" };
   }
   if (!data.courseDate?.trim()) {
     return { ok: false, error: "תאריך ביצוע הקורס הוא שדה חובה" };
@@ -1741,9 +1738,9 @@ export async function submitPublicParticipant(
     courseDate: data.courseDate.trim(),
     email: data.email.trim(),
     phone: data.phone.trim(),
-    satisfaction: data.satisfaction.trim(),
+    satisfaction: data.satisfaction?.trim() || null,
     feedback: data.feedback?.trim() || null,
-    kitInterest: data.kitInterest.trim(),
+    kitInterest: data.kitInterest?.trim() || null,
     shippingCity: data.shippingCity?.trim() || null,
     shippingStreet: data.shippingStreet?.trim() || null,
     shippingHouseNo: data.shippingHouseNo?.trim() || null,
@@ -3069,8 +3066,200 @@ export async function deleteTrainingSale(
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/dashboard");
   revalidatePath("/equipment");
+  revalidatePath("/payment-history");
   revalidatePath("/");
   return { ok: true, data: { id } };
+}
+
+/** עדכון מכירת ציוד קיימת (כמות / מחיר / פריט / תשלום) */
+export async function updateTrainingSale(
+  id: string,
+  leadId: string,
+  input: {
+    inventoryItemId: string
+    quantity: number
+    unitSellingPrice: number
+    unpaid?: boolean
+    paymentMethod?: string | null
+    participantId?: string | null
+    receiptIssued?: boolean
+  },
+): Promise<ActionResult<{ id: string }>> {
+  const existing = await prisma.trainingSale.findUnique({ where: { id } })
+  if (!existing) return { ok: false, error: "המכירה לא נמצאה" }
+  if (existing.leadId && existing.leadId !== leadId) {
+    return { ok: false, error: "המכירה לא שייכת להדרכה זו" }
+  }
+
+  const qty = Math.max(1, Math.floor(Number(input.quantity) || 0))
+  if (!qty) return { ok: false, error: "כמות חייבת להיות לפחות 1" }
+
+  const unpaid = Boolean(input.unpaid)
+  const paymentMethod = input.paymentMethod?.trim() || null
+  if (!unpaid && !paymentMethod) {
+    return { ok: false, error: "יש לבחור איך שולם" }
+  }
+  const unitSell = Number(input.unitSellingPrice)
+  if (!Number.isFinite(unitSell) || unitSell < 0) {
+    return { ok: false, error: "יש להזין סכום / עלות" }
+  }
+
+  const item = await prisma.inventoryItem.findUnique({
+    where: { id: input.inventoryItemId },
+  })
+  if (!item) return { ok: false, error: "הפריט לא נמצא במלאי" }
+
+  const unitCost = Number(item.costPrice) || Number(item.sellingPrice) || 0
+  const wasPending = existing.paymentStatus === TRAINING_SALE_PENDING_PAYMENT
+  const nextStatus = unpaid
+    ? TRAINING_SALE_PENDING_PAYMENT
+    : TRAINING_SALE_PAID
+
+  // התאמת מלאי לפי שינוי פריט/כמות
+  if (existing.inventoryItemId !== input.inventoryItemId) {
+    await applyInventorySaleDelta(
+      existing.inventoryItemId,
+      existing.quantity,
+      -1,
+    )
+    await applyInventorySaleDelta(input.inventoryItemId, qty, 1)
+  } else if (existing.quantity !== qty) {
+    const delta = qty - existing.quantity
+    if (delta !== 0) {
+      await applyInventorySaleDelta(
+        existing.inventoryItemId,
+        Math.abs(delta),
+        delta > 0 ? 1 : -1,
+      )
+    }
+  }
+
+  await prisma.inventoryItem.update({
+    where: { id: input.inventoryItemId },
+    data: { sellingPrice: unitSell },
+  })
+
+  await prisma.trainingSale.update({
+    where: { id },
+    data: {
+      inventoryItemId: input.inventoryItemId,
+      quantity: qty,
+      unitSellingPrice: unitSell,
+      unitCostPrice: unitCost,
+      paymentMethod: unpaid ? null : paymentMethod,
+      paymentStatus: nextStatus,
+      participantId: input.participantId || null,
+      receiptIssued: Boolean(input.receiptIssued),
+    },
+  })
+
+  // מעקב גבייה: יצירה כשעבר ללא שולם; סגירה כששולם
+  if (!wasPending && unpaid && leadId) {
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: {
+        fullName: true,
+        courseType: true,
+        courseTypeOther: true,
+      },
+    })
+    const productName = item.name?.trim() || "פריט"
+    const totalAmount = unitSell * qty
+    await prisma.followUpTask.create({
+      data: {
+        leadId,
+        title: unpaidTrainingSaleTaskTitle(productName, totalAmount),
+        assignee: "מכירות",
+        notes: unpaidTrainingSaleTaskNotes({
+          productName,
+          totalAmount,
+          trainingName: formatCourseTypeLabel(lead?.courseType, {
+            other: lead?.courseTypeOther,
+          }),
+          clientName: lead?.fullName?.trim() || "",
+        }),
+      },
+    })
+    revalidatePath("/calendar")
+  } else if (wasPending && !unpaid) {
+    await prisma.followUpTask.updateMany({
+      where: {
+        leadId,
+        completed: false,
+        title: { startsWith: "מעקב גביית תשלום" },
+      },
+      data: { completed: true },
+    })
+    revalidatePath("/calendar")
+  }
+
+  revalidatePath(`/leads/${leadId}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/equipment")
+  revalidatePath("/payment-history")
+  revalidatePath("/instructor/dashboard")
+  revalidatePath("/")
+  return { ok: true, data: { id } }
+}
+
+/** רישום / עדכון תשלום על מכירת ציוד */
+export async function recordTrainingSalePayment(
+  id: string,
+  leadId: string,
+  input: {
+    paymentMethod: string
+    receiptIssued?: boolean
+    unitSellingPrice?: number
+  },
+): Promise<ActionResult<{ id: string }>> {
+  const existing = await prisma.trainingSale.findUnique({
+    where: { id },
+    include: { inventoryItem: { select: { name: true } } },
+  })
+  if (!existing) return { ok: false, error: "המכירה לא נמצאה" }
+  if (existing.leadId && existing.leadId !== leadId) {
+    return { ok: false, error: "המכירה לא שייכת להדרכה זו" }
+  }
+
+  const paymentMethod = input.paymentMethod?.trim()
+  if (!paymentMethod) {
+    return { ok: false, error: "יש לבחור איך שולם" }
+  }
+
+  const unitSell =
+    input.unitSellingPrice != null && Number.isFinite(Number(input.unitSellingPrice))
+      ? Math.max(0, Number(input.unitSellingPrice))
+      : existing.unitSellingPrice
+
+  const wasPending = existing.paymentStatus === TRAINING_SALE_PENDING_PAYMENT
+
+  await prisma.trainingSale.update({
+    where: { id },
+    data: {
+      paymentMethod,
+      paymentStatus: TRAINING_SALE_PAID,
+      receiptIssued: Boolean(input.receiptIssued),
+      unitSellingPrice: unitSell,
+    },
+  })
+
+  if (wasPending) {
+    await prisma.followUpTask.updateMany({
+      where: {
+        leadId,
+        completed: false,
+        title: { startsWith: "מעקב גביית תשלום" },
+      },
+      data: { completed: true },
+    })
+    revalidatePath("/calendar")
+  }
+
+  revalidatePath(`/leads/${leadId}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/payment-history")
+  revalidatePath("/")
+  return { ok: true, data: { id } }
 }
 
 export async function removeParticipant(id: string, leadId: string) {
@@ -3180,6 +3369,31 @@ export async function addExpense(
       type: data.type,
       amount: data.amount,
       notes: data.notes || null,
+    },
+  });
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/dashboard");
+  return { ok: true as const };
+}
+
+export async function updateExpense(
+  id: string,
+  leadId: string,
+  data: { type: string; amount: number; notes?: string | null },
+) {
+  if (!data.type?.trim() || !data.amount || data.amount <= 0) {
+    return { ok: false as const, error: "סוג וסכום חיובי הם שדות חובה" };
+  }
+  const existing = await prisma.expense.findUnique({ where: { id } });
+  if (!existing || existing.leadId !== leadId) {
+    return { ok: false as const, error: "ההוצאה לא נמצאה" };
+  }
+  await prisma.expense.update({
+    where: { id },
+    data: {
+      type: data.type.trim(),
+      amount: data.amount,
+      notes: data.notes?.trim() || null,
     },
   });
   revalidatePath(`/leads/${leadId}`);

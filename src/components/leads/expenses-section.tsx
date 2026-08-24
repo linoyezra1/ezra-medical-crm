@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, Receipt, Trash2 } from "lucide-react"
+import { useMemo, useState } from "react"
+import { Pencil, Plus, Receipt, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -15,11 +15,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { formatCurrency, uid } from "@/lib/helpers"
+import {
+  collectExpenseTypeOptions,
+  EXPENSE_TYPE_OTHER,
+  EXPENSE_TYPE_PRESETS,
+  formatCurrency,
+  uid,
+} from "@/lib/helpers"
 import { useApp } from "@/lib/store"
-import type { Lead } from "@/lib/types"
-
-const EXPENSE_PRESETS = ["דלק", "מדריך", "אח", "אחר"] as const
+import type { Expense, Lead } from "@/lib/types"
 
 export function ExpensesSection({
   lead,
@@ -28,44 +32,89 @@ export function ExpensesSection({
   lead: Lead
   alwaysOpen?: boolean
 }) {
-  const { updateLead } = useApp()
-  const [adding, setAdding] = useState(false)
-  const [preset, setPreset] = useState<string>(EXPENSE_PRESETS[0])
+  const { updateLead, leads } = useApp()
+  const [formOpen, setFormOpen] = useState(false)
+  const [editing, setEditing] = useState<Expense | null>(null)
+  const [preset, setPreset] = useState<string>(EXPENSE_TYPE_PRESETS[0])
   const [otherLabel, setOtherLabel] = useState("")
   const [amount, setAmount] = useState("")
   const [hasReceipt, setHasReceipt] = useState(false)
 
   const total = lead.expenses.reduce((s, e) => s + e.amount, 0)
 
-  const add = () => {
+  const typeOptions = useMemo(
+    () => collectExpenseTypeOptions(leads),
+    [leads],
+  )
+
+  const resetForm = () => {
+    setEditing(null)
+    setPreset(EXPENSE_TYPE_PRESETS[0])
+    setOtherLabel("")
+    setAmount("")
+    setHasReceipt(false)
+    setFormOpen(false)
+  }
+
+  const resolveType = (): string | null => {
+    if (preset === EXPENSE_TYPE_OTHER) {
+      const custom = otherLabel.trim()
+      if (!custom) {
+        toast.error("יש לפרט את סוג ההוצאה")
+        return null
+      }
+      return custom
+    }
+    return preset
+  }
+
+  const openAdd = () => {
+    setEditing(null)
+    setPreset(EXPENSE_TYPE_PRESETS[0])
+    setOtherLabel("")
+    setAmount("")
+    setHasReceipt(false)
+    setFormOpen(true)
+  }
+
+  const openEdit = (e: Expense) => {
+    setEditing(e)
+    const known = typeOptions.filter((t) => t !== EXPENSE_TYPE_OTHER)
+    if (known.includes(e.type)) {
+      setPreset(e.type)
+      setOtherLabel("")
+    } else {
+      setPreset(EXPENSE_TYPE_OTHER)
+      setOtherLabel(e.type)
+    }
+    setAmount(String(e.amount))
+    setHasReceipt(Boolean(e.hasReceipt))
+    setFormOpen(true)
+  }
+
+  const save = () => {
     if (!amount || Number(amount) <= 0) {
       toast.error("יש להזין סכום תקין")
       return
     }
-    const type =
-      preset === "אחר" ? otherLabel.trim() || "אחר" : preset
-    if (preset === "אחר" && !otherLabel.trim()) {
-      toast.error("יש לפרט את סוג ההוצאה")
-      return
+    const type = resolveType()
+    if (!type) return
+
+    const nextExpense: Expense = {
+      id: editing?.id || uid("e"),
+      type,
+      amount: Number(amount),
+      hasReceipt,
+      date: editing?.date || new Date().toISOString().slice(0, 10),
     }
-    updateLead(lead.id, {
-      expenses: [
-        ...lead.expenses,
-        {
-          id: uid("e"),
-          type,
-          amount: Number(amount),
-          hasReceipt,
-          date: new Date().toISOString().slice(0, 10),
-        },
-      ],
-    })
-    setAmount("")
-    setHasReceipt(false)
-    setOtherLabel("")
-    setPreset(EXPENSE_PRESETS[0])
-    setAdding(false)
-    toast.success("ההוצאה נוספה")
+
+    const expenses = editing
+      ? lead.expenses.map((e) => (e.id === editing.id ? nextExpense : e))
+      : [...lead.expenses, nextExpense]
+
+    updateLead(lead.id, { expenses })
+    toast.success(editing ? "ההוצאה עודכנה" : "ההוצאה נוספה")
+    resetForm()
   }
 
   const remove = (id: string) => {
@@ -99,15 +148,25 @@ export function ExpensesSection({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold">
+            <div className="flex items-center gap-1">
+              <span className="me-1 text-sm font-semibold">
                 {formatCurrency(e.amount)}
               </span>
               <button
                 type="button"
+                onClick={() => openEdit(e)}
+                aria-label="עריכת הוצאה"
+                title="עריכה"
+                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+              >
+                <Pencil className="size-3.5" />
+              </button>
+              <button
+                type="button"
                 onClick={() => remove(e.id)}
                 aria-label="מחק הוצאה"
-                className="text-destructive"
+                title="מחיקה"
+                className="flex size-8 items-center justify-center rounded-lg text-destructive"
               >
                 <Trash2 className="size-4" />
               </button>
@@ -116,25 +175,31 @@ export function ExpensesSection({
         ))}
       </div>
 
-      {adding ? (
+      {formOpen ? (
         <div className="space-y-3 rounded-xl border border-border p-3">
-          <Select value={preset} onValueChange={(v) => setPreset(v ?? "דלק")}>
+          <p className="text-sm font-semibold">
+            {editing ? "עריכת הוצאה" : "הוצאה חדשה"}
+          </p>
+          <Select
+            value={preset}
+            onValueChange={(v) => setPreset(v ?? EXPENSE_TYPE_PRESETS[0])}
+          >
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false} className="z-[200]">
-              {EXPENSE_PRESETS.map((t) => (
+              {typeOptions.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {preset === "אחר" && (
+          {preset === EXPENSE_TYPE_OTHER && (
             <Input
               value={otherLabel}
               onChange={(e) => setOtherLabel(e.target.value)}
-              placeholder="פירוט הוצאה"
+              placeholder="פירוט סוג הוצאה (יישמר לרשימה)"
             />
           )}
           <Input
@@ -155,16 +220,24 @@ export function ExpensesSection({
             </Label>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => setAdding(false)}>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={resetForm}
+            >
               ביטול
             </Button>
-            <Button className="flex-1" onClick={add}>
-              הוסף
+            <Button className="flex-1" onClick={save}>
+              {editing ? "שמירה" : "הוסף"}
             </Button>
           </div>
         </div>
       ) : (
-        <Button variant="outline" className="w-full justify-center" onClick={() => setAdding(true)}>
+        <Button
+          variant="outline"
+          className="w-full justify-center"
+          onClick={openAdd}
+        >
           <Plus className="size-4" />
           הוסף הוצאה
         </Button>

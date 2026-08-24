@@ -1,23 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import {
-  CheckCircle2,
-  ExternalLink,
-  HeartHandshake,
-  MessageSquareHeart,
-  Package,
-  UserRound,
-} from "lucide-react"
+import { CheckCircle2, ExternalLink, UserRound } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { submitPublicParticipant } from "@/lib/actions"
-import {
-  KIT_INTEREST_OPTIONS,
-  SATISFACTION_OPTIONS,
-} from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const ZIP_HELPER_URL = "https://doar.israelpost.co.il/locatezip"
@@ -41,9 +29,6 @@ type FormState = {
   courseDate: string
   email: string
   phone: string
-  satisfaction: string
-  feedback: string
-  kitInterest: string
   shippingCity: string
   shippingStreet: string
   shippingHouseNo: string
@@ -67,9 +52,6 @@ export function PublicParticipantForm({
     courseDate: courseDateDefault || "",
     email: "",
     phone: "",
-    satisfaction: "",
-    feedback: "",
-    kitInterest: "",
     shippingCity: "",
     shippingStreet: "",
     shippingHouseNo: "",
@@ -83,7 +65,12 @@ export function PublicParticipantForm({
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    const res = await submitPublicParticipant(leadId, form)
+    const res = await submitPublicParticipant(leadId, {
+      ...form,
+      satisfaction: "",
+      feedback: "",
+      kitInterest: "",
+    })
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
@@ -259,72 +246,6 @@ export function PublicParticipantForm({
           )}
         </FormSection>
 
-        {/* —— 2. משוב ושביעות רצון —— */}
-        <FormSection
-          icon={<MessageSquareHeart className="size-4" />}
-          title="משוב ושביעות רצון"
-          tone="indigo"
-        >
-          <Field label="שביעות רצון מההדרכה">
-            <div className="grid grid-cols-2 gap-2">
-              {SATISFACTION_OPTIONS.map((opt) => (
-                <ChoiceCard
-                  key={opt}
-                  name="satisfaction"
-                  value={opt}
-                  checked={form.satisfaction === opt}
-                  onChange={() => set("satisfaction", opt)}
-                  required
-                >
-                  {opt}
-                </ChoiceCard>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="משוב על ההדרכה">
-            <Textarea
-              value={form.feedback}
-              onChange={(e) => set("feedback", e.target.value)}
-              placeholder="כתבו כאן משוב חופשי (אופציונלי)"
-              rows={3}
-              className="min-h-[88px] rounded-xl border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus-visible:border-sky-400 focus-visible:ring-sky-200/60"
-            />
-          </Field>
-        </FormSection>
-
-        {/* —— 3. הצעות נוספות / ציוד —— */}
-        <FormSection
-          icon={<Package className="size-4" />}
-          title="הצעות נוספות / ציוד"
-          tone="emerald"
-        >
-          <Field label="התעניינות ברכישת תיק עזרה ראשונה">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              {KIT_INTEREST_OPTIONS.map((opt) => (
-                <ChoiceCard
-                  key={opt}
-                  name="kitInterest"
-                  value={opt}
-                  checked={form.kitInterest === opt}
-                  onChange={() => set("kitInterest", opt)}
-                  required
-                  className="sm:flex-1"
-                >
-                  {opt === "כן, אשמח שתחזרו אליי" ? (
-                    <span className="inline-flex items-center justify-center gap-1.5">
-                      <HeartHandshake className="size-3.5 shrink-0" />
-                      {opt}
-                    </span>
-                  ) : (
-                    opt
-                  )}
-                </ChoiceCard>
-              ))}
-            </div>
-          </Field>
-        </FormSection>
-
         <Button
           type="submit"
           disabled={saving}
@@ -388,46 +309,5 @@ function Field({
       </label>
       {children}
     </div>
-  )
-}
-
-function ChoiceCard({
-  name,
-  value,
-  checked,
-  onChange,
-  required,
-  children,
-  className,
-}: {
-  name: string
-  value: string
-  checked: boolean
-  onChange: () => void
-  required?: boolean
-  children: React.ReactNode
-  className?: string
-}) {
-  return (
-    <label
-      className={cn(
-        "flex cursor-pointer items-center justify-center rounded-xl border-2 px-3 py-3 text-center text-sm transition-all",
-        checked
-          ? "border-sky-500 bg-sky-50 font-bold text-sky-800 shadow-sm"
-          : "border-slate-200 bg-slate-50/80 font-medium text-slate-700 hover:border-slate-300 hover:bg-white",
-        className,
-      )}
-    >
-      <input
-        type="radio"
-        name={name}
-        value={value}
-        checked={checked}
-        onChange={onChange}
-        required={required}
-        className="sr-only"
-      />
-      {children}
-    </label>
   )
 }
