@@ -293,6 +293,10 @@ model InventoryItem {
   /** יחידות שנמכרו ישירות או כחלק מתיקים */
   totalSold      Float                @default(0)
   isComposite    Boolean              @default(false)
+  /** רכישה כחבילה / מארז — עלות ליחידה מחושבת אוטומטית */
+  isPackagePurchase Boolean           @default(false)
+  packageTotalCost  Float?
+  packageUnitsCount Float?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   components     InventoryComponent[] @relation("ParentItem")

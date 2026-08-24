@@ -104,6 +104,35 @@ function saleLineAmount(s: {
 }
 
 /**
+ * מכירות ציוד פעילות בלבד — מדלג על מחוקות / כפולות לפי id.
+ * מקור אמת לחישובי נגבה ורווח (לא כולל מכירות שנמחקו).
+ */
+export function activeTrainingSales(
+  lead: Pick<Lead, "trainingSales">,
+): NonNullable<Lead["trainingSales"]> {
+  const list = lead.trainingSales || []
+  const seen = new Set<string>()
+  const out: NonNullable<Lead["trainingSales"]> = []
+  for (const s of list) {
+    if (!s?.id) continue
+    if (s.isDeleted === true) continue
+    if (s.deletedAt) continue
+    if (seen.has(s.id)) continue
+    seen.add(s.id)
+    out.push(s)
+  }
+  return out
+}
+
+/**
+ * מקור אמת ל״נגבה״ בהדרכה:
+ * תשלומי הדרכה מאושרים + משתתפים ששולמו + מכירות ציוד פעילות ששולמו.
+ */
+export function computeCollectedRevenue(lead: Lead): number {
+  return computeTrainingPaymentSummary(lead).collectedTotal
+}
+
+/**
  * סיכום תשלומים להדרכה:
  * צפוי = מחיר בסיס + מחירי משתתפים חיצוניים + מכירות ציוד
  * נגבה = תשלום הדרכה שנרשם + תשלומי חיצוניים + תשלומי פנימיים + מכירות ששולמו
@@ -136,7 +165,7 @@ export function computeTrainingPaymentSummary(
     .sort((a, b) => a.amount - b.amount)
   const internalCollected = internals.reduce((s, p) => s + p.amount, 0)
 
-  const sales = (lead.trainingSales || [])
+  const sales = activeTrainingSales(lead)
     .map((s) => ({
       id: s.id,
       name: s.itemName || "מכירת ציוד",
@@ -270,7 +299,7 @@ export function computeTrainingProfit(
 ): TrainingProfitSummary {
   const pay = computeTrainingPaymentSummary(lead)
   const coursePrice = pay.basePrice + pay.externalExpected
-  const sales = lead.trainingSales || []
+  const sales = activeTrainingSales(lead)
   const salesIncome = sales.reduce(
     (s, x) => s + (x.unitSellingPrice || 0) * (x.quantity || 0),
     0,
@@ -329,16 +358,19 @@ export function leadHasLoggedPayment(lead: Lead): boolean {
 }
 
 /**
- * רווח נקי צפוי להדרכה:
- * (מחיר בסיס + חיצוניים + מכירות ציוד) − עלות מדריך
+ * רווח נקי צפוי להדרכה (כרטיסי דשבורד — נסגרו ביומן / על הפרק):
+ * אותה לוגיקת הוצאות כמו computeTrainingProfit, עם הכנסות צפויות:
+ * (סכום הדרכה + חיצוניים + מכירות) − (מדריך + הוצאות + עלות ציוד + עמלות).
  */
 export function computeExpectedNetProfit(
   lead: Lead,
   instructors: InstructorProfile[],
 ): number {
   const pay = computeTrainingPaymentSummary(lead)
-  const instructorFee = resolveInstructorFee(lead, instructors)
-  return pay.expectedTotal - instructorFee
+  const profit = computeTrainingProfit(lead, instructors)
+  const expectedRevenue =
+    pay.basePrice + pay.externalExpected + profit.salesIncome
+  return expectedRevenue - profit.totalExpenses
 }
 
 /**

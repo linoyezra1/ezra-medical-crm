@@ -55,6 +55,8 @@ interface AppState {
   updateLead: (id: string, patch: Partial<Lead>) => Promise<boolean>;
   getLead: (id: string) => Lead | undefined;
   setLeadParticipants: (id: string, participants: Lead["participants"]) => void;
+  /** מסיר מכירת ציוד מהסטייט המקומי מיד אחרי מחיקה ב-DB */
+  removeLeadTrainingSale: (leadId: string, saleId: string) => void;
   addEquipment: (deal: EquipmentDeal) => void;
   updateEquipment: (id: string, patch: Partial<EquipmentDeal>) => void;
   addTask: (task: Task) => void;
@@ -112,6 +114,25 @@ export function AppProvider({
                 ...l,
                 participants,
                 participantsCount: Math.max(l.participantsCount, participants.length),
+                updatedAt: new Date().toISOString(),
+              }
+            : l,
+        ),
+      );
+    },
+    [],
+  );
+
+  const removeLeadTrainingSale = useCallback(
+    (leadId: string, saleId: string) => {
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === leadId
+            ? {
+                ...l,
+                trainingSales: (l.trainingSales || []).filter(
+                  (s) => s.id !== saleId,
+                ),
                 updatedAt: new Date().toISOString(),
               }
             : l,
@@ -433,6 +454,7 @@ export function AppProvider({
       updateLead,
       getLead,
       setLeadParticipants,
+      removeLeadTrainingSale,
       addEquipment,
       updateEquipment,
       addTask,
@@ -460,6 +482,7 @@ export function AppProvider({
       updateLead,
       getLead,
       setLeadParticipants,
+      removeLeadTrainingSale,
       addEquipment,
       updateEquipment,
       addTask,

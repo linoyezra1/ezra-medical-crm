@@ -144,6 +144,9 @@ export interface TrainingSale {
   instructorCommissionAmount?: number;
   isInstructorReported?: boolean;
   createdAt: string;
+  /** סימון מחיקה רכה (אם קיים) — לא נספר ברווח / נגבה */
+  isDeleted?: boolean;
+  deletedAt?: string | null;
 }
 
 export interface InventoryComponentRef {
@@ -167,6 +170,10 @@ export interface InventoryItem {
   /** מלאי נוכחי וירטואלי = totalPurchased − totalSold */
   currentStock: number;
   isComposite: boolean;
+  /** רכישה כחבילה — עלות ליחידה = עלות חבילה / כמות יחידות */
+  isPackagePurchase: boolean;
+  packageTotalCost?: number;
+  packageUnitsCount?: number;
   /** רכיבי תיק (BOM) — מקביל ל־kitComponents */
   components: InventoryComponentRef[];
   createdAt: string;

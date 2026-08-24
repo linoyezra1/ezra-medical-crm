@@ -389,7 +389,7 @@ export function PaymentHistoryView() {
                   <th className="px-3 py-2 font-medium">שיוך להדרכה</th>
                   <th className="px-3 py-2 font-medium">אמצעי תשלום</th>
                   <th className="px-3 py-2 font-medium">מי גבה</th>
-                  <th className="px-3 py-2 font-medium">סכום</th>
+                  <th className="px-3 py-2 font-medium">נגבה</th>
                   <th className="px-3 py-2 font-medium">סטטוס</th>
                 </tr>
               </thead>
@@ -418,7 +418,7 @@ export function PaymentHistoryView() {
                       {tx.receivedBy}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 font-semibold tabular-nums">
-                      {formatCurrency(tx.amount)}
+                      {formatCurrency(Number(tx.amount) || 0)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5">
                       <span
@@ -483,7 +483,7 @@ function MobileTxCard({ tx }: { tx: PaymentTransaction }) {
         </div>
         <div className="shrink-0 text-left">
           <p className="text-sm font-bold tabular-nums">
-            {formatCurrency(tx.amount)}
+            {formatCurrency(Number(tx.amount) || 0)}
           </p>
           <p
             className={cn(

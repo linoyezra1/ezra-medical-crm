@@ -2817,21 +2817,44 @@ export async function upsertInventoryItem(data: {
   supplierName?: string;
   totalPurchased?: number;
   isComposite?: boolean;
+  isPackagePurchase?: boolean;
+  packageTotalCost?: number | null;
+  packageUnitsCount?: number | null;
   components?: { childId: string; quantity: number }[];
 }): Promise<ActionResult<{ id: string }>> {
   if (!data.name.trim()) return { ok: false, error: "שם פריט הוא שדה חובה" };
 
   const isComposite = Boolean(data.isComposite);
+  const isPackagePurchase = !isComposite && Boolean(data.isPackagePurchase);
+  const packageTotalCost = isPackagePurchase
+    ? Math.max(0, Number(data.packageTotalCost) || 0)
+    : null;
+  const packageUnitsCount = isPackagePurchase
+    ? Math.max(0, Number(data.packageUnitsCount) || 0)
+    : null;
+  const costFromPackage =
+    isPackagePurchase &&
+    packageTotalCost != null &&
+    packageTotalCost > 0 &&
+    packageUnitsCount != null &&
+    packageUnitsCount > 0
+      ? packageTotalCost / packageUnitsCount
+      : null;
+
   const base = {
     name: data.name.trim(),
     category: data.category?.trim() || null,
     sellingPrice: Number(data.sellingPrice) || 0,
-    costPrice: Number(data.costPrice) || 0,
+    costPrice:
+      costFromPackage != null ? costFromPackage : Number(data.costPrice) || 0,
     supplierName: data.supplierName?.trim() || null,
     totalPurchased: isComposite
       ? 0
       : Math.max(0, Number(data.totalPurchased) || 0),
     isComposite,
+    isPackagePurchase,
+    packageTotalCost,
+    packageUnitsCount,
   };
 
   let id = data.id;

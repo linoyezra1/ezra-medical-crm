@@ -1,9 +1,9 @@
 import { formatCourseTypeLabel } from "@/lib/course-type"
 import {
+  computeCollectedRevenue,
   computeTrainingPaymentSummary,
   computeTrainingProfit,
   leadHasLoggedPayment,
-  type TrainingPaymentSummary,
 } from "@/lib/training-profit"
 import { formatInJerusalem } from "@/lib/timezone"
 import type {
@@ -146,10 +146,8 @@ export function buildProfitTransactions(
     const pay = computeTrainingPaymentSummary(lead)
     const profit = computeTrainingProfit(lead, instructors)
 
-    const paidSalesIncome = (lead.trainingSales || [])
-      .filter((s) => s.paymentStatus === "paid")
-      .reduce((s, x) => s + (x.unitSellingPrice || 0) * (x.quantity || 0), 0)
-    const cashRevenue = pay.collectedTotal + paidSalesIncome
+    // מקור אמת ל״נגבה״ — זהה למסך ההדרכה (כולל מכירות ששולמו; בלי כפל)
+    const cashRevenue = computeCollectedRevenue(lead)
     const cashExpenses = profit.totalExpenses
 
     rows.push({

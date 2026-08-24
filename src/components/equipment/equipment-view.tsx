@@ -39,6 +39,15 @@ function unitProfit(item: InventoryItem): number {
   return itemSell(item) - itemCost(item)
 }
 
+/** עלות ליחידה מחבילה — ללא עיגול */
+function packageUnitCost(
+  packageTotalCost: number,
+  packageUnitsCount: number,
+): number {
+  if (!(packageTotalCost > 0) || !(packageUnitsCount > 0)) return 0
+  return packageTotalCost / packageUnitsCount
+}
+
 export function EquipmentView() {
   const { inventory, setInventoryLocal, refresh } = useApp()
   const [open, setOpen] = useState(false)
@@ -51,6 +60,9 @@ export function EquipmentView() {
   const [totalPurchased, setTotalPurchased] = useState("")
   const [supplierName, setSupplierName] = useState("")
   const [isComposite, setIsComposite] = useState(false)
+  const [isPackagePurchase, setIsPackagePurchase] = useState(false)
+  const [packageTotalCost, setPackageTotalCost] = useState("")
+  const [packageUnitsCount, setPackageUnitsCount] = useState("")
   const [compRows, setCompRows] = useState<{ childId: string; quantity: string }[]>(
     [],
   )
@@ -93,6 +105,9 @@ export function EquipmentView() {
     setTotalPurchased("")
     setSupplierName("")
     setIsComposite(false)
+    setIsPackagePurchase(false)
+    setPackageTotalCost("")
+    setPackageUnitsCount("")
     setCompRows([])
     setPickerQuery("")
   }
@@ -111,6 +126,17 @@ export function EquipmentView() {
     setTotalPurchased(String(item.totalPurchased || ""))
     setSupplierName(item.supplierName)
     setIsComposite(item.isComposite)
+    setIsPackagePurchase(Boolean(item.isPackagePurchase) && !item.isComposite)
+    setPackageTotalCost(
+      item.packageTotalCost != null && item.packageTotalCost > 0
+        ? String(item.packageTotalCost)
+        : "",
+    )
+    setPackageUnitsCount(
+      item.packageUnitsCount != null && item.packageUnitsCount > 0
+        ? String(item.packageUnitsCount)
+        : "",
+    )
     setCompRows(
       item.components.map((c) => ({
         childId: c.childId,
@@ -119,6 +145,16 @@ export function EquipmentView() {
     )
     setPickerQuery("")
     setOpen(true)
+  }
+
+  const syncPackageUnitCost = (
+    totalRaw: string,
+    unitsRaw: string,
+  ) => {
+    const total = Number(totalRaw)
+    const units = Number(unitsRaw)
+    if (!(total > 0) || !(units > 0)) return
+    setCostPrice(String(packageUnitCost(total, units)))
   }
 
   const computedCompositeCost = useMemo(() => {
@@ -166,7 +202,21 @@ export function EquipmentView() {
 
     const cost = isComposite
       ? computedCompositeCost
-      : Number(costPrice) || 0
+      : isPackagePurchase
+        ? packageUnitCost(
+            Number(packageTotalCost) || 0,
+            Number(packageUnitsCount) || 0,
+          ) || Number(costPrice) || 0
+        : Number(costPrice) || 0
+
+    if (isPackagePurchase) {
+      const total = Number(packageTotalCost) || 0
+      const units = Number(packageUnitsCount) || 0
+      if (!(total > 0) || !(units >= 1)) {
+        toast.error("יש להזין עלות חבילה וכמות יחידות (לפחות 1)")
+        return
+      }
+    }
 
     setSaving(true)
     const res = await upsertInventoryItem({
@@ -178,6 +228,13 @@ export function EquipmentView() {
       supplierName,
       totalPurchased: isComposite ? 0 : Number(totalPurchased) || 0,
       isComposite,
+      isPackagePurchase: !isComposite && isPackagePurchase,
+      packageTotalCost: isPackagePurchase
+        ? Number(packageTotalCost) || 0
+        : null,
+      packageUnitsCount: isPackagePurchase
+        ? Number(packageUnitsCount) || 0
+        : null,
       components: isComposite
         ? compRows
             .filter((r) => r.childId)
@@ -462,17 +519,92 @@ export function EquipmentView() {
 
             {!isComposite && (
               <>
-                <Field label="מחיר עלות ליחידה">
+                <label className="flex items-start gap-2 rounded-xl border border-border bg-secondary/30 p-3 text-sm">
+                  <Checkbox
+                    checked={isPackagePurchase}
+                    onCheckedChange={(v) => {
+                      const next = Boolean(v)
+                      setIsPackagePurchase(next)
+                      if (next) {
+                        syncPackageUnitCost(packageTotalCost, packageUnitsCount)
+                      }
+                    }}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-semibold">רכישה כחבילה / מארז</span>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      הזינו עלות כוללת וכמות יחידות — עלות ליחידה תחושב אוטומטית
+                    </span>
+                  </span>
+                </label>
+
+                {isPackagePurchase && (
+                  <div className="grid gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 sm:grid-cols-2">
+                    <Field label="עלות כוללת לחבילה (₪)">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="any"
+                        dir="ltr"
+                        value={packageTotalCost}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setPackageTotalCost(v)
+                          syncPackageUnitCost(v, packageUnitsCount)
+                        }}
+                        placeholder="0"
+                      />
+                    </Field>
+                    <Field label="כמות יחידות בחבילה">
+                      <Input
+                        type="number"
+                        min={1}
+                        step="1"
+                        dir="ltr"
+                        value={packageUnitsCount}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setPackageUnitsCount(v)
+                          syncPackageUnitCost(packageTotalCost, v)
+                        }}
+                        placeholder="1"
+                      />
+                    </Field>
+                  </div>
+                )}
+
+                <Field label="עלות ליחידה">
                   <Input
                     type="number"
+                    step="any"
+                    min={0}
                     dir="ltr"
                     value={costPrice}
                     onChange={(e) => setCostPrice(e.target.value)}
+                    readOnly={isPackagePurchase}
+                    className={
+                      isPackagePurchase
+                        ? "bg-secondary/50 text-muted-foreground"
+                        : undefined
+                    }
+                    title={
+                      isPackagePurchase
+                        ? "מחושב אוטומטית מעלות החבילה"
+                        : undefined
+                    }
                   />
+                  {isPackagePurchase && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      מחושב אוטומטית: עלות חבילה ÷ כמות יחידות
+                    </p>
+                  )}
                 </Field>
                 <Field label="מחיר מכירה ליחידה">
                   <Input
                     type="number"
+                    step="any"
+                    min={0}
                     dir="ltr"
                     value={sellingPrice}
                     onChange={(e) => setSellingPrice(e.target.value)}
@@ -505,6 +637,8 @@ export function EquipmentView() {
               <Field label="מחיר מכירה לתיק">
                 <Input
                   type="number"
+                  step="any"
+                  min={0}
                   dir="ltr"
                   value={sellingPrice}
                   onChange={(e) => setSellingPrice(e.target.value)}
@@ -526,7 +660,10 @@ export function EquipmentView() {
                 onCheckedChange={(v) => {
                   const next = Boolean(v)
                   setIsComposite(next)
-                  if (next && !category.trim()) setCategory("תיקים")
+                  if (next) {
+                    setIsPackagePurchase(false)
+                    if (!category.trim()) setCategory("תיקים")
+                  }
                 }}
                 className="mt-0.5"
               />

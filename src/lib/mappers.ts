@@ -482,6 +482,10 @@ export function mapInventoryItem(db: DbInventoryFull): InventoryItem {
   const isComposite = Boolean(db.isComposite);
   const totalPurchased = Number(db.totalPurchased) || 0;
   const totalSold = Number(db.totalSold) || 0;
+  const packageTotalCost =
+    db.packageTotalCost != null ? Number(db.packageTotalCost) : undefined;
+  const packageUnitsCount =
+    db.packageUnitsCount != null ? Number(db.packageUnitsCount) : undefined;
   return {
     id: db.id,
     name: db.name,
@@ -497,6 +501,15 @@ export function mapInventoryItem(db: DbInventoryFull): InventoryItem {
       isComposite,
     }),
     isComposite,
+    isPackagePurchase: Boolean(db.isPackagePurchase),
+    packageTotalCost:
+      packageTotalCost != null && Number.isFinite(packageTotalCost)
+        ? packageTotalCost
+        : undefined,
+    packageUnitsCount:
+      packageUnitsCount != null && Number.isFinite(packageUnitsCount)
+        ? packageUnitsCount
+        : undefined,
     components: (db.components || []).map((c) => ({
       childId: c.childId,
       childName: c.child?.name || "רכיב",

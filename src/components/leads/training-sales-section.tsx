@@ -54,7 +54,7 @@ export function TrainingSalesSection({
   lead: Lead
   alwaysOpen?: boolean
 }) {
-  const { inventory, refresh } = useApp()
+  const { inventory, refresh, removeLeadTrainingSale } = useApp()
   const sales = lead.trainingSales || []
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -238,6 +238,7 @@ export function TrainingSalesSection({
       return
     }
     toast.success("רשומת המכירה נמחקה")
+    removeLeadTrainingSale(lead.id, deleteSaleId)
     setDeleteSaleId(null)
     refresh()
   }
