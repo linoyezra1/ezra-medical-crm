@@ -6,12 +6,10 @@ import {
 import { parseSheetDateValue } from "@/lib/google-sheets/sheet-dates"
 import {
   cleanParticipantPhone,
-  findParticipantByIdNumber,
-  indexParticipantsByIdNumber,
   isUsableParticipantIdNumber,
   normalizeParticipantIdNumber,
 } from "@/lib/participant-identity"
-import { syncParticipantContactToTrainee } from "@/lib/trainee-directory"
+import { upsertParticipantOnLead } from "@/lib/participant-upsert"
 import { formatInJerusalem } from "@/lib/timezone"
 
 const DEFAULT_WIX_SPREADSHEET_ID =
@@ -86,58 +84,6 @@ export type WixSyncResult = {
   error: string
 }
 
-type ExistingParticipant = Awaited<
-  ReturnType<typeof prisma.participant.findMany>
->[number]
-
-/**
- * התאמה להדרכה: ת״ז מנורמלת היא מפתח ייחודי.
- * בלי ת״ז בנתוני Wix — נפילה לטלפון/שם רק לתיקון ייבוא ישן.
- */
-function findExistingForWixRow(
-  existing: ExistingParticipant[],
-  byId: Map<string, ExistingParticipant>,
-  opts: { idNumber: string; phone: string; fullName: string },
-): ExistingParticipant | undefined {
-  if (isUsableParticipantIdNumber(opts.idNumber)) {
-    return (
-      byId.get(opts.idNumber) ??
-      findParticipantByIdNumber(existing, opts.idNumber)
-    )
-  }
-
-  const phone = opts.phone
-  const fullName = opts.fullName.trim()
-
-  return existing.find((p) => {
-    const pid = normalizeParticipantIdNumber(p.idNumber)
-    const pname = (p.fullName || "").trim()
-    const pphone = cleanParticipantPhone(p.phone)
-
-    if (phone && pphone === phone) return true
-    if (fullName && pname === fullName) return true
-    // ייבוא ישן שהוחלף: ת"ז=שם, טלפון=ת"ז, שם=תאריך
-    if (fullName && pid === fullName) return true
-    if (opts.idNumber && pphone === opts.idNumber) return true
-    return false
-  })
-}
-
-function rememberParticipant(
-  existing: ExistingParticipant[],
-  byId: Map<string, ExistingParticipant>,
-  row: ExistingParticipant,
-) {
-  const idx = existing.findIndex((p) => p.id === row.id)
-  if (idx >= 0) existing[idx] = row
-  else existing.push(row)
-
-  const id = normalizeParticipantIdNumber(row.idNumber)
-  if (isUsableParticipantIdNumber(id)) {
-    byId.set(id, row)
-  }
-}
-
 /**
  * Reads Wix registration sheet rows, filters by trainingId,
  * upserts by ת״ז (unique per training) and tags with source="Wix".
@@ -177,10 +123,14 @@ export async function refreshParticipantsFromWix(
       return { ok: true, added: 0, skipped: 0, updated: 0 }
     }
 
-    const existing = await prisma.participant.findMany({
-      where: { leadId: trainingId },
+    // וידוא שההדרכה קיימת
+    const lead = await prisma.lead.findUnique({
+      where: { id: trainingId },
+      select: { id: true },
     })
-    const byId = indexParticipantsByIdNumber(existing)
+    if (!lead) {
+      return { ok: false, error: "ההדרכה לא נמצאה" }
+    }
 
     let added = 0
     let skipped = 0
@@ -203,108 +153,51 @@ export async function refreshParticipantsFromWix(
         continue
       }
 
-      const match = findExistingForWixRow(existing, byId, {
-        idNumber,
-        phone,
-        fullName,
-      })
-
-      if (match) {
-        const nextIdNumber =
-          idNumber ||
-          normalizeParticipantIdNumber(match.idNumber) ||
-          match.idNumber
-        const data = {
-          fullName: fullName || match.fullName,
-          idNumber: nextIdNumber,
-          phone: phone || match.phone,
-          email: email || match.email,
-          courseDate: courseDate || match.courseDate,
-          organizerName: organizerName || match.organizerName,
-          courseType: courseType || match.courseType,
-          satisfaction: satisfaction || match.satisfaction,
-          kitInterest: kitInterest || match.kitInterest,
-          feedback: feedback || match.feedback,
-          source: "Wix",
-        }
-        const saved = await prisma.participant.update({
-          where: { id: match.id },
-          data,
+      // בלי ת״ז תקינה — יצירה פשוטה (אין מפתח dedupe אמין)
+      if (!isUsableParticipantIdNumber(idNumber)) {
+        await prisma.participant.create({
+          data: {
+            leadId: trainingId,
+            fullName: fullName || "ללא שם",
+            idNumber: idNumber || "",
+            phone: phone || null,
+            email: email || null,
+            courseDate,
+            organizerName,
+            courseType,
+            satisfaction,
+            kitInterest,
+            feedback,
+            source: "Wix",
+          },
         })
-        rememberParticipant(existing, byId, saved)
-        if (saved.traineeId || saved.attended || isUsableParticipantIdNumber(idNumber)) {
-          await syncParticipantContactToTrainee(saved)
-        }
-        updated++
+        added++
         continue
       }
 
-      // הגנה אחרונה: חיפוש מחדש ב-DB לפי ת״ז מנורמלת (מול רשומות עם פורמט ישן)
-      if (isUsableParticipantIdNumber(idNumber)) {
-        const fresh = await prisma.participant.findMany({
-          where: { leadId: trainingId },
-        })
-        const dbMatch = findParticipantByIdNumber(fresh, idNumber)
-        if (dbMatch) {
-          const saved = await prisma.participant.update({
-            where: { id: dbMatch.id },
-            data: {
-              fullName: fullName || dbMatch.fullName,
-              idNumber,
-              phone: phone || dbMatch.phone,
-              email: email || dbMatch.email,
-              courseDate: courseDate || dbMatch.courseDate,
-              organizerName: organizerName || dbMatch.organizerName,
-              courseType: courseType || dbMatch.courseType,
-              satisfaction: satisfaction || dbMatch.satisfaction,
-              kitInterest: kitInterest || dbMatch.kitInterest,
-              feedback: feedback || dbMatch.feedback,
-              source: "Wix",
-            },
-          })
-          rememberParticipant(existing, byId, saved)
-          if (
-            saved.traineeId ||
-            saved.attended ||
-            isUsableParticipantIdNumber(idNumber)
-          ) {
-            await syncParticipantContactToTrainee(saved)
-          }
-          updated++
-          continue
-        }
-      }
-
-      const created = await prisma.participant.create({
+      const result = await upsertParticipantOnLead({
+        leadId: trainingId,
+        mergeMode: "preferIncoming",
+        activityNote:
+          "פרטי המשתתף עודכנו אוטומטית מרישום בקישור/Wix",
         data: {
-          leadId: trainingId,
-          fullName: fullName || "ללא שם",
-          idNumber: idNumber || "",
-          phone: phone || null,
-          email: email || null,
-          courseDate,
-          organizerName,
-          courseType,
-          satisfaction,
-          kitInterest,
-          feedback,
+          fullName: fullName || undefined,
+          idNumber,
+          phone: phone || undefined,
+          email: email || undefined,
+          courseDate: courseDate || undefined,
+          organizerName: organizerName || undefined,
+          courseType: courseType || undefined,
+          satisfaction: satisfaction || undefined,
+          kitInterest: kitInterest || undefined,
+          feedback: feedback || undefined,
           source: "Wix",
         },
       })
-      rememberParticipant(existing, byId, created)
-      // אם כבר קיים מודרך עם אותה ת״ז — מעדכנים פרטים; קישור מלא בנוכחות
-      if (isUsableParticipantIdNumber(idNumber)) {
-        const existingTrainee = await prisma.trainee.findUnique({
-          where: { idNumber },
-        })
-        if (existingTrainee) {
-          await syncParticipantContactToTrainee({
-            ...created,
-            traineeId: existingTrainee.id,
-          })
-        }
-      }
-      added++
+
+      if (result.updated) updated++
+      else if (result.created) added++
+      else skipped++
     }
 
     return { ok: true, added, skipped, updated }

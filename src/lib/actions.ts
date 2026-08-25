@@ -67,6 +67,10 @@ import {
   normalizeParticipantIdNumber,
 } from "@/lib/participant-identity";
 import {
+  findParticipantOnLeadByIdNumber,
+  upsertParticipantOnLead,
+} from "@/lib/participant-upsert";
+import {
   linkParticipantToTrainee,
   syncParticipantContactToTrainee,
   upsertTraineeFromParticipant,
@@ -1259,28 +1263,46 @@ export async function addParticipant(
     };
   }
 
-  // ת״ז ייחודית בהדרכה — אם כבר קיים, מעדכנים במקום שורה חדשה
+  // ת״ז ייחודית בהדרכה — אם כבר קיים, ממלאים חסרים בלבד (לא דורסים נתונים תקינים)
   if (isUsableParticipantIdNumber(id)) {
-    const rows = await prisma.participant.findMany({ where: { leadId } });
-    const match = findParticipantByIdNumber(rows, id);
-    if (match) {
-      const updated = await prisma.participant.update({
-        where: { id: match.id },
-        data: {
-          fullName: name || match.fullName,
-          idNumber: id,
-          phone: phone || match.phone,
-          email: email || match.email,
-        },
-      });
-      await syncParticipantContactToTrainee(updated);
-      revalidatePath(`/leads/${leadId}`);
-      revalidatePath("/clients");
-      return { ok: true as const };
+    const result = await upsertParticipantOnLead({
+      leadId,
+      mergeMode: "preferExisting",
+      data: {
+        fullName: name || undefined,
+        idNumber: id,
+        phone: phone || undefined,
+        email: email || undefined,
+        source: "manual",
+      },
+    });
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath("/clients");
+    if (result.created) {
+      const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+      let status = lead?.courseStatus;
+      if (status === "completed") {
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: { courseStatus: "certificates_pending" },
+        });
+        status = "certificates_pending";
+      }
+      if (status === "certificates_pending" && isGoogleSheetsConfigured()) {
+        await exportLeadParticipantsToSheets(leadId);
+      }
     }
+    return {
+      ok: true as const,
+      data: {
+        id: result.participantId,
+        participantId: result.participantId,
+        updated: result.updated,
+      },
+    };
   }
 
-  // מודרך גלובלי נוצר רק לאחר אישור נוכחות
+  // בלי ת״ז תקינה — יצירה רגילה (אין מפתח dedupe)
   await prisma.participant.create({
     data: {
       leadId,
@@ -1364,34 +1386,34 @@ export async function addExternalParticipant(input: {
   }
 
   if (isUsableParticipantIdNumber(id)) {
-    const rows = await prisma.participant.findMany({
-      where: { leadId: input.leadId },
+    const result = await upsertParticipantOnLead({
+      leadId: input.leadId,
+      mergeMode: "preferExisting",
+      data: {
+        fullName: name || undefined,
+        idNumber: id,
+        phone: phone || undefined,
+        email: email || undefined,
+        isExternal,
+        isLead: Boolean(input.isLead),
+        feedback: input.feedback?.trim() || undefined,
+        courseType: participantData.courseType || undefined,
+        courseCategory: participantData.courseCategory || undefined,
+        agreedPrice: participantData.agreedPrice,
+        source: "manual",
+      },
     })
-    const match = findParticipantByIdNumber(rows, id)
-    if (match) {
-      const updated = await prisma.participant.update({
-        where: { id: match.id },
-        data: {
-          ...participantData,
-          phone: phone || match.phone,
-          email: email || match.email,
-          feedback: input.feedback?.trim() || match.feedback,
-          courseType:
-            participantData.courseType || match.courseType,
-          courseCategory:
-            participantData.courseCategory || match.courseCategory,
-          agreedPrice:
-            participantData.agreedPrice != null
-              ? participantData.agreedPrice
-              : match.agreedPrice,
-        },
-      })
-      await syncParticipantContactToTrainee(updated)
-      revalidatePath("/")
-      revalidatePath("/leads")
-      revalidatePath(`/leads/${input.leadId}`)
-      revalidatePath("/clients")
-      return { ok: true, data: { id: updated.id } }
+    revalidatePath("/")
+    revalidatePath("/leads")
+    revalidatePath(`/leads/${input.leadId}`)
+    revalidatePath("/clients")
+    return {
+      ok: true,
+      data: {
+        id: result.participantId,
+        participantId: result.participantId,
+        updated: result.updated,
+      },
     }
   }
 
@@ -1406,7 +1428,7 @@ export async function addExternalParticipant(input: {
   revalidatePath("/leads")
   revalidatePath(`/leads/${input.leadId}`)
   revalidatePath("/clients")
-  return { ok: true, data: { id: created.id } }
+  return { ok: true, data: { id: created.id, participantId: created.id, updated: false } }
 }
 
 export async function recordParticipantPayment(
@@ -1697,7 +1719,9 @@ export type PublicParticipantInput = {
 export async function submitPublicParticipant(
   leadId: string,
   data: PublicParticipantInput,
-): Promise<ActionResult<{ id: string }>> {
+): Promise<
+  ActionResult<{ id: string; participantId: string; updated: boolean }>
+> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "ההדרכה לא נמצאה" };
 
@@ -1726,56 +1750,46 @@ export async function submitPublicParticipant(
   }
 
   const idNumber = normalizeParticipantIdNumber(data.idNumber);
-  const existingRows = await prisma.participant.findMany({
-    where: { leadId },
-  });
-  const existing = findParticipantByIdNumber(existingRows, idNumber);
-
-  const payload = {
-    fullName: data.fullName.trim(),
-    idNumber,
-    organizerName: data.organizerName.trim(),
-    courseDate: data.courseDate.trim(),
-    email: data.email.trim(),
-    phone: data.phone.trim(),
-    satisfaction: data.satisfaction?.trim() || null,
-    feedback: data.feedback?.trim() || null,
-    kitInterest: data.kitInterest?.trim() || null,
-    shippingCity: data.shippingCity?.trim() || null,
-    shippingStreet: data.shippingStreet?.trim() || null,
-    shippingHouseNo: data.shippingHouseNo?.trim() || null,
-    shippingZip: data.shippingZip?.trim() || null,
-  };
-
-  // מילוי חוזר עם אותה ת״ז — מעדכן את הקיים (לא שורה חדשה)
-  if (existing) {
-    const updated = await prisma.participant.update({
-      where: { id: existing.id },
-      data: payload,
-    });
-    if (
-      updated.traineeId ||
-      updated.attended ||
-      isUsableParticipantIdNumber(idNumber)
-    ) {
-      await syncParticipantContactToTrainee(updated);
-    }
-    revalidatePath(`/leads/${leadId}`);
-    revalidatePath(`/p/${leadId}`);
-    revalidatePath("/clients");
-    return { ok: true, data: { id: existing.id } };
+  if (!isUsableParticipantIdNumber(idNumber)) {
+    return { ok: false, error: "מספר תעודת זהות לא תקין" };
   }
 
-  const created = await prisma.participant.create({
+  const result = await upsertParticipantOnLead({
+    leadId,
+    mergeMode: "preferIncoming",
+    activityNote: "פרטי המשתתף עודכנו אוטומטית מרישום בקישור/Wix",
     data: {
-      leadId,
-      ...payload,
+      fullName: data.fullName.trim(),
+      idNumber,
+      organizerName: data.organizerName.trim(),
+      courseDate: data.courseDate.trim(),
+      email: data.email.trim(),
+      phone: data.phone.trim(),
+      satisfaction: data.satisfaction?.trim() || null,
+      feedback: data.feedback?.trim() || null,
+      kitInterest: data.kitInterest?.trim() || null,
+      shippingCity: data.shippingCity?.trim() || null,
+      shippingStreet: data.shippingStreet?.trim() || null,
+      shippingHouseNo: data.shippingHouseNo?.trim() || null,
+      shippingZip: data.shippingZip?.trim() || null,
+      source: "public_link",
     },
   });
 
+  // הערה נרשמת גם ביצירה ראשונה דרך קישור — רק בעדכון לפי activityNote ב-upsert.
+  // אם נוצר חדש אין הערת עדכון (נכון).
+
   revalidatePath(`/leads/${leadId}`);
   revalidatePath(`/p/${leadId}`);
-  return { ok: true, data: { id: created.id } };
+  revalidatePath("/clients");
+  return {
+    ok: true,
+    data: {
+      id: result.participantId,
+      participantId: result.participantId,
+      updated: result.updated,
+    },
+  };
 }
 
 export async function setParticipantAttended(
@@ -2566,23 +2580,21 @@ export async function createTraineeManual(data: {
     const leadId = resolved.leadId;
 
     const idNumber = trainee.idNumber;
-    const existing = idNumberRaw
-      ? await prisma.participant.findFirst({
-          where: { leadId, idNumber: idNumberRaw },
-        })
-      : null;
-    if (existing) {
-      await prisma.participant.update({
-        where: { id: existing.id },
+    if (idNumberRaw && isUsableParticipantIdNumber(idNumberRaw)) {
+      const result = await upsertParticipantOnLead({
+        leadId,
+        mergeMode: "preferExisting",
         data: {
-          traineeId: trainee.id,
           fullName: trainee.fullName,
-          phone: phone || existing.phone,
-          email: email || existing.email,
+          idNumber: idNumberRaw,
+          phone: phone || undefined,
+          email: email || undefined,
+          traineeId: trainee.id,
           attended: true,
+          source: "manual",
         },
       });
-      participantId = existing.id;
+      participantId = result.participantId;
     } else {
       const created = await prisma.participant.create({
         data: {
@@ -2674,31 +2686,27 @@ export async function bulkImportTrainees(
       if (leadId) {
         const kit =
           row.interestedInFirstAidKit?.trim() || null;
-        const savedIdNumber = trainee.idNumber;
-        const dup = idNumber
-          ? await prisma.participant.findFirst({
-              where: { leadId, idNumber },
-            })
-          : null;
-        if (dup) {
-          await prisma.participant.update({
-            where: { id: dup.id },
+        if (idNumber && isUsableParticipantIdNumber(idNumber)) {
+          await upsertParticipantOnLead({
+            leadId,
+            mergeMode: "preferExisting",
             data: {
-              traineeId: trainee.id,
               fullName,
-              phone: row.phone?.trim() || dup.phone,
-              email: row.email?.trim() || dup.email,
-              organizerName:
-                row.organizerName?.trim() || dup.organizerName,
-              courseDate: row.trainingDate?.trim() || dup.courseDate,
-              satisfaction:
-                row.satisfaction?.trim() || dup.satisfaction,
-              feedback: row.feedback?.trim() || dup.feedback,
-              kitInterest: kit || dup.kitInterest,
+              idNumber,
+              phone: row.phone?.trim() || undefined,
+              email: row.email?.trim() || undefined,
+              organizerName: row.organizerName?.trim() || undefined,
+              courseDate: row.trainingDate?.trim() || undefined,
+              satisfaction: row.satisfaction?.trim() || undefined,
+              feedback: row.feedback?.trim() || undefined,
+              kitInterest: kit || undefined,
+              traineeId: trainee.id,
               attended: true,
+              source: "import",
             },
           });
         } else {
+          const savedIdNumber = trainee.idNumber;
           await prisma.participant.create({
             data: {
               leadId,
@@ -2713,6 +2721,7 @@ export async function bulkImportTrainees(
               feedback: row.feedback?.trim() || null,
               kitInterest: kit,
               attended: true,
+              source: "import",
             },
           });
         }
@@ -2757,9 +2766,10 @@ export async function assignTraineesToLead(
   let skipped = 0;
 
   for (const t of trainees) {
-    const existing = await prisma.participant.findFirst({
-      where: { leadId: targetLeadId, idNumber: t.idNumber },
-    });
+    const existing = await findParticipantOnLeadByIdNumber(
+      targetLeadId,
+      t.idNumber,
+    );
     if (existing) {
       if (existing.traineeId !== t.id) {
         await prisma.participant.update({

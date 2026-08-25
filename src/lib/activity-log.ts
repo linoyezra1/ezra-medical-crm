@@ -30,6 +30,9 @@ function formatActivityWhen(iso: string): string {
 export function formatActivityLogLine(entry: ActivityLogEntry): string {
   const when = formatActivityWhen(entry.createdAt)
   const who = entry.performedBy || "משתמש"
+  if (entry.previousStatus === "_note") {
+    return `${who}: ${entry.newStatus}${when ? ` · ${when}` : ""}`
+  }
   if (!entry.previousStatus) {
     return `${who} יצר את הליד (סטטוס: '${statusLabel(entry.newStatus)}')${when ? ` ב-${when}` : ""}`
   }
