@@ -477,9 +477,9 @@ async function replaceTrainingSessions(
     data: slots.map((s, i) => ({
       leadId,
       sortOrder: i,
-      date: s.date,
-      startTime: s.time,
-      endTime: s.endTime || null,
+      date: (s.date || "").trim(),
+      startTime: (s.time || "").trim(),
+      endTime: s.endTime?.trim() || null,
       isZoom: Boolean(s.isZoom),
       zoomLink: s.isZoom && s.zoomLink?.trim() ? s.zoomLink.trim() : null,
       city: s.city || (!s.isZoom ? fallbackAddress?.city : null) || null,
@@ -1343,7 +1343,9 @@ export async function addExternalParticipant(input: {
   isExternal?: boolean
   isLead?: boolean
   feedback?: string
-}): Promise<ActionResult<{ id: string }>> {
+}): Promise<
+  ActionResult<{ id: string; participantId: string; updated: boolean }>
+> {
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } })
   if (!lead) return { ok: false, error: "הדרכה לא נמצאה" }
   const ui = dbStatusToUi(lead.courseStatus)

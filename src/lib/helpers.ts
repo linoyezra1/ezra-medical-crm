@@ -507,12 +507,15 @@ export function buildLeadIcsContent(lead: Lead): string {
         : [];
 
   const now = new Date();
-  const events = slots.map((slot, idx) => {
+  const datedSlots = slots.filter(
+    (slot) => Boolean(slot.date?.trim() && slot.time?.trim()),
+  );
+  const events = datedSlots.map((slot, idx) => {
     const isZoom = Boolean(slot.isZoom);
     const zoomLink = slot.zoomLink?.trim() || "";
     const city = slot.city?.trim() || "";
     const sessionLabel =
-      slots.length > 1 ? ` · מפגש ${idx + 1}` : "";
+      datedSlots.length > 1 ? ` · מפגש ${idx + 1}` : "";
     const summary = isZoom
       ? `הדרכה - ${courseTitle} - זום${sessionLabel}`
       : `הדרכה - ${courseTitle} - ${city || "ללא עיר"}${sessionLabel}`;
@@ -521,8 +524,8 @@ export function buildLeadIcsContent(lead: Lead): string {
       ? `${description}\nקישור זום: ${zoomLink}`
       : description;
 
-    const date = slot.date || lead.date || formatInJerusalem(new Date()).date || "";
-    const startTime = slot.time || lead.time || "09:00";
+    const date = slot.date.trim();
+    const startTime = slot.time.trim();
     let endTime = slot.endTime || lead.endTime;
     if (!endTime && date) {
       const startMs = jerusalemLocalToUtcDate(date, startTime).getTime();

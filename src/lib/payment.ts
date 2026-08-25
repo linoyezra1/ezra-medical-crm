@@ -68,8 +68,10 @@ export function unpaidPaymentTaskTitle(leadName: string): string {
 
 export type TrainingSessionSlot = {
   id?: string
-  date: string // YYYY-MM-DD
-  time: string // HH:mm
+  /** YYYY-MM-DD — אופציונלי (מפגש טנטטיבי) */
+  date: string
+  /** HH:mm — אופציונלי */
+  time: string
   endTime?: string
   isZoom?: boolean
   zoomLink?: string
@@ -89,9 +91,8 @@ export function parseSessionsJson(
     for (const s of parsed) {
       if (!s || typeof s !== "object") continue
       const o = s as Record<string, unknown>
-      const date = String(o.date || "").trim()
+      const date = String(o.date ?? "").trim()
       const time = String(o.time || o.startTime || "").trim()
-      if (!date || !time) continue
       const endTime = o.endTime ? String(o.endTime).trim() : undefined
       const isZoom = Boolean(o.isZoom)
       const zoomLink =
@@ -100,6 +101,7 @@ export function parseSessionsJson(
       const street = o.street != null ? String(o.street).trim() : undefined
       const houseNumber =
         o.houseNumber != null ? String(o.houseNumber).trim() : undefined
+      // שומרים גם מפגשים בלי תאריך/שעה (פרטים עדיין לא נקבעו)
       slots.push({
         date,
         time,
@@ -120,8 +122,8 @@ export function parseSessionsJson(
 export function serializeSessionsJson(sessions: TrainingSessionSlot[]): string {
   return JSON.stringify(
     sessions.map((s) => ({
-      date: s.date,
-      time: s.time,
+      date: s.date ?? "",
+      time: s.time ?? "",
       ...(s.endTime ? { endTime: s.endTime } : {}),
       ...(s.isZoom ? { isZoom: true } : {}),
       ...(s.isZoom && s.zoomLink ? { zoomLink: s.zoomLink } : {}),

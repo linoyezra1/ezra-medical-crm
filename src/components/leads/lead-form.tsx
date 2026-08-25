@@ -454,14 +454,7 @@ export function LeadForm({ existing }: Props) {
       const n = Number(sessionsOtherCount)
       if (!Number.isFinite(n) || n < 1) e.sessionsOtherCount = true
     }
-    // מפגשים מרובים מחייבים תאריך ושעה לכל מפגש
-    if (resolvedSessionsCount >= 2) {
-      for (let i = 0; i < sessionSlots.length; i++) {
-        if (!sessionSlots[i].date?.trim() || !sessionSlots[i].time?.trim()) {
-          e[`session_${i}`] = true
-        }
-      }
-    }
+    // תאריך / שעה / כתובת של מפגשים — אופציונליים (גם במפגשים מרובים)
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -1209,11 +1202,7 @@ export function LeadForm({ existing }: Props) {
                     : "מפגש הדרכה"}
                 </p>
                 <div className="grid grid-cols-3 gap-3">
-                  <Field
-                    label="תאריך"
-                    error={errors[`session_${idx}`]}
-                    required={resolvedSessionsCount >= 2}
-                  >
+                  <Field label="תאריך">
                     <Input
                       type="date"
                       value={slot.date}
@@ -1223,11 +1212,7 @@ export function LeadForm({ existing }: Props) {
                       dir="ltr"
                     />
                   </Field>
-                  <Field
-                    label="משעה"
-                    error={errors[`session_${idx}`]}
-                    required={resolvedSessionsCount >= 2}
-                  >
+                  <Field label="משעה">
                     <Input
                       type="time"
                       value={slot.time}
