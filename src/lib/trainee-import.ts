@@ -336,28 +336,52 @@ export function isLeadAssignableForTrainee(status: string): boolean {
   return (ASSIGNABLE_LEAD_STATUSES as readonly string[]).includes(status)
 }
 
-const ID_IN_LINE_RE = /\b(\d{7,9})\b/
+const ID_IN_LINE_RE = /(?<!\d)(\d{7,9})(?!\d)/
 const EMAIL_IN_LINE_RE =
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
-/**
- * טלפון ישראלי בשורה (לא בולע ת״ז סמוכה):
- * 055-881-7221 | 0558817221 | +972 55-881-7221 | +972-55-881-7221
- */
-const PHONE_IN_LINE_RE =
-  /\+972[\s-]*0?5\d[\s-]?\d{3}[\s-]?\d{4}|0\d{2}[\s-]?\d{3}[\s-]?\d{4}|05\d{8}/
 
-/** מסיר תווי כיוון/בקרת יוניקוד שנדבקים בהעתקה מווטסאפ/וויקס */
+/** מפרידי טלפון נפוצים (רווח, מקף רגיל/יוניקוד, מקף עברי) */
+const PHONE_SEP = String.raw`[\s\u00a0\u202f\u2007\-\u2010-\u2015\u2212\u05BE\ufe58\ufe63\uff0d]`
+const PHONE_SEP_TEST =
+  /[\s\u00a0\u202f\u2007\-\u2010-\u2015\u2212\u05BE\ufe58\ufe63\uff0d]/
+
+/**
+ * מועמדי טלפון ישראלי — מסודרים מהספציפי לכללי.
+ * חשוב: לא לבלוע ת״ז (9 ספרות שמתחילות ב-0) כטלפון.
+ * דוגמאות: 050-932-3117 | 0509323117 | +972 50-932-3117 | 972-50-932-3117
+ */
+const PHONE_CANDIDATE_RES: RegExp[] = [
+  // בינלאומי: +972 / 972 / 00972 + נייד 5X
+  new RegExp(
+    String.raw`(?:\+|00)?972${PHONE_SEP}*0?5\d(?:${PHONE_SEP}?\d{3})(?:${PHONE_SEP}?\d{4})`,
+    "i",
+  ),
+  // נייד מקומי: 05X … (10 ספרות עם/בלי מפרידים)
+  new RegExp(
+    String.raw`(?<!\d)05\d(?:${PHONE_SEP}?\d{3})(?:${PHONE_SEP}?\d{4})(?!\d)`,
+  ),
+  // קווי רק כשיש מפריד מפורש (מונע בליעת ת״ז רצופה שמתחילה ב-0)
+  new RegExp(
+    String.raw`(?<!\d)0\d{1,2}${PHONE_SEP}+\d{3}${PHONE_SEP}?\d{4}(?!\d)`,
+  ),
+]
+
+/** מסיר תווי כיוון/בקרת יוניקוד / ZWSP שנדבקים בהעתקה מווטסאפ/וויקס */
 function stripInvisibleChars(s: string): string {
-  return s.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+  return s.replace(
+    /[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g,
+    "",
+  )
 }
 
 /** נרמול טלפון מיובא לפורמט מקומי (05…) */
 export function normalizeImportedPhone(raw: string): string {
   let digits = (raw || "").replace(/\D/g, "")
   if (!digits) return ""
-  if (digits.startsWith("972")) {
-    digits = digits.slice(3)
-    if (!digits.startsWith("0")) digits = `0${digits}`
+  if (digits.startsWith("00972")) digits = digits.slice(5)
+  else if (digits.startsWith("972")) digits = digits.slice(3)
+  if (digits.length === 9 && digits.startsWith("5")) {
+    digits = `0${digits}`
   }
   // נייד ישראלי טיפוסי: 10 ספרות שמתחילות ב-05
   if (/^05\d{8}$/.test(digits)) return digits
@@ -369,11 +393,36 @@ export function normalizeImportedPhone(raw: string): string {
 function extractPhoneFromLine(
   line: string,
 ): { phone: string; raw: string } | null {
-  const match = line.match(PHONE_IN_LINE_RE)
-  if (!match?.[0]) return null
-  const phone = normalizeImportedPhone(match[0])
-  if (!phone || phone.length < 9) return null
-  return { phone, raw: match[0] }
+  type Hit = { raw: string; phone: string; score: number; index: number }
+  const hits: Hit[] = []
+
+  for (const re of PHONE_CANDIDATE_RES) {
+    const globalRe = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`)
+    let m: RegExpExecArray | null
+    while ((m = globalRe.exec(line)) !== null) {
+      const phone = normalizeImportedPhone(m[0])
+      if (!phone || phone.length < 9) continue
+      // דחיית "טלפון" שהוא בעצם ת״ז רצופה של 7–9 ספרות בלי מאפייני נייד
+      const rawDigits = m[0].replace(/\D/g, "")
+      const looksLikeBareId =
+        !/[+]|972/i.test(m[0]) &&
+        !PHONE_SEP_TEST.test(m[0]) &&
+        rawDigits.length <= 9 &&
+        !/^05\d{8}$/.test(phone)
+      if (looksLikeBareId) continue
+
+      let score = 0
+      if (/^05\d{8}$/.test(phone)) score += 10
+      if (/(?:\+|00)?972/i.test(m[0])) score += 5
+      if (PHONE_SEP_TEST.test(m[0])) score += 1
+      hits.push({ raw: m[0], phone, score, index: m.index })
+    }
+  }
+
+  if (!hits.length) return null
+  hits.sort((a, b) => b.score - a.score || a.index - b.index)
+  const best = hits[0]
+  return { phone: best.phone, raw: best.raw }
 }
 
 /**

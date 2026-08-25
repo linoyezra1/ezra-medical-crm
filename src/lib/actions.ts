@@ -1935,26 +1935,15 @@ export async function updateTrainee(
     idNumber?: string;
     phone?: string | null;
     email?: string | null;
-    /** נחסם — מתעדכן רק מסנכרון Google Sheets */
+    /** תעודה דיגיטלית — ניתן לעדכון ידני; Sheets יכול לסנכרן מעל */
     certificateEmailSent?: boolean;
+    /** תעודה פיזית — ניתן לעדכון ידני; Sheets יכול לסנכרן מעל */
     certificateCardPrinted?: boolean;
     notes?: string;
   },
 ): Promise<ActionResult<{ id: string }>> {
   const existing = await prisma.trainee.findUnique({ where: { id } });
   if (!existing) return { ok: false, error: "המודרך לא נמצא" };
-
-  if (
-    data.certificateEmailSent !== undefined ||
-    data.certificateCardPrinted !== undefined
-  ) {
-    return {
-      ok: false,
-      error:
-        "סימון תעודה במייל / כרטיס מודפס מתעדכן אוטומטית מ-Google Sheets בלבד",
-      code: "sheets_readonly",
-    };
-  }
 
   const nextIdNumber =
     data.idNumber !== undefined
@@ -1992,6 +1981,12 @@ export async function updateTrainee(
         idNumber: nextIdNumber,
         phone: nextPhone,
         email: nextEmail,
+        ...(data.certificateEmailSent !== undefined
+          ? { certificateEmailSent: Boolean(data.certificateEmailSent) }
+          : {}),
+        ...(data.certificateCardPrinted !== undefined
+          ? { certificateCardPrinted: Boolean(data.certificateCardPrinted) }
+          : {}),
         notes:
           data.notes === undefined ? undefined : data.notes.trim() || null,
       },

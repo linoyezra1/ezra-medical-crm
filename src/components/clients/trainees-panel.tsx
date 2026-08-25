@@ -3,23 +3,33 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import {
+  Award,
   Download,
   ExternalLink,
   FileCheck,
   FileSpreadsheet,
+  Key,
   Link2,
   MessageCircle,
+  MoreVertical,
   Pencil,
   Phone,
   Plus,
+  Printer,
   RefreshCw,
   ScrollText,
   Search,
   Trash2,
+  UserCheck,
   UserPlus,
+  Video,
 } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
+import {
+  CertificateStatusBadge,
+  CertificateStatusSection,
+} from "@/components/certificates/certificate-status"
 import { TraineeAddDialog } from "@/components/clients/trainee-add-dialog"
 import { TraineeAssignDialog } from "@/components/clients/trainee-assign-dialog"
 import { TraineeEditDialog } from "@/components/clients/trainee-edit-dialog"
@@ -28,18 +38,62 @@ import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-d
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   deleteTrainee,
+  sendLmsAccessToSheets,
   syncCertificatesFromSheetsAction,
   updateTrainee,
 } from "@/lib/actions"
 import { formatCourseTypeLabel } from "@/lib/course-type"
 import { formatLeadCategory, formatPhone, whatsappLink } from "@/lib/helpers"
+import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
+import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
-import type { Trainee } from "@/lib/types"
+import type { LeadStatus, Trainee } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+type TraineeStatusFilter = "all" | "new" | "closed" | "pending_certificates"
+
+const TRAINEE_STATUS_FILTERS: {
+  value: TraineeStatusFilter
+  label: string
+}[] = [
+  { value: "all", label: "הכל" },
+  { value: "new", label: "ליד חדש" },
+  { value: "closed", label: "נרשם ביומן" },
+  { value: "pending_certificates", label: "ממתין לתעודות" },
+]
+
+function traineeHasLeadStatus(
+  t: Trainee,
+  status: LeadStatus,
+  leadStatusById: Map<string, LeadStatus>,
+) {
+  return t.trainings.some(
+    (tr) => leadStatusById.get(tr.leadId) === status,
+  )
+}
+
+/** ממתין לתעודות: הדרכה בסטטוס pending_certificates, למעט מי שקיבל כבר דיגיטלית+פיזית */
+function matchesPendingCertificatesSmart(
+  t: Trainee,
+  leadStatusById: Map<string, LeadStatus>,
+) {
+  if (!traineeHasLeadStatus(t, "pending_certificates", leadStatusById)) {
+    return false
+  }
+  if (t.certificateEmailSent && t.certificateCardPrinted) return false
+  return true
+}
 
 function trainingLabel(t: Trainee) {
   if (!t.trainings.length) return "—"
@@ -75,8 +129,10 @@ function ExternalTag() {
 }
 
 export function TraineesPanel() {
-  const { trainees, updateTraineeLocal, refresh } = useApp()
+  const { trainees, leads, settings, updateTraineeLocal, refresh } = useApp()
   const [q, setQ] = useState("")
+  const [statusFilter, setStatusFilter] =
+    useState<TraineeStatusFilter>("all")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [importOpen, setImportOpen] = useState(false)
@@ -89,6 +145,13 @@ export function TraineesPanel() {
   const [syncingSheets, setSyncingSheets] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
   const [issueParticipantIds, setIssueParticipantIds] = useState<string[]>([])
+  const [lmsBusyId, setLmsBusyId] = useState<string | null>(null)
+
+  const leadStatusById = useMemo(() => {
+    const map = new Map<string, LeadStatus>()
+    for (const l of leads) map.set(l.id, l.status)
+    return map
+  }, [leads])
 
   const activeTrainees = useMemo(
     () => trainees.filter((t) => t.trainings.length > 0),
@@ -97,9 +160,15 @@ export function TraineesPanel() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
-    if (!term) return activeTrainees
-    return activeTrainees.filter(
-      (t) =>
+    return activeTrainees.filter((t) => {
+      if (statusFilter === "pending_certificates") {
+        if (!matchesPendingCertificatesSmart(t, leadStatusById)) return false
+      } else if (statusFilter !== "all") {
+        if (!traineeHasLeadStatus(t, statusFilter, leadStatusById)) return false
+      }
+
+      if (!term) return true
+      return (
         t.fullName.toLowerCase().includes(term) ||
         t.idNumber.includes(term) ||
         (t.phone || "").includes(term) ||
@@ -109,9 +178,10 @@ export function TraineesPanel() {
             (tr.organizerName || "").toLowerCase().includes(term) ||
             tr.leadName.toLowerCase().includes(term),
         ) ||
-        (t.isExternal && "חיצוני".includes(term)),
-    )
-  }, [trainees, q])
+        (t.isExternal && "חיצוני".includes(term))
+      )
+    })
+  }, [activeTrainees, q, statusFilter, leadStatusById])
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((t) => selectedIds.has(t.id))
@@ -178,8 +248,21 @@ export function TraineesPanel() {
     updateTraineeLocal(t.id, data)
     const res = await updateTrainee(t.id, {
       notes: data.notes,
+      certificateEmailSent: data.certificateEmailSent,
+      certificateCardPrinted: data.certificateCardPrinted,
     })
-    if (!res.ok) toast.error(res.error)
+    if (!res.ok) {
+      toast.error(res.error)
+      refresh()
+    }
+  }
+
+  const patchCertificate = (
+    t: Trainee,
+    field: "certificateEmailSent" | "certificateCardPrinted",
+    next: boolean,
+  ) => {
+    void patch(t, { [field]: next })
   }
 
   const syncFromSheets = async () => {
@@ -319,86 +402,290 @@ export function TraineesPanel() {
     </div>
   )
 
-  const actionButtons = (t: Trainee, compact = false) => (
-    <div className={cn("flex items-center gap-0.5", compact && "justify-end")}>
-      <button
-        type="button"
-        onClick={() => setEditTrainee(t)}
-        className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
-        aria-label="עריכה"
-        title="עריכה"
-      >
-        <Pencil className="size-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={() => setDeleteTarget(t)}
-        className="flex size-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
-        aria-label="מחיקה"
-        title="מחיקה"
-      >
-        <Trash2 className="size-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={() => openAssign([t.id])}
-        className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
-        aria-label="שיוך להדרכה"
-        title="שיוך להדרכה נוספת"
-      >
-        <Link2 className="size-3.5" />
-      </button>
-      {t.phone && (
-        <>
-          <a
-            href={`tel:${t.phone}`}
-            className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
-            aria-label="חיוג"
-            title="חיוג"
+  const actionButtons = (t: Trainee, compact = false) => {
+    if (compact) {
+      const latest = latestTraining(t)
+      const linkedLead = latest
+        ? leads.find((l) => l.id === latest.leadId)
+        : undefined
+      const linkedParticipant = linkedLead?.participants?.find(
+        (p) =>
+          p.id === latest?.participantId ||
+          p.traineeId === t.id ||
+          (p.idNumber && p.idNumber === t.idNumber),
+      )
+      const canZoom = Boolean(
+        linkedLead && pickZoomSessionForInvite(linkedLead),
+      )
+      const hasLms = Boolean(linkedParticipant?.hasLmsAccess)
+      const participantId =
+        linkedParticipant?.id || latest?.participantId || ""
+
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+            aria-label={`פעולות · ${t.fullName}`}
           >
-            <Phone className="size-3.5" />
-          </a>
+            <MoreVertical className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-56">
+            {participantId && !hasLms ? (
+              <DropdownMenuItem
+                disabled={lmsBusyId === participantId}
+                onClick={() => {
+                  setLmsBusyId(participantId)
+                  void sendLmsAccessToSheets([participantId]).then((res) => {
+                    setLmsBusyId(null)
+                    if (!res.ok) {
+                      toast.error(res.error)
+                      return
+                    }
+                    toast.success(
+                      res.data.message ||
+                        "פרטי הגישה למערכת הלמידה נשלחו בהצלחה!",
+                    )
+                    refresh()
+                  })
+                }}
+              >
+                {lmsBusyId === participantId ? (
+                  <RefreshCw className="animate-spin" />
+                ) : (
+                  <UserCheck className="text-primary" />
+                )}
+                פתח משתמש בלמידה
+              </DropdownMenuItem>
+            ) : null}
+            {t.idNumber?.trim() ? (
+              <DropdownMenuItem
+                onClick={() => {
+                  const idNumber = t.idNumber.trim()
+                  const loginUrl = settings.lmsLoginUrl || ""
+                  toast.message(`פרטי LMS · ${t.fullName}`, {
+                    description: `שם משתמש וסיסמה: ${idNumber}${loginUrl ? `\nכניסה: ${loginUrl}` : ""}`,
+                    duration: 8000,
+                    action: t.phone
+                      ? {
+                          label: "שלח בוואטסאפ",
+                          onClick: () => {
+                            window.open(
+                              whatsappLink(
+                                t.phone!,
+                                lmsParticipantWhatsAppMessage({
+                                  fullName: t.fullName,
+                                  loginUrl,
+                                }),
+                              ),
+                              "_blank",
+                              "noopener,noreferrer",
+                            )
+                          },
+                        }
+                      : undefined,
+                  })
+                }}
+              >
+                <Key className="text-amber-700" />
+                הצג / שלח פרטי גישה ל-LMS
+              </DropdownMenuItem>
+            ) : null}
+            {t.phone ? (
+              <DropdownMenuItem
+                onClick={() =>
+                  window.open(
+                    whatsappLink(t.phone!),
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+              >
+                <MessageCircle className="text-emerald-700" />
+                שלח הודעת וואטסאפ
+              </DropdownMenuItem>
+            ) : null}
+            {canZoom && linkedParticipant ? (
+              <DropdownMenuItem
+                onClick={() => {
+                  const session = pickZoomSessionForInvite(linkedLead!)
+                  const link = session?.zoomLink?.trim()
+                  if (!link || !linkedParticipant.phone?.trim()) {
+                    toast.error("חסר קישור זום או טלפון למשתתף")
+                    return
+                  }
+                  window.open(
+                    whatsappLink(
+                      linkedParticipant.phone,
+                      `היי ${linkedParticipant.name}, קישור לזום:\n${link}`,
+                    ),
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }}
+              >
+                <Video className="text-sky-700" />
+                שלח קישור לזום (מייל / וואטסאפ)
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                const pid = latest?.participantId || t.id
+                setIssueParticipantIds([pid])
+                setIssueOpen(true)
+              }}
+            >
+              <Award className="text-amber-600" />
+              הנפקת תעודה דיגיטלית
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={t.certificateCardPrinted}
+              onClick={() =>
+                patchCertificate(t, "certificateCardPrinted", true)
+              }
+            >
+              <Printer />
+              סמן הדפסת תעודה פיזית
+            </DropdownMenuItem>
+            {t.certificateUrl?.trim() ? (
+              <DropdownMenuItem
+                onClick={() =>
+                  window.open(
+                    t.certificateUrl!.trim(),
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+              >
+                <FileCheck className="text-amber-500" />
+                פתח תעודת PDF
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            {t.phone ? (
+              <DropdownMenuItem
+                onClick={() => {
+                  window.location.href = `tel:${t.phone}`
+                }}
+              >
+                <Phone className="text-primary" />
+                חיוג
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem onClick={() => openAssign([t.id])}>
+              <Link2 className="text-primary" />
+              שיוך להדרכה נוספת
+            </DropdownMenuItem>
+            {t.trainings.length > 0 ? (
+              <DropdownMenuItem
+                onClick={() => {
+                  const leadId =
+                    t.trainings[t.trainings.length - 1]?.leadId
+                  if (leadId) window.location.href = `/leads/${leadId}`
+                }}
+              >
+                <ExternalLink />
+                פתח הדרכה אחרונה
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem onClick={() => setEditTrainee(t)}>
+              <Pencil />
+              עריכת פרטי מודרך
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => setDeleteTarget(t)}
+            >
+              <Trash2 />
+              מחיקת מודרך
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )
+    }
+
+    return (
+      <div className={cn("flex items-center gap-0.5")}>
+        <button
+          type="button"
+          onClick={() => setEditTrainee(t)}
+          className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+          aria-label="עריכה"
+          title="עריכה"
+        >
+          <Pencil className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setDeleteTarget(t)}
+          className="flex size-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
+          aria-label="מחיקה"
+          title="מחיקה"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => openAssign([t.id])}
+          className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+          aria-label="שיוך להדרכה"
+          title="שיוך להדרכה נוספת"
+        >
+          <Link2 className="size-3.5" />
+        </button>
+        {t.phone && (
+          <>
+            <a
+              href={`tel:${t.phone}`}
+              className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+              aria-label="חיוג"
+              title="חיוג"
+            >
+              <Phone className="size-3.5" />
+            </a>
+            <a
+              href={whatsappLink(t.phone)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex size-8 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
+              aria-label="וואטסאפ"
+              title="וואטסאפ"
+            >
+              <MessageCircle className="size-3.5" />
+            </a>
+          </>
+        )}
+        {t.certificateUrl?.trim() ? (
           <a
-            href={whatsappLink(t.phone)}
+            href={t.certificateUrl.trim()}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex size-8 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
-            aria-label="וואטסאפ"
-            title="וואטסאפ"
+            className="flex size-8 items-center justify-center rounded-lg text-amber-500 hover:bg-amber-50 hover:text-amber-600"
+            aria-label="תעודת PDF"
+            title="פתח תעודה"
+            onClick={(e) => e.stopPropagation()}
           >
-            <MessageCircle className="size-3.5" />
+            <FileCheck className="size-3.5" />
           </a>
-        </>
-      )}
-      {t.certificateUrl?.trim() ? (
-        <a
-          href={t.certificateUrl.trim()}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex size-8 items-center justify-center rounded-lg text-amber-500 hover:bg-amber-50 hover:text-amber-600"
-          aria-label="תעודת PDF"
-          title="פתח תעודה"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <FileCheck className="size-3.5" />
-        </a>
-      ) : null}
-      {t.trainings.length > 0 ? (
-        <Link
-          href={`/leads/${t.trainings[t.trainings.length - 1]?.leadId}`}
-          className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"
-          aria-label="פתח הדרכה אחרונה"
-          title={
-            t.trainings.length > 1
-              ? `פתח הדרכה (${t.trainings.length} שיוכים)`
-              : "פתח הדרכה"
-          }
-        >
-          <ExternalLink className="size-3.5" />
-        </Link>
-      ) : null}
-    </div>
-  )
+        ) : null}
+        {t.trainings.length > 0 ? (
+          <Link
+            href={`/leads/${t.trainings[t.trainings.length - 1]?.leadId}`}
+            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"
+            aria-label="פתח הדרכה אחרונה"
+            title={
+              t.trainings.length > 1
+                ? `פתח הדרכה (${t.trainings.length} שיוכים)`
+                : "פתח הדרכה"
+            }
+          >
+            <ExternalLink className="size-3.5" />
+          </Link>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-full space-y-3 overflow-x-hidden">
@@ -413,6 +700,24 @@ export function TraineesPanel() {
           />
         </div>
         {toolbar}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {TRAINEE_STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => setStatusFilter(f.value)}
+            className={cn(
+              "rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors",
+              statusFilter === f.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {filtered.length === 0 ? (
@@ -442,6 +747,8 @@ export function TraineesPanel() {
                 </Button>
               </div>
             </div>
+          ) : statusFilter !== "all" || q.trim() ? (
+            "לא נמצאו מודרכים התואמים לסינון"
           ) : (
             "לא נמצאו מודרכים"
           )}
@@ -476,9 +783,13 @@ export function TraineesPanel() {
                     <th className="w-[9%] px-2 py-2 font-semibold">
                       קטגוריה
                     </th>
-                    <th className="w-[6%] px-2 py-2 font-semibold">תעודה</th>
-                    <th className="w-[6%] px-2 py-2 font-semibold">כרטיס</th>
-                    <th className="w-[9%] px-2 py-2 font-semibold">הערות</th>
+                    <th className="w-[9%] px-2 py-2 font-semibold">
+                      תעודה דיגיטלית
+                    </th>
+                    <th className="w-[9%] px-2 py-2 font-semibold">
+                      תעודה פיזית
+                    </th>
+                    <th className="w-[8%] px-2 py-2 font-semibold">הערות</th>
                     <th className="w-[12%] px-2 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
@@ -544,21 +855,17 @@ export function TraineesPanel() {
                         </td>
                         <td className="px-2 py-2">
                           <div className="flex justify-center">
-                            <Checkbox
-                              checked={t.certificateEmailSent}
-                              disabled
-                              aria-label="נשלחה תעודה במייל (מ-Sheets)"
-                              title="מתעדכן מ-Google Sheets בלבד"
+                            <CertificateStatusBadge
+                              kind="digital"
+                              done={t.certificateEmailSent}
                             />
                           </div>
                         </td>
                         <td className="px-2 py-2">
                           <div className="flex justify-center">
-                            <Checkbox
-                              checked={t.certificateCardPrinted}
-                              disabled
-                              aria-label="הודפס כרטיס תעודה (מ-Sheets)"
-                              title="מתעדכן מ-Google Sheets בלבד"
+                            <CertificateStatusBadge
+                              kind="physical"
+                              done={t.certificateCardPrinted}
                             />
                           </div>
                         </td>
@@ -657,20 +964,16 @@ export function TraineesPanel() {
                       <p className="text-[11px] text-muted-foreground">
                         קטגוריה: {traineeCategoryLabel(t)}
                       </p>
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Checkbox
-                          checked={t.certificateEmailSent}
-                          disabled
-                        />
-                        נשלחה תעודה במייל (Sheets)
-                      </label>
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Checkbox
-                          checked={t.certificateCardPrinted}
-                          disabled
-                        />
-                        הודפס כרטיס תעודה (Sheets)
-                      </label>
+                      <CertificateStatusSection
+                        digitalDone={t.certificateEmailSent}
+                        physicalDone={t.certificateCardPrinted}
+                        onToggleDigital={(next) =>
+                          patchCertificate(t, "certificateEmailSent", next)
+                        }
+                        onTogglePhysical={(next) =>
+                          patchCertificate(t, "certificateCardPrinted", next)
+                        }
+                      />
                       <Textarea
                         value={t.notes || ""}
                         onChange={(e) =>

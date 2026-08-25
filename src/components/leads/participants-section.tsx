@@ -3,25 +3,33 @@
 import { useCallback, useMemo, useState } from "react"
 import {
   ArrowRightLeft,
+  Award,
   BadgeCheck,
   CheckCheck,
   FileCheck,
   FileSpreadsheet,
   GraduationCap,
+  Key,
   MessageCircle,
   MoreVertical,
   Pencil,
   Phone,
+  Printer,
   RefreshCw,
   ScrollText,
   Search,
   Trash2,
+  UserCheck,
   UserPlus,
   Video,
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
+import {
+  CertificateStatusBadge,
+  CertificateStatusSection,
+} from "@/components/certificates/certificate-status"
 import { IssueCertificatesDialog } from "@/components/leads/issue-certificates-dialog"
 import { ParticipantPaymentDialog } from "@/components/leads/participant-payment-dialog"
 import {
@@ -31,6 +39,13 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -63,6 +78,7 @@ import {
   setParticipantAttended,
   transferParticipantToLead,
   updateParticipantDetails,
+  updateTrainee,
 } from "@/lib/actions"
 import {
   COURSE_TYPE_FORMAT_ERROR,
@@ -85,7 +101,7 @@ import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { isParticipantPaid } from "@/lib/training-profit"
-import type { Lead, Participant } from "@/lib/types"
+import type { Lead, Participant, Trainee } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 function ExternalTag() {
@@ -292,7 +308,8 @@ export function ParticipantsSection({
   /** @deprecated רענון אוטומטי בוטל — רק כפתור רענון ידני */
   active?: boolean
 }) {
-  const { setLeadParticipants, refresh, settings, leads } = useApp()
+  const { setLeadParticipants, refresh, settings, leads, trainees, updateTraineeLocal } =
+    useApp()
   const [polling, setPolling] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [lmsBusy, setLmsBusy] = useState<string | null>(null)
@@ -324,6 +341,7 @@ export function ParticipantsSection({
     agreedPrice: "",
   })
   const [issueOpen, setIssueOpen] = useState(false)
+  const [issueParticipantIds, setIssueParticipantIds] = useState<string[]>([])
 
   const CATEGORY_OTHER = "אחר"
 
@@ -331,6 +349,39 @@ export function ParticipantsSection({
   const attendedCount = participants.filter((p) => p.attended).length
   const zoomSession = pickZoomSessionForInvite(lead)
   const canSendZoom = Boolean(zoomSession)
+
+  const traineeById = useMemo(() => {
+    const map = new Map<string, Trainee>()
+    for (const t of trainees) map.set(t.id, t)
+    return map
+  }, [trainees])
+
+  const traineeForParticipant = (p: Participant) => {
+    if (p.traineeId) return traineeById.get(p.traineeId)
+    // fallback: match by id number when linked trainee not yet hydrated
+    const id = p.idNumber?.trim()
+    if (!id) return undefined
+    return trainees.find((t) => t.idNumber === id)
+  }
+
+  const patchParticipantCertificate = (
+    p: Participant,
+    field: "certificateEmailSent" | "certificateCardPrinted",
+    next: boolean,
+  ) => {
+    const trainee = traineeForParticipant(p)
+    if (!trainee) {
+      toast.error("המשתתף עדיין לא במאגר מודרכים — סמנו נוכחות קודם")
+      return
+    }
+    updateTraineeLocal(trainee.id, { [field]: next })
+    void updateTrainee(trainee.id, { [field]: next }).then((res) => {
+      if (!res.ok) {
+        toast.error(res.error)
+        refresh()
+      }
+    })
+  }
 
   const sendZoomWhatsApp = (p: Participant) => {
     if (!p.phone?.trim()) {
@@ -739,6 +790,43 @@ export function ParticipantsSection({
     window.open(whatsappLink(p.phone, text), "_blank", "noopener,noreferrer")
   }
 
+  const showOrSendLmsAccess = (p: Participant) => {
+    const idNumber = p.idNumber?.trim()
+    if (!idNumber) {
+      toast.error("חסרה ת״ז — לא ניתן להציג פרטי LMS")
+      return
+    }
+    const loginUrl =
+      lmsCredentials[p.id]?.loginUrl || settings.lmsLoginUrl || ""
+    toast.message(`פרטי LMS · ${p.name}`, {
+      description: `שם משתמש וסיסמה: ${idNumber}${loginUrl ? `\nכניסה: ${loginUrl}` : ""}`,
+      duration: 8000,
+      action: p.phone?.trim()
+        ? {
+            label: "שלח בוואטסאפ",
+            onClick: () => {
+              window.open(
+                whatsappLink(
+                  p.phone!,
+                  lmsParticipantWhatsAppMessage({
+                    fullName: p.name,
+                    loginUrl,
+                  }),
+                ),
+                "_blank",
+                "noopener,noreferrer",
+              )
+            },
+          }
+        : undefined,
+    })
+  }
+
+  const openIssueForParticipant = (p: Participant) => {
+    setIssueParticipantIds([p.id])
+    setIssueOpen(true)
+  }
+
   const sendZoomLink = (p: Participant) => {
     // kept for backward references below in the component
     sendZoomWhatsApp(p)
@@ -868,6 +956,7 @@ export function ParticipantsSection({
               toast.error("יש לסמן משתתפים להפקת תעודות")
               return
             }
+            setIssueParticipantIds([...selectedIds])
             setIssueOpen(true)
           }}
         >
@@ -944,13 +1033,23 @@ export function ParticipantsSection({
                     <th className="w-[11%] px-3 py-2 font-semibold">סוג קורס</th>
                     <th className="w-[9%] px-3 py-2 font-semibold">קטגוריה</th>
                     <th className="w-[8%] px-3 py-2 font-semibold">מחיר</th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">גישת LMS</th>
-                    <th className="w-[13%] px-3 py-2 font-semibold">פעולות</th>
+                    <th className="w-[9%] px-3 py-2 font-semibold">
+                      תעודה דיגיטלית
+                    </th>
+                    <th className="w-[9%] px-3 py-2 font-semibold">
+                      תעודה פיזית
+                    </th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((p) => {
                     const busy = lmsBusy === p.id
+                    const trainee = traineeForParticipant(p)
+                    const digitalDone = Boolean(trainee?.certificateEmailSent)
+                    const physicalDone = Boolean(
+                      trainee?.certificateCardPrinted,
+                    )
                     const courseTypeLabel =
                       formatCourseTypeLabel(
                         p.courseType || lead.courseType,
@@ -1037,123 +1136,166 @@ export function ParticipantsSection({
                             ? formatCurrency(p.agreedPrice)
                             : "—"}
                         </td>
-                        <td className="px-3 py-2">
-                          {p.hasLmsAccess ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-700">
-                              <BadgeCheck className="size-4" />
-                              <span className="text-xs font-medium">פעיל</span>
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={Boolean(lmsBusy)}
-                              onClick={() => void createLmsUsers([p.id])}
-                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
-                              aria-label="פתח משתמש בלמידה"
-                            >
-                              {busy ? (
-                                <RefreshCw className="size-3.5 animate-spin" />
-                              ) : (
-                                <GraduationCap className="size-3.5" />
-                              )}
-                              פתח משתמש בלמידה
-                            </button>
-                          )}
+                        <td className="px-2 py-2">
+                          <div className="flex justify-center">
+                            <CertificateStatusBadge
+                              kind="digital"
+                              done={digitalDone}
+                            />
+                          </div>
+                        </td>
+                        <td className="px-2 py-2">
+                          <div className="flex justify-center">
+                            <CertificateStatusBadge
+                              kind="physical"
+                              done={physicalDone}
+                            />
+                          </div>
                         </td>
                         <td className="px-3 py-2">
-                          <div className="flex items-center justify-end gap-0.5">
-                            {p.phone?.trim() ? (
-                              <a
-                                href={`tel:${p.phone}`}
-                                className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
-                                aria-label="חיוג"
-                                title="חיוג"
+                          <div className="flex justify-end">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                aria-label={`פעולות · ${p.name}`}
                               >
-                                <Phone className="size-3.5" />
-                              </a>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => openWhatsApp(p)}
-                              className="flex size-8 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
-                              aria-label="וואטסאפ"
-                              title="וואטסאפ"
-                            >
-                              <MessageCircle className="size-3.5" />
-                            </button>
-                            {canSendZoom ? (
-                              <button
-                                type="button"
-                                onClick={() => openZoomSend(p)}
-                                className="flex size-8 items-center justify-center rounded-lg text-sky-700 hover:bg-sky-50"
-                                aria-label="שלח קישור לזום"
-                                title="שלח קישור לזום"
+                                <MoreVertical className="size-4" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="min-w-60"
                               >
-                                <Video className="size-3.5" />
-                              </button>
-                            ) : null}
-                            {p.certificateUrl?.trim() ? (
-                              <a
-                                href={p.certificateUrl.trim()}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex size-8 items-center justify-center rounded-lg text-amber-500 hover:bg-amber-50 hover:text-amber-600"
-                                aria-label="תעודת PDF"
-                                title="פתח תעודה"
-                              >
-                                <FileCheck className="size-3.5" />
-                              </a>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void toggleAttended(p, !p.attended)
-                              }
-                              className={cn(
-                                "flex size-8 items-center justify-center rounded-lg hover:bg-secondary",
-                                p.attended
-                                  ? "text-emerald-700"
-                                  : "text-muted-foreground",
-                              )}
-                              aria-label="נוכחות"
-                              title="סימון נוכחות"
-                            >
-                              <CheckCheck className="size-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openEdit(p)}
-                              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"
-                              aria-label="עריכה"
-                            >
-                              <Pencil className="size-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPayParticipant(p)}
-                              className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
-                              aria-label="רישום תשלום למשתתף"
-                              title="רישום תשלום למשתתף"
-                            >
-                              <ScrollText className="size-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openTransfer(p)}
-                              className="flex size-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
-                              aria-label="העבר לקורס אחר"
-                              title="העבר לקורס אחר"
-                            >
-                              <ArrowRightLeft className="size-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(p)}
-                              className="flex size-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
-                              aria-label="מחק"
-                            >
-                              <Trash2 className="size-3.5" />
-                            </button>
+                                {!p.hasLmsAccess ? (
+                                  <DropdownMenuItem
+                                    disabled={Boolean(lmsBusy)}
+                                    onClick={() =>
+                                      void createLmsUsers([p.id])
+                                    }
+                                  >
+                                    {busy ? (
+                                      <RefreshCw className="animate-spin" />
+                                    ) : (
+                                      <UserCheck className="text-primary" />
+                                    )}
+                                    פתח משתמש בלמידה
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem disabled>
+                                    <BadgeCheck className="text-emerald-600" />
+                                    משתמש LMS פעיל
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => showOrSendLmsAccess(p)}
+                                >
+                                  <Key className="text-amber-700" />
+                                  הצג / שלח פרטי גישה ל-LMS
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => openWhatsApp(p)}
+                                >
+                                  <MessageCircle className="text-emerald-700" />
+                                  שלח הודעת וואטסאפ
+                                </DropdownMenuItem>
+                                {canSendZoom ? (
+                                  <DropdownMenuItem
+                                    onClick={() => openZoomSend(p)}
+                                  >
+                                    <Video className="text-sky-700" />
+                                    שלח קישור לזום (מייל / וואטסאפ)
+                                  </DropdownMenuItem>
+                                ) : null}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => openIssueForParticipant(p)}
+                                >
+                                  <Award className="text-amber-600" />
+                                  הנפקת תעודה דיגיטלית
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={
+                                    !trainee || physicalDone
+                                  }
+                                  onClick={() =>
+                                    patchParticipantCertificate(
+                                      p,
+                                      "certificateCardPrinted",
+                                      true,
+                                    )
+                                  }
+                                >
+                                  <Printer />
+                                  סמן הדפסת תעודה פיזית
+                                </DropdownMenuItem>
+                                {p.certificateUrl?.trim() ? (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      window.open(
+                                        p.certificateUrl!.trim(),
+                                        "_blank",
+                                        "noopener,noreferrer",
+                                      )
+                                    }
+                                  >
+                                    <FileCheck className="text-amber-500" />
+                                    פתח תעודת PDF
+                                  </DropdownMenuItem>
+                                ) : null}
+                                <DropdownMenuSeparator />
+                                {p.phone?.trim() ? (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      window.location.href = `tel:${p.phone}`
+                                    }}
+                                  >
+                                    <Phone className="text-primary" />
+                                    חיוג
+                                  </DropdownMenuItem>
+                                ) : null}
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    void toggleAttended(p, !p.attended)
+                                  }
+                                >
+                                  <CheckCheck
+                                    className={
+                                      p.attended
+                                        ? "text-emerald-700"
+                                        : "text-muted-foreground"
+                                    }
+                                  />
+                                  {p.attended
+                                    ? "בטל נוכחות"
+                                    : "סמן נוכחות"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => openEdit(p)}
+                                >
+                                  <Pencil />
+                                  עריכת פרטי מודרך
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setPayParticipant(p)}
+                                >
+                                  <ScrollText className="text-primary" />
+                                  רישום תשלום למשתתף
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => openTransfer(p)}
+                                >
+                                  <ArrowRightLeft className="text-primary" />
+                                  העבר לקורס אחר
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setDeleteTarget(p)}
+                                >
+                                  <Trash2 />
+                                  מחיקת מודרך
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </td>
                       </tr>
@@ -1230,7 +1372,7 @@ export function ParticipantsSection({
                     />
                   </div>
                   {open && (
-                    <div className="space-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+                    <div className="space-y-2 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
                       {p.isExternal || p.isLead ? (
                         <p
                           className={`rounded-lg px-2 py-1.5 text-sm font-bold ${
@@ -1273,6 +1415,40 @@ export function ParticipantsSection({
                           ✓ משתמש LMS פעיל (שם משתמש וסיסמה = ת״ז)
                         </p>
                       )}
+                      {(() => {
+                        const trainee = traineeForParticipant(p)
+                        return (
+                          <CertificateStatusSection
+                            digitalDone={Boolean(
+                              trainee?.certificateEmailSent,
+                            )}
+                            physicalDone={Boolean(
+                              trainee?.certificateCardPrinted,
+                            )}
+                            onToggleDigital={
+                              trainee
+                                ? (next) =>
+                                    patchParticipantCertificate(
+                                      p,
+                                      "certificateEmailSent",
+                                      next,
+                                    )
+                                : undefined
+                            }
+                            onTogglePhysical={
+                              trainee
+                                ? (next) =>
+                                    patchParticipantCertificate(
+                                      p,
+                                      "certificateCardPrinted",
+                                      next,
+                                    )
+                                : undefined
+                            }
+                            disabled={!trainee}
+                          />
+                        )
+                      })()}
                     </div>
                   )}
                 </li>
@@ -1469,9 +1645,16 @@ export function ParticipantsSection({
 
       <IssueCertificatesDialog
         open={issueOpen}
-        onOpenChange={setIssueOpen}
+        onOpenChange={(o) => {
+          setIssueOpen(o)
+          if (!o) setIssueParticipantIds([])
+        }}
         leadId={lead.id}
-        participantIds={[...selectedIds]}
+        participantIds={
+          issueParticipantIds.length > 0
+            ? issueParticipantIds
+            : [...selectedIds]
+        }
       />
 
       <ParticipantPaymentDialog
