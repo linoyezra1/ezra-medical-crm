@@ -72,20 +72,20 @@ export function CertificateStatusRow({
         <p className="text-xs font-semibold text-foreground">{label.title}</p>
         <CertificateStatusBadge kind={kind} done={done} />
       </div>
-      <label
-        className={cn(
-          "flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground",
-          interactive && "cursor-pointer",
-        )}
-      >
-        <Checkbox
-          checked={done}
-          disabled={!interactive}
-          onCheckedChange={(v) => onToggle?.(Boolean(v))}
-          aria-label={label.title}
-        />
-        {done ? label.done : label.pending}
-      </label>
+      {interactive ? (
+        <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[11px] text-muted-foreground">
+          <Checkbox
+            checked={done}
+            onCheckedChange={(v) => onToggle?.(Boolean(v))}
+            aria-label={label.title}
+          />
+          {done ? label.done : label.pending}
+        </label>
+      ) : (
+        <p className="shrink-0 text-[10px] text-muted-foreground">
+          מתעדכן מ-Sheets
+        </p>
+      )}
     </div>
   )
 }

@@ -125,6 +125,12 @@ export interface Participant {
   paymentReceivedBy?: string;
   paymentReceiptIssued?: boolean;
   source?: string;
+  /** הערות פנימיות */
+  notes?: string;
+  examScore?: number;
+  examPassed?: boolean;
+  examCompletedAt?: string;
+  examDraftAnswers?: Record<string, string>;
 }
 
 export interface TrainingSale {
@@ -202,6 +208,10 @@ export interface Trainee {
   certificateCardPrinted: boolean;
   certificateUrl?: string;
   notes?: string;
+  examScore?: number;
+  examPassed?: boolean;
+  examCompletedAt?: string;
+  examDraftAnswers?: Record<string, string>;
   trainings: TraineeTrainingRef[];
   createdAt: string;
   updatedAt: string;

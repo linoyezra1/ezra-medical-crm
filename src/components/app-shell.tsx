@@ -57,6 +57,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { settings } = useApp()
   const [moreOpen, setMoreOpen] = useState(false)
   const isPublicForm = pathname.startsWith("/p/")
+  const isPublicExam = pathname === "/exam" || pathname.startsWith("/exam/")
   const isInstructorLogin = pathname === "/instructor/login"
   const isInstructorDashboard = pathname.startsWith("/instructor/dashboard")
   const isInstructorGate =
@@ -65,7 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href)
 
-  if (isPublicForm) {
+  if (isPublicForm || isPublicExam) {
     return (
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background md:max-w-lg md:py-6">
         <main className="flex-1 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-sm">

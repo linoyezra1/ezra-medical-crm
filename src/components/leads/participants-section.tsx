@@ -9,12 +9,10 @@ import {
   FileCheck,
   FileSpreadsheet,
   GraduationCap,
-  Key,
   MessageCircle,
   MoreVertical,
   Pencil,
   Phone,
-  Printer,
   RefreshCw,
   ScrollText,
   Search,
@@ -26,6 +24,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
+import { ExamScoreBadge } from "@/components/exam/exam-score-badge"
 import {
   CertificateStatusBadge,
   CertificateStatusSection,
@@ -48,6 +47,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -78,7 +78,6 @@ import {
   setParticipantAttended,
   transferParticipantToLead,
   updateParticipantDetails,
-  updateTrainee,
 } from "@/lib/actions"
 import {
   COURSE_TYPE_FORMAT_ERROR,
@@ -100,6 +99,7 @@ import {
 import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
+import { EXAM_PASS_SCORE } from "@/lib/exam-questions"
 import { isParticipantPaid } from "@/lib/training-profit"
 import type { Lead, Participant, Trainee } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -308,7 +308,7 @@ export function ParticipantsSection({
   /** @deprecated רענון אוטומטי בוטל — רק כפתור רענון ידני */
   active?: boolean
 }) {
-  const { setLeadParticipants, refresh, settings, leads, trainees, updateTraineeLocal } =
+  const { setLeadParticipants, refresh, settings, leads, trainees } =
     useApp()
   const [polling, setPolling] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -332,6 +332,7 @@ export function ParticipantsSection({
     idNumber: "",
     phone: "",
     email: "",
+    notes: "",
     isExternal: false,
     isLead: false,
     courseType: "",
@@ -364,23 +365,10 @@ export function ParticipantsSection({
     return trainees.find((t) => t.idNumber === id)
   }
 
-  const patchParticipantCertificate = (
-    p: Participant,
-    field: "certificateEmailSent" | "certificateCardPrinted",
-    next: boolean,
-  ) => {
-    const trainee = traineeForParticipant(p)
-    if (!trainee) {
-      toast.error("המשתתף עדיין לא במאגר מודרכים — סמנו נוכחות קודם")
-      return
-    }
-    updateTraineeLocal(trainee.id, { [field]: next })
-    void updateTrainee(trainee.id, { [field]: next }).then((res) => {
-      if (!res.ok) {
-        toast.error(res.error)
-        refresh()
-      }
-    })
+  const participantNotes = (p: Participant) => {
+    const own = p.notes?.trim()
+    if (own) return own
+    return traineeForParticipant(p)?.notes?.trim() || ""
   }
 
   const sendZoomWhatsApp = (p: Participant) => {
@@ -649,6 +637,7 @@ export function ParticipantsSection({
       idNumber: p.idNumber,
       phone: p.phone || "",
       email: p.email || "",
+      notes: participantNotes(p),
       isExternal: Boolean(p.isExternal),
       isLead: Boolean(p.isLead),
       courseType: inList
@@ -704,6 +693,7 @@ export function ParticipantsSection({
       idNumber: editForm.idNumber,
       phone: editForm.phone,
       email: editForm.email,
+      notes: editForm.notes,
       isExternal: editForm.isExternal,
       isLead: editForm.isLead,
       courseType,
@@ -715,6 +705,12 @@ export function ParticipantsSection({
       toast.error(res.error)
       return
     }
+    setLeadParticipants(
+      lead.id,
+      participants.map((p) =>
+        p.id === editP.id ? { ...p, notes: editForm.notes.trim() || undefined } : p,
+      ),
+    )
     toast.success("פרטי המשתתף עודכנו")
     setEditP(null)
     refresh()
@@ -788,38 +784,6 @@ export function ParticipantsSection({
         })
       : `היי ${p.name},`
     window.open(whatsappLink(p.phone, text), "_blank", "noopener,noreferrer")
-  }
-
-  const showOrSendLmsAccess = (p: Participant) => {
-    const idNumber = p.idNumber?.trim()
-    if (!idNumber) {
-      toast.error("חסרה ת״ז — לא ניתן להציג פרטי LMS")
-      return
-    }
-    const loginUrl =
-      lmsCredentials[p.id]?.loginUrl || settings.lmsLoginUrl || ""
-    toast.message(`פרטי LMS · ${p.name}`, {
-      description: `שם משתמש וסיסמה: ${idNumber}${loginUrl ? `\nכניסה: ${loginUrl}` : ""}`,
-      duration: 8000,
-      action: p.phone?.trim()
-        ? {
-            label: "שלח בוואטסאפ",
-            onClick: () => {
-              window.open(
-                whatsappLink(
-                  p.phone!,
-                  lmsParticipantWhatsAppMessage({
-                    fullName: p.name,
-                    loginUrl,
-                  }),
-                ),
-                "_blank",
-                "noopener,noreferrer",
-              )
-            },
-          }
-        : undefined,
-    })
   }
 
   const openIssueForParticipant = (p: Participant) => {
@@ -1039,7 +1003,9 @@ export function ParticipantsSection({
                     <th className="w-[9%] px-3 py-2 font-semibold">
                       תעודה פיזית
                     </th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">פעולות</th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">הערות</th>
+                    <th className="w-[9%] px-3 py-2 font-semibold">מבחן</th>
+                    <th className="w-[8%] px-3 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1152,6 +1118,49 @@ export function ParticipantsSection({
                             />
                           </div>
                         </td>
+                        <td
+                          className="max-w-0 truncate px-2 py-2 text-xs text-muted-foreground"
+                          title={participantNotes(p) || undefined}
+                        >
+                          {participantNotes(p) || "—"}
+                        </td>
+                        <td className="px-2 py-2">
+                          {(() => {
+                            const t = traineeForParticipant(p)
+                            const score = p.examScore ?? t?.examScore
+                            const completed =
+                              (p.examCompletedAt || t?.examCompletedAt) &&
+                              score != null
+                            if (completed) {
+                              const good = Number(score) >= EXAM_PASS_SCORE
+                              return (
+                                <span
+                                  className={`inline-flex rounded-lg px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                                    good
+                                      ? "bg-emerald-50 text-emerald-800"
+                                      : "bg-red-50 text-red-700"
+                                  }`}
+                                >
+                                  {score}/100
+                                </span>
+                              )
+                            }
+                            const draft =
+                              p.examDraftAnswers || t?.examDraftAnswers
+                            if (draft && Object.keys(draft).length) {
+                              return (
+                                <span className="text-[10px] font-semibold text-amber-800">
+                                  טיוטה
+                                </span>
+                              )
+                            }
+                            return (
+                              <span className="text-[10px] text-muted-foreground">
+                                —
+                              </span>
+                            )
+                          })()}
+                        </td>
                         <td className="px-3 py-2">
                           <div className="flex justify-end">
                             <DropdownMenu>
@@ -1186,12 +1195,6 @@ export function ParticipantsSection({
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem
-                                  onClick={() => showOrSendLmsAccess(p)}
-                                >
-                                  <Key className="text-amber-700" />
-                                  הצג / שלח פרטי גישה ל-LMS
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
                                   onClick={() => openWhatsApp(p)}
                                 >
                                   <MessageCircle className="text-emerald-700" />
@@ -1211,21 +1214,6 @@ export function ParticipantsSection({
                                 >
                                   <Award className="text-amber-600" />
                                   הנפקת תעודה דיגיטלית
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  disabled={
-                                    !trainee || physicalDone
-                                  }
-                                  onClick={() =>
-                                    patchParticipantCertificate(
-                                      p,
-                                      "certificateCardPrinted",
-                                      true,
-                                    )
-                                  }
-                                >
-                                  <Printer />
-                                  סמן הדפסת תעודה פיזית
                                 </DropdownMenuItem>
                                 {p.certificateUrl?.trim() ? (
                                   <DropdownMenuItem
@@ -1402,6 +1390,30 @@ export function ParticipantsSection({
                       ) : null}
                       <p>טלפון: {p.phone || "—"}</p>
                       <p>דוא״ל: {p.email || "—"}</p>
+                      {participantNotes(p) ? (
+                        <p className="rounded-lg bg-secondary/50 px-2 py-1.5 text-foreground">
+                          <span className="font-semibold">הערות: </span>
+                          {participantNotes(p)}
+                        </p>
+                      ) : (
+                        <p>הערות: —</p>
+                      )}
+                      <ExamScoreBadge
+                        examScore={
+                          p.examScore ?? traineeForParticipant(p)?.examScore
+                        }
+                        examPassed={
+                          p.examPassed ?? traineeForParticipant(p)?.examPassed
+                        }
+                        examCompletedAt={
+                          p.examCompletedAt ??
+                          traineeForParticipant(p)?.examCompletedAt
+                        }
+                        examDraftAnswers={
+                          p.examDraftAnswers ??
+                          traineeForParticipant(p)?.examDraftAnswers
+                        }
+                      />
                       {p.isLead ? (
                         <p className="font-medium text-violet-700">★ מסומן כליד</p>
                       ) : null}
@@ -1425,27 +1437,6 @@ export function ParticipantsSection({
                             physicalDone={Boolean(
                               trainee?.certificateCardPrinted,
                             )}
-                            onToggleDigital={
-                              trainee
-                                ? (next) =>
-                                    patchParticipantCertificate(
-                                      p,
-                                      "certificateEmailSent",
-                                      next,
-                                    )
-                                : undefined
-                            }
-                            onTogglePhysical={
-                              trainee
-                                ? (next) =>
-                                    patchParticipantCertificate(
-                                      p,
-                                      "certificateCardPrinted",
-                                      next,
-                                    )
-                                : undefined
-                            }
-                            disabled={!trainee}
                           />
                         )
                       })()}
@@ -1494,6 +1485,15 @@ export function ParticipantsSection({
               }
               placeholder="דוא״ל"
               dir="ltr"
+            />
+            <Textarea
+              value={editForm.notes}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, notes: e.target.value }))
+              }
+              placeholder="הערות"
+              rows={3}
+              className="text-sm"
             />
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox

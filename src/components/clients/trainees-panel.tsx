@@ -8,14 +8,12 @@ import {
   ExternalLink,
   FileCheck,
   FileSpreadsheet,
-  Key,
   Link2,
   MessageCircle,
   MoreVertical,
   Pencil,
   Phone,
   Plus,
-  Printer,
   RefreshCw,
   ScrollText,
   Search,
@@ -26,6 +24,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
+import { ExamScoreBadge } from "@/components/exam/exam-score-badge"
 import {
   CertificateStatusBadge,
   CertificateStatusSection,
@@ -55,7 +54,7 @@ import {
 } from "@/lib/actions"
 import { formatCourseTypeLabel } from "@/lib/course-type"
 import { formatLeadCategory, formatPhone, whatsappLink } from "@/lib/helpers"
-import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
+import { EXAM_PASS_SCORE } from "@/lib/exam-questions"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import type { LeadStatus, Trainee } from "@/lib/types"
@@ -129,7 +128,7 @@ function ExternalTag() {
 }
 
 export function TraineesPanel() {
-  const { trainees, leads, settings, updateTraineeLocal, refresh } = useApp()
+  const { trainees, leads, updateTraineeLocal, refresh } = useApp()
   const [q, setQ] = useState("")
   const [statusFilter, setStatusFilter] =
     useState<TraineeStatusFilter>("all")
@@ -248,21 +247,11 @@ export function TraineesPanel() {
     updateTraineeLocal(t.id, data)
     const res = await updateTrainee(t.id, {
       notes: data.notes,
-      certificateEmailSent: data.certificateEmailSent,
-      certificateCardPrinted: data.certificateCardPrinted,
     })
     if (!res.ok) {
       toast.error(res.error)
       refresh()
     }
-  }
-
-  const patchCertificate = (
-    t: Trainee,
-    field: "certificateEmailSent" | "certificateCardPrinted",
-    next: boolean,
-  ) => {
-    void patch(t, { [field]: next })
   }
 
   const syncFromSheets = async () => {
@@ -457,39 +446,6 @@ export function TraineesPanel() {
                 פתח משתמש בלמידה
               </DropdownMenuItem>
             ) : null}
-            {t.idNumber?.trim() ? (
-              <DropdownMenuItem
-                onClick={() => {
-                  const idNumber = t.idNumber.trim()
-                  const loginUrl = settings.lmsLoginUrl || ""
-                  toast.message(`פרטי LMS · ${t.fullName}`, {
-                    description: `שם משתמש וסיסמה: ${idNumber}${loginUrl ? `\nכניסה: ${loginUrl}` : ""}`,
-                    duration: 8000,
-                    action: t.phone
-                      ? {
-                          label: "שלח בוואטסאפ",
-                          onClick: () => {
-                            window.open(
-                              whatsappLink(
-                                t.phone!,
-                                lmsParticipantWhatsAppMessage({
-                                  fullName: t.fullName,
-                                  loginUrl,
-                                }),
-                              ),
-                              "_blank",
-                              "noopener,noreferrer",
-                            )
-                          },
-                        }
-                      : undefined,
-                  })
-                }}
-              >
-                <Key className="text-amber-700" />
-                הצג / שלח פרטי גישה ל-LMS
-              </DropdownMenuItem>
-            ) : null}
             {t.phone ? (
               <DropdownMenuItem
                 onClick={() =>
@@ -537,15 +493,6 @@ export function TraineesPanel() {
             >
               <Award className="text-amber-600" />
               הנפקת תעודה דיגיטלית
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={t.certificateCardPrinted}
-              onClick={() =>
-                patchCertificate(t, "certificateCardPrinted", true)
-              }
-            >
-              <Printer />
-              סמן הדפסת תעודה פיזית
             </DropdownMenuItem>
             {t.certificateUrl?.trim() ? (
               <DropdownMenuItem
@@ -790,7 +737,8 @@ export function TraineesPanel() {
                       תעודה פיזית
                     </th>
                     <th className="w-[8%] px-2 py-2 font-semibold">הערות</th>
-                    <th className="w-[12%] px-2 py-2 font-semibold">פעולות</th>
+                    <th className="w-[7%] px-2 py-2 font-semibold">מבחן</th>
+                    <th className="w-[10%] px-2 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -884,6 +832,29 @@ export function TraineesPanel() {
                             className="h-8 text-xs"
                           />
                         </td>
+                        <td className="px-2 py-2 text-center">
+                          {t.examScore != null && t.examCompletedAt ? (
+                            <span
+                              className={cn(
+                                "inline-flex rounded-lg px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                                t.examScore >= EXAM_PASS_SCORE
+                                  ? "bg-emerald-50 text-emerald-800"
+                                  : "bg-red-50 text-red-700",
+                              )}
+                            >
+                              {t.examScore}/100
+                            </span>
+                          ) : t.examDraftAnswers &&
+                            Object.keys(t.examDraftAnswers).length > 0 ? (
+                            <span className="text-[10px] font-semibold text-amber-800">
+                              טיוטה
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">
+                              —
+                            </span>
+                          )}
+                        </td>
                         <td className="px-2 py-2">{actionButtons(t, true)}</td>
                       </tr>
                     )
@@ -967,12 +938,12 @@ export function TraineesPanel() {
                       <CertificateStatusSection
                         digitalDone={t.certificateEmailSent}
                         physicalDone={t.certificateCardPrinted}
-                        onToggleDigital={(next) =>
-                          patchCertificate(t, "certificateEmailSent", next)
-                        }
-                        onTogglePhysical={(next) =>
-                          patchCertificate(t, "certificateCardPrinted", next)
-                        }
+                      />
+                      <ExamScoreBadge
+                        examScore={t.examScore}
+                        examPassed={t.examPassed}
+                        examCompletedAt={t.examCompletedAt}
+                        examDraftAnswers={t.examDraftAnswers}
                       />
                       <Textarea
                         value={t.notes || ""}

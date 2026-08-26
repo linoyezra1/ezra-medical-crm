@@ -1837,6 +1837,7 @@ export async function updateParticipantDetails(
     phone?: string;
     email?: string;
     feedback?: string;
+    notes?: string | null;
     isExternal?: boolean;
     isLead?: boolean;
     courseType?: string | null;
@@ -1866,6 +1867,9 @@ export async function updateParticipantDetails(
       phone: data.phone?.trim() || null,
       email: data.email?.trim() || null,
       feedback: data.feedback?.trim() || null,
+      ...(data.notes !== undefined
+        ? { notes: data.notes?.trim() || null }
+        : {}),
       isExternal,
       isLead,
       ...(isExternal
@@ -1882,6 +1886,12 @@ export async function updateParticipantDetails(
   });
   // סנכרון דו-כיווני: פרטי משתתף → מודרך גלובלי
   await syncParticipantContactToTrainee(updated);
+  if (data.notes !== undefined && updated.traineeId) {
+    await prisma.trainee.update({
+      where: { id: updated.traineeId },
+      data: { notes: data.notes?.trim() || null },
+    });
+  }
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/clients");
   revalidatePath("/leads");
@@ -1925,6 +1935,21 @@ export async function fetchLeadParticipants(leadId: string) {
     paymentReceivedBy: p.paymentReceivedBy || undefined,
     paymentReceiptIssued: Boolean(p.paymentReceiptIssued),
     source: p.source || undefined,
+    notes: p.notes || undefined,
+    examScore: p.examScore != null ? Number(p.examScore) : undefined,
+    examPassed: Boolean(p.examPassed),
+    examCompletedAt: p.examCompletedAt
+      ? p.examCompletedAt.toISOString()
+      : undefined,
+    examDraftAnswers: (() => {
+      const raw = p.examDraftAnswers
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+      const out: Record<string, string> = {}
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof v === "string" && v.trim()) out[k] = v
+      }
+      return Object.keys(out).length ? out : undefined
+    })(),
   }));
 }
 

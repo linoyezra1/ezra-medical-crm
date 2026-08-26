@@ -218,6 +218,24 @@ export function mapLead(db: DbLeadFull): Lead {
       ),
       source:
         (p as { source?: string | null }).source || "manual",
+      notes: (p as { notes?: string | null }).notes || undefined,
+      examScore:
+        (p as { examScore?: number | null }).examScore != null
+          ? Number((p as { examScore?: number | null }).examScore)
+          : undefined,
+      examPassed: Boolean((p as { examPassed?: boolean }).examPassed),
+      examCompletedAt: (p as { examCompletedAt?: Date | null }).examCompletedAt
+        ? (p as { examCompletedAt: Date }).examCompletedAt.toISOString()
+        : undefined,
+      examDraftAnswers: (() => {
+        const raw = (p as { examDraftAnswers?: unknown }).examDraftAnswers
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+        const out: Record<string, string> = {}
+        for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+          if (typeof v === "string" && v.trim()) out[k] = v
+        }
+        return Object.keys(out).length ? out : undefined
+      })(),
     })),
     expenses: (db.expenses || []).map((e) => ({
       id: e.id,
@@ -450,6 +468,20 @@ export function mapTrainee(db: DbTraineeFull): Trainee {
     certificateCardPrinted: Boolean(db.certificateCardPrinted),
     certificateUrl: db.certificateUrl || fromParticipant || undefined,
     notes: db.notes || undefined,
+    examScore: db.examScore != null ? Number(db.examScore) : undefined,
+    examPassed: Boolean(db.examPassed),
+    examCompletedAt: db.examCompletedAt
+      ? db.examCompletedAt.toISOString()
+      : undefined,
+    examDraftAnswers: (() => {
+      const raw = db.examDraftAnswers
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+      const out: Record<string, string> = {}
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof v === "string" && v.trim()) out[k] = v
+      }
+      return Object.keys(out).length ? out : undefined
+    })(),
     trainings: (db.participants || []).map((p) => ({
       participantId: p.id,
       leadId: p.leadId,

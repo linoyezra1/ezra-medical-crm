@@ -49,6 +49,7 @@ type QuickActionId =
   | "booklet_print"
   | "exam_v1"
   | "exam_v2"
+  | "digital_exam"
   | "participants_table"
   | "presentation"
   | "copy_summary"
@@ -109,6 +110,12 @@ const ACTIONS: QuickActionDef[] = [
     id: "exam_v2",
     label: "מבחן גרסה 2",
     description: "שליחת קישור למבחן 44 גרסה 2",
+    icon: ClipboardList,
+  },
+  {
+    id: "digital_exam",
+    label: "מבחן דיגיטלי",
+    description: "שליחת קישור למבחן הדיגיטלי במערכת",
     icon: ClipboardList,
   },
   {
@@ -216,6 +223,15 @@ export function QuickActionsView() {
       case "exam_v2":
         sendStatic("exam44v2", "מבחן 44 גרסה 2")
         break
+      case "digital_exam": {
+        const examUrl =
+          typeof window !== "undefined"
+            ? `${window.location.origin}/exam`
+            : "/exam"
+        const text = `היי ${contact}, קישור למבחן הדיגיטלי בעזרה ראשונה:\n${examUrl}`
+        window.open(whatsappLink(lead.phone, text), "_blank", "noopener,noreferrer")
+        break
+      }
       case "participants_table":
         sendStatic("participantsTable", "פורמט טבלת משתתפים")
         break

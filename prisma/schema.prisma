@@ -252,6 +252,16 @@ model Participant {
   paymentReceiptIssued Boolean @default(false)
   /** מקור הרשמה: manual | Wix */
   source          String   @default("manual")
+  /** הערות פנימיות על המשתתף */
+  notes           String?
+  /** ציון מבחן דיגיטלי (0–100) */
+  examScore       Int?
+  /** האם עבר/ה את המבחן הדיגיטלי (≥72) */
+  examPassed      Boolean  @default(false)
+  /** מועד הגשת המבחן */
+  examCompletedAt DateTime?
+  /** טיוטת תשובות מבחן — { [questionId]: selectedOption } */
+  examDraftAnswers Json?
   createdAt       DateTime @default(now())
   trainingSales   TrainingSale[]
 
@@ -271,6 +281,11 @@ model Trainee {
   /** קישור PDF לתעודה (למודרכים שיוצאו ללא שיוך להדרכה) */
   certificateUrl         String?
   notes                  String?
+  /** ציון מבחן דיגיטלי (0–100) */
+  examScore              Int?
+  examPassed             Boolean       @default(false)
+  examCompletedAt        DateTime?
+  examDraftAnswers       Json?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   participants           Participant[]
