@@ -262,6 +262,8 @@ model Participant {
   examCompletedAt DateTime?
   /** טיוטת תשובות מבחן — { [questionId]: selectedOption } */
   examDraftAnswers Json?
+  /** 25 מזהי שאלות שננעלו למבחן של משתתף זה */
+  assignedQuestionIds Json?
   createdAt       DateTime @default(now())
   trainingSales   TrainingSale[]
 
@@ -286,6 +288,8 @@ model Trainee {
   examPassed             Boolean       @default(false)
   examCompletedAt        DateTime?
   examDraftAnswers       Json?
+  /** 25 מזהי שאלות שננעלו למבחן של מודרך זה */
+  assignedQuestionIds    Json?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   participants           Participant[]
@@ -293,6 +297,23 @@ model Trainee {
   @@unique([idNumber])
   @@index([fullName])
   @@index([phone])
+}
+
+/** מאגר שאלות למבחן דיגיטלי בעזרה ראשונה */
+model ExamQuestion {
+  id            String   @id @default(cuid())
+  question      String
+  /** בדיוק 4 אפשרויות תשובה */
+  options       Json
+  correctAnswer String
+  points        Int      @default(4)
+  isActive      Boolean  @default(true)
+  orderIndex    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([orderIndex])
 }
 
 /** פריטי מלאי / ציוד למכירה */

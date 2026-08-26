@@ -844,16 +844,7 @@ export function TraineesPanel() {
                             >
                               {t.examScore}/100
                             </span>
-                          ) : t.examDraftAnswers &&
-                            Object.keys(t.examDraftAnswers).length > 0 ? (
-                            <span className="text-[10px] font-semibold text-amber-800">
-                              טיוטה
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground">
-                              —
-                            </span>
-                          )}
+                          ) : null}
                         </td>
                         <td className="px-2 py-2">{actionButtons(t, true)}</td>
                       </tr>

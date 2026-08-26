@@ -1131,32 +1131,17 @@ export function ParticipantsSection({
                             const completed =
                               (p.examCompletedAt || t?.examCompletedAt) &&
                               score != null
-                            if (completed) {
-                              const good = Number(score) >= EXAM_PASS_SCORE
-                              return (
-                                <span
-                                  className={`inline-flex rounded-lg px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                                    good
-                                      ? "bg-emerald-50 text-emerald-800"
-                                      : "bg-red-50 text-red-700"
-                                  }`}
-                                >
-                                  {score}/100
-                                </span>
-                              )
-                            }
-                            const draft =
-                              p.examDraftAnswers || t?.examDraftAnswers
-                            if (draft && Object.keys(draft).length) {
-                              return (
-                                <span className="text-[10px] font-semibold text-amber-800">
-                                  טיוטה
-                                </span>
-                              )
-                            }
+                            if (!completed) return null
+                            const good = Number(score) >= EXAM_PASS_SCORE
                             return (
-                              <span className="text-[10px] text-muted-foreground">
-                                —
+                              <span
+                                className={`inline-flex rounded-lg px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                                  good
+                                    ? "bg-emerald-50 text-emerald-800"
+                                    : "bg-red-50 text-red-700"
+                                }`}
+                              >
+                                {score}/100
                               </span>
                             )
                           })()}

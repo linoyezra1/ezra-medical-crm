@@ -1,9 +1,15 @@
 /**
- * מאגר שאלות מבחן דיגיטלי בעזרה ראשונה.
- * חשוב: אין לשנות את מלל השאלות או האופציות.
+ * מאגר שאלות מבחן דיגיטלי בעזרה ראשונה (seed + helpers).
+ * חשוב: אין לשנות את מלל השאלות או האופציות ב-SEED.
  */
 
-export interface ExamQuestion {
+/** ציון מעבר — מתחתיו אדום, ממנו ומעלה ירוק */
+export const EXAM_PASS_SCORE = 72
+
+/** גודל ברירת מחדל למבחן */
+export const EXAM_TARGET_QUESTION_COUNT = 25
+
+export interface SeedExamQuestion {
   id: number
   question: string
   options: string[]
@@ -11,10 +17,19 @@ export interface ExamQuestion {
   points: number
 }
 
-/** ציון מעבר — מתחתיו אדום, ממנו ומעלה ירוק */
-export const EXAM_PASS_SCORE = 72
+/** שאלה מ-DB / לריצה במבחן */
+export interface ExamQuestionDto {
+  id: string
+  question: string
+  options: string[]
+  correctAnswer: string
+  points: number
+  isActive?: boolean
+  orderIndex?: number
+}
 
-export const EXAM_QUESTIONS: ExamQuestion[] = [
+/** מקור seed — מלל מדויק, ללא שינוי */
+export const EXAM_QUESTIONS: SeedExamQuestion[] = [
   {
     id: 1,
     question: "מטרת ההחייאה היא:",
@@ -305,15 +320,46 @@ export const EXAM_QUESTIONS: ExamQuestion[] = [
 
 export type ExamAnswers = Record<string, string>
 
-export function scoreExamAnswers(answers: ExamAnswers): {
+/** Fisher–Yates — ערבוב אחיד ללא כפילויות */
+export function fisherYatesShuffle<T>(items: T[]): T[] {
+  const arr = [...items]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j]!, arr[i]!]
+  }
+  return arr
+}
+
+/** מחלק נקודות כך שסכום השאלות = 100 */
+export function scaleQuestionPoints(
+  questions: ExamQuestionDto[],
+): ExamQuestionDto[] {
+  const n = questions.length
+  if (n === 0) return []
+  if (n === EXAM_TARGET_QUESTION_COUNT) {
+    return questions.map((q) => ({ ...q, points: 4 }))
+  }
+  const base = Math.floor(100 / n)
+  let remainder = 100 - base * n
+  return questions.map((q) => {
+    const extra = remainder > 0 ? 1 : 0
+    if (remainder > 0) remainder -= 1
+    return { ...q, points: base + extra }
+  })
+}
+
+export function scoreExamAnswers(
+  questions: ExamQuestionDto[],
+  answers: ExamAnswers,
+): {
   score: number
   passed: boolean
-  unansweredIds: number[]
+  unansweredIds: string[]
 } {
-  const unansweredIds: number[] = []
+  const unansweredIds: string[] = []
   let score = 0
-  for (const q of EXAM_QUESTIONS) {
-    const selected = answers[String(q.id)]?.trim()
+  for (const q of questions) {
+    const selected = answers[q.id]?.trim()
     if (!selected) {
       unansweredIds.push(q.id)
       continue
@@ -327,12 +373,29 @@ export function scoreExamAnswers(answers: ExamAnswers): {
   }
 }
 
-export function firstUnansweredIndex(answers: ExamAnswers): number {
-  const idx = EXAM_QUESTIONS.findIndex((q) => !answers[String(q.id)]?.trim())
+export function firstUnansweredIndex(
+  questions: ExamQuestionDto[],
+  answers: ExamAnswers,
+): number {
+  const idx = questions.findIndex((q) => !answers[q.id]?.trim())
   return idx < 0 ? 0 : idx
 }
 
-export function draftAnswerCount(answers: ExamAnswers | null | undefined): number {
+export function draftAnswerCount(
+  answers: ExamAnswers | null | undefined,
+): number {
   if (!answers || typeof answers !== "object") return 0
   return Object.values(answers).filter((v) => String(v || "").trim()).length
+}
+
+export function parseOptionsJson(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((o) => String(o ?? "").trim()).filter(Boolean)
+  }
+  return []
+}
+
+export function parseIdListJson(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((id) => String(id ?? "").trim()).filter(Boolean)
 }

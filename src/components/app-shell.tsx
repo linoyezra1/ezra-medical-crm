@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Contact,
   GraduationCap,
+  HelpCircle,
   LayoutGrid,
   LayoutDashboard,
   MessageCircle,
@@ -42,6 +43,11 @@ const MORE = [
   { href: "/equipment", label: "ניהול מלאי", icon: Boxes },
   { href: "/calendar", label: "יומן ומשימות", icon: CalendarDays },
   { href: "/instructors", label: "ניהול מדריכים", icon: UserRound },
+  {
+    href: "/exam-questions",
+    label: "ניהול מאגר שאלות מבחן",
+    icon: HelpCircle,
+  },
   { href: "/settings", label: "הגדרות עסק", icon: Settings },
 ]
 

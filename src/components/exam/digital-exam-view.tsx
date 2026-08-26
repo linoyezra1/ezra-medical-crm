@@ -13,10 +13,11 @@ import {
 } from "@/lib/exam-actions"
 import {
   EXAM_PASS_SCORE,
-  EXAM_QUESTIONS,
+  EXAM_TARGET_QUESTION_COUNT,
   firstUnansweredIndex,
   scoreExamAnswers,
   type ExamAnswers,
+  type ExamQuestionDto,
 } from "@/lib/exam-questions"
 import { cn } from "@/lib/utils"
 
@@ -57,18 +58,19 @@ export function DigitalExamView() {
   const [idNumber, setIdNumber] = useState("")
   const [fullName, setFullName] = useState("")
   const [answers, setAnswers] = useState<ExamAnswers>({})
+  const [questions, setQuestions] = useState<ExamQuestionDto[]>([])
   const [qIndex, setQIndex] = useState(0)
   const [showUnansweredHint, setShowUnansweredHint] = useState(false)
-  const [missingIds, setMissingIds] = useState<number[]>([])
+  const [missingIds, setMissingIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ score: number; passed: boolean } | null>(
     null,
   )
 
-  const total = EXAM_QUESTIONS.length
-  const question = EXAM_QUESTIONS[qIndex]
-  const progress = ((qIndex + 1) / total) * 100
-  const selected = question ? answers[String(question.id)] || "" : ""
+  const total = questions.length || EXAM_TARGET_QUESTION_COUNT
+  const question = questions[qIndex]
+  const progress = total > 0 ? ((qIndex + 1) / total) * 100 : 0
+  const selected = question ? answers[question.id] || "" : ""
 
   const persistDraft = useCallback(
     async (next: ExamAnswers) => {
@@ -97,10 +99,16 @@ export function DigitalExamView() {
     }
 
     const local = loadLocalDraft(res.data.idNumber)
-    const merged: ExamAnswers = { ...local, ...res.data.answers }
+    const allowed = new Set(res.data.questions.map((q) => q.id))
+    const filteredLocal: ExamAnswers = {}
+    for (const [k, v] of Object.entries(local)) {
+      if (allowed.has(k) && v?.trim()) filteredLocal[k] = v
+    }
+    const merged: ExamAnswers = { ...filteredLocal, ...res.data.answers }
     setIdNumber(res.data.idNumber)
     setFullName(res.data.fullName)
     setAnswers(merged)
+    setQuestions(res.data.questions)
 
     if (res.data.alreadyCompleted && res.data.examScore != null) {
       setResult({
@@ -112,7 +120,7 @@ export function DigitalExamView() {
       return
     }
 
-    const startIdx = firstUnansweredIndex(merged)
+    const startIdx = firstUnansweredIndex(res.data.questions, merged)
     setQIndex(startIdx)
     setPhase("exam")
     if (res.data.hasDraft || Object.keys(local).length > 0) {
@@ -122,7 +130,7 @@ export function DigitalExamView() {
 
   const selectAnswer = (option: string) => {
     if (!question) return
-    const next = { ...answers, [String(question.id)]: option }
+    const next = { ...answers, [question.id]: option }
     setAnswers(next)
     setShowUnansweredHint(false)
     void persistDraft(next)
@@ -154,7 +162,7 @@ export function DigitalExamView() {
   }
 
   const onSubmit = async () => {
-    const scored = scoreExamAnswers(answers)
+    const scored = scoreExamAnswers(questions, answers)
     if (scored.unansweredIds.length) {
       setMissingIds(scored.unansweredIds)
       toast.error("יש לענות על כל השאלות לפני ההגשה")
@@ -169,6 +177,10 @@ export function DigitalExamView() {
     })
     setBusy(false)
     if (!res.ok) {
+      if (res.code === "unanswered") {
+        const again = scoreExamAnswers(questions, answers)
+        setMissingIds(again.unansweredIds)
+      }
       toast.error(res.error)
       return
     }
@@ -177,8 +189,8 @@ export function DigitalExamView() {
     setPhase("done")
   }
 
-  const jumpToMissing = (id: number) => {
-    const idx = EXAM_QUESTIONS.findIndex((q) => q.id === id)
+  const jumpToMissing = (id: string) => {
+    const idx = questions.findIndex((q) => q.id === id)
     if (idx >= 0) {
       setQIndex(idx)
       setPhase("exam")
@@ -186,10 +198,16 @@ export function DigitalExamView() {
     }
   }
 
+  const missingNumbers = useMemo(() => {
+    return missingIds.map((id) => {
+      const idx = questions.findIndex((q) => q.id === id)
+      return { id, num: idx >= 0 ? idx + 1 : 0 }
+    })
+  }, [missingIds, questions])
+
   const answeredCount = useMemo(
-    () =>
-      EXAM_QUESTIONS.filter((q) => answers[String(q.id)]?.trim()).length,
-    [answers],
+    () => questions.filter((q) => answers[q.id]?.trim()).length,
+    [answers, questions],
   )
 
   useEffect(() => {
@@ -204,7 +222,8 @@ export function DigitalExamView() {
         </div>
         <h1 className="text-xl font-bold">מבחן דיגיטלי בעזרה ראשונה</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          25 שאלות · {EXAM_PASS_SCORE} נקודות ומעלה לציון עובר
+          {EXAM_TARGET_QUESTION_COUNT} שאלות · {EXAM_PASS_SCORE} נקודות ומעלה
+          לציון עובר
         </p>
       </header>
 
@@ -320,20 +339,20 @@ export function DigitalExamView() {
             נענו {answeredCount} מתוך {total} שאלות. יש לענות על כל השאלות לפני
             ההגשה.
           </p>
-          {missingIds.length > 0 ? (
+          {missingNumbers.length > 0 ? (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
               <p className="mb-2 text-sm font-semibold text-destructive">
                 שאלות חסרות:
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {missingIds.map((id) => (
+                {missingNumbers.map(({ id, num }) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => jumpToMissing(id)}
                     className="rounded-lg bg-destructive/10 px-2.5 py-1 text-xs font-bold text-destructive"
                   >
-                    שאלה {id}
+                    שאלה {num || "?"}
                   </button>
                 ))}
               </div>

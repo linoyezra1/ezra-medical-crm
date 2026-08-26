@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { DEFAULT_COURSES } from "../src/lib/demo-data";
+import { EXAM_QUESTIONS } from "../src/lib/exam-questions";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -110,6 +111,23 @@ async function main() {
     },
     update: {},
   });
+
+  const examCount = await prisma.examQuestion.count();
+  if (examCount === 0) {
+    await prisma.examQuestion.createMany({
+      data: EXAM_QUESTIONS.map((q, i) => ({
+        question: q.question,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        points: q.points,
+        isActive: true,
+        orderIndex: i + 1,
+      })),
+    });
+    console.log(`Seeded ${EXAM_QUESTIONS.length} exam questions.`);
+  } else {
+    console.log(`Exam questions already present (${examCount}) — skipped.`);
+  }
 
   console.log("Seed completed with course summary templates.");
 }
