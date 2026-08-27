@@ -16,6 +16,7 @@ import type {
   TrainingSession as DbTrainingSession,
 } from "@/generated/prisma/client";
 import { DEFAULT_COURSES } from "@/lib/demo-data";
+import { resolveLeadCertifyingBody, normalizeCertifyingBody } from "@/lib/certifying-body";
 import { currentStockOf } from "@/lib/inventory-stock";
 import { parseSessionsJson, type TrainingSessionSlot } from "@/lib/payment";
 import { formatInJerusalem } from "@/lib/timezone";
@@ -82,14 +83,8 @@ function splitDateTime(d: Date | null | undefined): { date?: string; time?: stri
   return formatInJerusalem(d);
 }
 
-const CERTIFICATE_VIA = new Set(["עזרה ורפואה", "ניתאי", "יוסי"]);
-
 function mapDelivery(method: string | null | undefined): Lead["certificateDelivery"] {
-  if (method && CERTIFICATE_VIA.has(method)) {
-    return method as Lead["certificateDelivery"];
-  }
-  // ערכים ישנים (דיגיטלי/דואר/הדפסה) → ברירת מחדל
-  return "עזרה ורפואה";
+  return resolveLeadCertifyingBody(method);
 }
 
 function mapTrainingSessions(
@@ -219,6 +214,10 @@ export function mapLead(db: DbLeadFull): Lead {
       source:
         (p as { source?: string | null }).source || "manual",
       notes: (p as { notes?: string | null }).notes || undefined,
+      certifyingBody:
+        normalizeCertifyingBody(
+          (p as { certifyingBody?: string | null }).certifyingBody,
+        ) || undefined,
       examScore:
         (p as { examScore?: number | null }).examScore != null
           ? Number((p as { examScore?: number | null }).examScore)
@@ -468,6 +467,9 @@ export function mapTrainee(db: DbTraineeFull): Trainee {
     certificateCardPrinted: Boolean(db.certificateCardPrinted),
     certificateUrl: db.certificateUrl || fromParticipant || undefined,
     notes: db.notes || undefined,
+    certifyingBody: normalizeCertifyingBody(
+      (db as { certifyingBody?: string | null }).certifyingBody,
+    ),
     examScore: db.examScore != null ? Number(db.examScore) : undefined,
     examPassed: Boolean(db.examPassed),
     examCompletedAt: db.examCompletedAt

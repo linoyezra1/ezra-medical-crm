@@ -25,6 +25,8 @@ import {
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 import { ExamScoreBadge } from "@/components/exam/exam-score-badge"
+import { CertifyingBodyBadge } from "@/components/leads/certifying-body-badge"
+import { SessionMeetingBadge } from "@/components/leads/session-meeting-badge"
 import {
   CertificateStatusBadge,
   CertificateStatusSection,
@@ -55,9 +57,18 @@ import {
 import { formatCourseTypeLabel } from "@/lib/course-type"
 import { formatLeadCategory, formatPhone, whatsappLink } from "@/lib/helpers"
 import { EXAM_PASS_SCORE } from "@/lib/exam-questions"
+import {
+  displayCertifyingBody,
+  normalizeCertifyingBody,
+} from "@/lib/certifying-body"
+import {
+  buildParticipantSessionNumbers,
+  sortTrainingsChronologically,
+} from "@/lib/participant-session"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
-import type { LeadStatus, Trainee } from "@/lib/types"
+import type { CertifyingBody, LeadStatus, Trainee } from "@/lib/types"
+import { CERTIFYING_BODY_OPTIONS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type TraineeStatusFilter = "all" | "new" | "closed" | "pending_certificates"
@@ -119,6 +130,40 @@ function traineeCategoryLabel(t: Trainee) {
   return formatLeadCategory(raw)
 }
 
+function traineeCertifyingBodyLabel(
+  t: Trainee,
+  leads: {
+    id: string
+    certificateDelivery?: string
+    participants: {
+      id: string
+      certifyingBody?: string
+      isExternal?: boolean
+      traineeId?: string
+      idNumber?: string
+    }[]
+  }[],
+): string {
+  const own = normalizeCertifyingBody(t.certifyingBody)
+  if (own) return own
+  for (const lead of leads) {
+    for (const p of lead.participants || []) {
+      const match =
+        p.traineeId === t.id ||
+        (p.idNumber &&
+          p.idNumber.replace(/\D/g, "") === t.idNumber.replace(/\D/g, ""))
+      if (!match) continue
+      const label = displayCertifyingBody({
+        certifyingBody: p.certifyingBody,
+        isExternal: p.isExternal,
+        leadCertificateDelivery: lead.certificateDelivery,
+      })
+      if (label) return label
+    }
+  }
+  return ""
+}
+
 function ExternalTag() {
   return (
     <span className="shrink-0 rounded bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-pink-700">
@@ -132,6 +177,9 @@ export function TraineesPanel() {
   const [q, setQ] = useState("")
   const [statusFilter, setStatusFilter] =
     useState<TraineeStatusFilter>("all")
+  const [certifyingBodyFilter, setCertifyingBodyFilter] = useState<
+    "all" | CertifyingBody
+  >("all")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [importOpen, setImportOpen] = useState(false)
@@ -152,6 +200,17 @@ export function TraineesPanel() {
     return map
   }, [leads])
 
+  const leadDateById = useMemo(() => {
+    const map = new Map<string, string | undefined>()
+    for (const l of leads) map.set(l.id, l.date)
+    return map
+  }, [leads])
+
+  const sessionByParticipantId = useMemo(
+    () => buildParticipantSessionNumbers(leads),
+    [leads],
+  )
+
   const activeTrainees = useMemo(
     () => trainees.filter((t) => t.trainings.length > 0),
     [trainees],
@@ -164,6 +223,11 @@ export function TraineesPanel() {
         if (!matchesPendingCertificatesSmart(t, leadStatusById)) return false
       } else if (statusFilter !== "all") {
         if (!traineeHasLeadStatus(t, statusFilter, leadStatusById)) return false
+      }
+
+      if (certifyingBodyFilter !== "all") {
+        const body = traineeCertifyingBodyLabel(t, leads)
+        if (body !== certifyingBodyFilter) return false
       }
 
       if (!term) return true
@@ -180,7 +244,14 @@ export function TraineesPanel() {
         (t.isExternal && "חיצוני".includes(term))
       )
     })
-  }, [activeTrainees, q, statusFilter, leadStatusById])
+  }, [
+    activeTrainees,
+    q,
+    statusFilter,
+    leadStatusById,
+    certifyingBodyFilter,
+    leads,
+  ])
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((t) => selectedIds.has(t.id))
@@ -667,6 +738,31 @@ export function TraineesPanel() {
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-xs font-semibold text-muted-foreground">
+          תעודות דרך מי
+        </label>
+        <select
+          className="h-9 max-w-full rounded-xl border border-border bg-card px-3 text-xs"
+          value={certifyingBodyFilter}
+          onChange={(e) =>
+            setCertifyingBodyFilter(
+              e.target.value === "all"
+                ? "all"
+                : (e.target.value as CertifyingBody),
+            )
+          }
+          aria-label="סינון תעודות דרך מי"
+        >
+          <option value="all">הכל</option>
+          {CERTIFYING_BODY_OPTIONS.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
           {trainees.length === 0 ? (
@@ -722,6 +818,9 @@ export function TraineesPanel() {
                     <th className="w-[9%] px-2 py-2 font-semibold">טלפון</th>
                     <th className="w-[10%] px-2 py-2 font-semibold">אימייל</th>
                     <th className="w-[10%] px-2 py-2 font-semibold">
+                      תעודות דרך מי
+                    </th>
+                    <th className="w-[9%] px-2 py-2 font-semibold">
                       הדרכה שיוך
                     </th>
                     <th className="w-[9%] px-2 py-2 font-semibold">
@@ -785,6 +884,11 @@ export function TraineesPanel() {
                           title={t.email || undefined}
                         >
                           {t.email || "—"}
+                        </td>
+                        <td className="max-w-0 truncate px-2 py-2">
+                          <CertifyingBodyBadge
+                            value={traineeCertifyingBodyLabel(t, leads)}
+                          />
                         </td>
                         <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
                           {via}
@@ -897,6 +1001,11 @@ export function TraineesPanel() {
                       <p className="mt-1 text-[11px] text-primary">
                         הדרכה דרך: {via}
                       </p>
+                      <div className="mt-1">
+                        <CertifyingBodyBadge
+                          value={traineeCertifyingBodyLabel(t, leads)}
+                        />
+                      </div>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         סוג קורס: {traineeCourseTypeLabel(t)}
                       </p>
@@ -946,19 +1055,31 @@ export function TraineesPanel() {
                         rows={2}
                         className="text-xs"
                       />
-                      {t.trainings.map((tr) => (
+                      {sortTrainingsChronologically(
+                        t.trainings,
+                        leadDateById,
+                      ).map((tr) => (
                         <p
                           key={tr.participantId}
-                          className="text-[11px] text-muted-foreground"
+                          className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground"
                         >
-                          הדרכה דרך: {tr.organizerName || tr.leadName}
-                          {tr.courseDate ? ` · ${tr.courseDate}` : ""}
-                          {tr.courseType
-                            ? ` · ${formatCourseTypeLabel(tr.courseType)}`
-                            : ""}
-                          {tr.courseCategory
-                            ? ` · ${formatLeadCategory(tr.courseCategory)}`
-                            : ""}
+                          <SessionMeetingBadge
+                            sessionNumber={sessionByParticipantId.get(
+                              tr.participantId,
+                            )}
+                          />
+                          <span>
+                            הדרכה דרך: {tr.organizerName || tr.leadName}
+                            {tr.courseDate || leadDateById.get(tr.leadId)
+                              ? ` · ${tr.courseDate || leadDateById.get(tr.leadId)}`
+                              : ""}
+                            {tr.courseType
+                              ? ` · ${formatCourseTypeLabel(tr.courseType)}`
+                              : ""}
+                            {tr.courseCategory
+                              ? ` · ${formatLeadCategory(tr.courseCategory)}`
+                              : ""}
+                          </span>
                         </p>
                       ))}
                     </div>

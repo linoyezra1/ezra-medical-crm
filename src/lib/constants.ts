@@ -87,8 +87,13 @@ export const PAYMENT_STATUSES = [
 
 export const DELIVERY_METHODS = [
   { value: "עזרה ורפואה", label: "עזרה ורפואה" },
-  { value: "ניתאי", label: "ניתאי" },
-  { value: "יוסי", label: "יוסי" },
+  { value: "ניתאי עזרה ראשונה", label: "ניתאי עזרה ראשונה" },
+  { value: "ניתאי התנהלות בטוחה", label: "ניתאי התנהלות בטוחה" },
+  {
+    value: "יוסי רענון עזרה ראשונה+התנהלות בטוחה",
+    label: "יוסי רענון עזרה ראשונה+התנהלות בטוחה",
+  },
+  { value: "יוסי התנהלות בטוחה", label: "יוסי התנהלות בטוחה" },
 ] as const;
 
 export const EXPENSE_TYPES = [

@@ -4,6 +4,7 @@ import {
   isInstructorUnassigned,
   UNASSIGNED_INSTRUCTOR,
 } from "@/lib/instructor"
+import { resolveLeadCertifyingBody } from "@/lib/certifying-body"
 import { uiStatusToDb, type Lead } from "@/lib/types"
 
 /** המרת Lead מ־UI ל־payload של Prisma / API */
@@ -66,7 +67,7 @@ export function leadToDbPayload(
       `${merged.address?.street ?? ""} ${merged.address?.houseNumber ?? ""}`.trim() ||
       merged.address?.city ||
       null,
-    deliveryMethod: merged.certificateDelivery || "עזרה ורפואה",
+    deliveryMethod: resolveLeadCertifyingBody(merged.certificateDelivery),
     leadSource: merged.customerType === "existing" ? "returning" : "website",
     paymentStatus: merged.paymentStatus || undefined,
     paymentDate: merged.paymentDate || undefined,

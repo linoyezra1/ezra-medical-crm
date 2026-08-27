@@ -25,6 +25,8 @@ import {
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 import { ExamScoreBadge } from "@/components/exam/exam-score-badge"
+import { CertifyingBodyBadge } from "@/components/leads/certifying-body-badge"
+import { SessionMeetingBadge } from "@/components/leads/session-meeting-badge"
 import {
   CertificateStatusBadge,
   CertificateStatusSection,
@@ -100,8 +102,11 @@ import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { EXAM_PASS_SCORE } from "@/lib/exam-questions"
+import { displayCertifyingBody } from "@/lib/certifying-body"
+import { buildParticipantSessionNumbers } from "@/lib/participant-session"
 import { isParticipantPaid } from "@/lib/training-profit"
 import type { Lead, Participant, Trainee } from "@/lib/types"
+import { CERTIFYING_BODY_OPTIONS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 function ExternalTag() {
@@ -340,6 +345,7 @@ export function ParticipantsSection({
     courseCategory: "",
     courseCategoryOther: "",
     agreedPrice: "",
+    certifyingBody: "",
   })
   const [issueOpen, setIssueOpen] = useState(false)
   const [issueParticipantIds, setIssueParticipantIds] = useState<string[]>([])
@@ -356,6 +362,13 @@ export function ParticipantsSection({
     for (const t of trainees) map.set(t.id, t)
     return map
   }, [trainees])
+
+  /** מפגש 1, 2… לפי ת״ז וסדר תאריכים בכל ההדרכות */
+  const sessionByParticipantId = useMemo(() => {
+    const merged = leads.map((l) => (l.id === lead.id ? lead : l))
+    if (!leads.some((l) => l.id === lead.id)) merged.push(lead)
+    return buildParticipantSessionNumbers(merged)
+  }, [leads, lead])
 
   const traineeForParticipant = (p: Participant) => {
     if (p.traineeId) return traineeById.get(p.traineeId)
@@ -649,6 +662,14 @@ export function ParticipantsSection({
       courseCategory: catInList ? cat : cat ? CATEGORY_OTHER : "",
       courseCategoryOther: catInList ? "" : cat,
       agreedPrice: p.agreedPrice != null ? String(p.agreedPrice) : "",
+      certifyingBody:
+        p.certifyingBody ||
+        displayCertifyingBody({
+          certifyingBody: p.certifyingBody,
+          isExternal: p.isExternal,
+          leadCertificateDelivery: lead.certificateDelivery,
+        }) ||
+        "",
     })
   }
 
@@ -700,6 +721,7 @@ export function ParticipantsSection({
       courseCategory,
       agreedPrice:
         editForm.isExternal || editForm.isLead ? agreedPrice : null,
+      certifyingBody: editForm.certifyingBody.trim() || null,
     })
     if (!res.ok) {
       toast.error(res.error)
@@ -708,7 +730,19 @@ export function ParticipantsSection({
     setLeadParticipants(
       lead.id,
       participants.map((p) =>
-        p.id === editP.id ? { ...p, notes: editForm.notes.trim() || undefined } : p,
+        p.id === editP.id
+          ? {
+              ...p,
+              name: editForm.fullName.trim(),
+              idNumber: editForm.idNumber.trim(),
+              phone: editForm.phone.trim() || undefined,
+              email: editForm.email.trim() || undefined,
+              notes: editForm.notes.trim() || undefined,
+              isExternal: editForm.isExternal,
+              isLead: editForm.isLead,
+              certifyingBody: editForm.certifyingBody.trim() || undefined,
+            }
+          : p,
       ),
     )
     toast.success("פרטי המשתתף עודכנו")
@@ -994,7 +1028,10 @@ export function ParticipantsSection({
                     <th className="w-[10%] px-3 py-2 font-semibold">טלפון</th>
                     <th className="w-[9%] px-3 py-2 font-semibold">ת״ז</th>
                     <th className="w-[11%] px-3 py-2 font-semibold">דוא״ל</th>
-                    <th className="w-[11%] px-3 py-2 font-semibold">סוג קורס</th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">
+                      תעודות דרך מי
+                    </th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">סוג קורס</th>
                     <th className="w-[9%] px-3 py-2 font-semibold">קטגוריה</th>
                     <th className="w-[8%] px-3 py-2 font-semibold">מחיר</th>
                     <th className="w-[9%] px-3 py-2 font-semibold">
@@ -1053,6 +1090,9 @@ export function ParticipantsSection({
                               />
                             )}
                             <span className="truncate">{p.name}</span>
+                            <SessionMeetingBadge
+                              sessionNumber={sessionByParticipantId.get(p.id)}
+                            />
                             {p.isLead ? (
                               <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
                                 ליד
@@ -1076,6 +1116,15 @@ export function ParticipantsSection({
                         </td>
                         <td className="max-w-0 truncate px-3 py-2 text-muted-foreground">
                           {p.email || "—"}
+                        </td>
+                        <td className="max-w-0 truncate px-3 py-2">
+                          <CertifyingBodyBadge
+                            value={displayCertifyingBody({
+                              certifyingBody: p.certifyingBody,
+                              isExternal: p.isExternal,
+                              leadCertificateDelivery: lead.certificateDelivery,
+                            })}
+                          />
                         </td>
                         <td
                           className="max-w-0 truncate px-3 py-2 text-muted-foreground"
@@ -1317,6 +1366,9 @@ export function ParticipantsSection({
                         <span className="truncate text-foreground">
                           {p.name} – {p.idNumber}
                         </span>
+                        <SessionMeetingBadge
+                          sessionNumber={sessionByParticipantId.get(p.id)}
+                        />
                         {p.isLead ? (
                           <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
                             ליד
@@ -1362,6 +1414,16 @@ export function ParticipantsSection({
                             : "—"}
                         </p>
                       ) : null}
+                      <p className="flex flex-wrap items-center gap-1.5">
+                        <span>תעודות דרך מי:</span>
+                        <CertifyingBodyBadge
+                          value={displayCertifyingBody({
+                            certifyingBody: p.certifyingBody,
+                            isExternal: p.isExternal,
+                            leadCertificateDelivery: lead.certificateDelivery,
+                          })}
+                        />
+                      </p>
                       {p.isExternal && p.courseType ? (
                         <p>
                           סוג קורס:{" "}
@@ -1480,6 +1542,30 @@ export function ParticipantsSection({
               rows={3}
               className="text-sm"
             />
+            <div>
+              <Label className="mb-1.5 block text-sm">תעודות דרך מי</Label>
+              <Select
+                value={editForm.certifyingBody || "__empty__"}
+                onValueChange={(v) =>
+                  setEditForm((f) => ({
+                    ...f,
+                    certifyingBody: !v || v === "__empty__" ? "" : v,
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="בחירה…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__empty__">ללא</SelectItem>
+                  {CERTIFYING_BODY_OPTIONS.map((o) => (
+                    <SelectItem key={o} value={o}>
+                      {o}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox
                 checked={editForm.isExternal}

@@ -70,14 +70,29 @@ export function uiStatusToDb(status: LeadStatus): string {
 }
 
 export type PricingType = "per_participant" | "global";
-/** תעודות דרך מי */
-export type CertificateDelivery = "עזרה ורפואה" | "ניתאי" | "יוסי";
 
-export const CERTIFICATE_VIA_OPTIONS: CertificateDelivery[] = [
+/** תעודות דרך מי — אפשרויות מלאות */
+export type CertifyingBody =
+  | "עזרה ורפואה"
+  | "ניתאי עזרה ראשונה"
+  | "ניתאי התנהלות בטוחה"
+  | "יוסי רענון עזרה ראשונה+התנהלות בטוחה"
+  | "יוסי התנהלות בטוחה";
+
+export const CERTIFYING_BODY_OPTIONS: CertifyingBody[] = [
   "עזרה ורפואה",
-  "ניתאי",
-  "יוסי",
+  "ניתאי עזרה ראשונה",
+  "ניתאי התנהלות בטוחה",
+  "יוסי רענון עזרה ראשונה+התנהלות בטוחה",
+  "יוסי התנהלות בטוחה",
 ];
+
+export const DEFAULT_CERTIFYING_BODY: CertifyingBody = "עזרה ורפואה";
+
+/** @deprecated השתמשו ב־CertifyingBody — נשמר לתאימות */
+export type CertificateDelivery = CertifyingBody;
+
+export const CERTIFICATE_VIA_OPTIONS = CERTIFYING_BODY_OPTIONS;
 
 export type CustomerType = "new" | "existing";
 
@@ -127,6 +142,8 @@ export interface Participant {
   source?: string;
   /** הערות פנימיות */
   notes?: string;
+  /** תעודות דרך מי */
+  certifyingBody?: CertifyingBody | string;
   examScore?: number;
   examPassed?: boolean;
   examCompletedAt?: string;
@@ -208,6 +225,8 @@ export interface Trainee {
   certificateCardPrinted: boolean;
   certificateUrl?: string;
   notes?: string;
+  /** תעודות דרך מי */
+  certifyingBody?: CertifyingBody | string;
   examScore?: number;
   examPassed?: boolean;
   examCompletedAt?: string;

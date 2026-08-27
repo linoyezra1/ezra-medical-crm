@@ -11,10 +11,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { updateTrainee } from "@/lib/actions"
 import { useApp } from "@/lib/store"
-import type { Trainee } from "@/lib/types"
+import { CERTIFYING_BODY_OPTIONS, type Trainee } from "@/lib/types"
 
 type Props = {
   trainee: Trainee | null
@@ -31,6 +38,7 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
     phone: "",
     email: "",
     notes: "",
+    certifyingBody: "",
   })
 
   useEffect(() => {
@@ -41,6 +49,7 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
       phone: trainee.phone || "",
       email: trainee.email || "",
       notes: trainee.notes || "",
+      certifyingBody: trainee.certifyingBody || "",
     })
   }, [trainee, open])
 
@@ -54,6 +63,7 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
       phone: form.phone,
       email: form.email,
       notes: form.notes,
+      certifyingBody: form.certifyingBody.trim() || null,
     })
     setSaving(false)
     if (!res.ok) {
@@ -66,6 +76,7 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
       phone: form.phone.trim() || undefined,
       email: form.email.trim() || undefined,
       notes: form.notes.trim() || undefined,
+      certifyingBody: form.certifyingBody.trim() || undefined,
     })
     toast.success("פרטי המודרך עודכנו")
     refresh()
@@ -120,6 +131,29 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
               dir="ltr"
               className="text-right"
             />
+          </Field>
+          <Field label="תעודות דרך מי">
+            <Select
+              value={form.certifyingBody || "__empty__"}
+              onValueChange={(v) =>
+                setForm((f) => ({
+                  ...f,
+                  certifyingBody: !v || v === "__empty__" ? "" : v,
+                }))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="בחירה…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__empty__">ללא</SelectItem>
+                {CERTIFYING_BODY_OPTIONS.map((o) => (
+                  <SelectItem key={o} value={o}>
+                    {o}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="הערות">
             <Textarea

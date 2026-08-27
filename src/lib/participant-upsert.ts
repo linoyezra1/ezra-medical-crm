@@ -4,6 +4,7 @@ import {
   isUsableParticipantIdNumber,
   normalizeParticipantIdNumber,
 } from "@/lib/participant-identity"
+import { resolveParticipantCertifyingBodyOnCreate } from "@/lib/certifying-body"
 import { syncParticipantContactToTrainee } from "@/lib/trainee-directory"
 
 export type ParticipantMergeMode = "preferIncoming" | "preferExisting"
@@ -29,6 +30,7 @@ export type ParticipantUpsertFields = {
   courseType?: string | null
   courseCategory?: string | null
   agreedPrice?: number | null
+  certifyingBody?: string | null
   attended?: boolean
   traineeId?: string | null
 }
@@ -115,6 +117,11 @@ export function buildMergedParticipantData(
         incoming.agreedPrice != null && Number.isFinite(incoming.agreedPrice)
           ? Number(incoming.agreedPrice)
           : null,
+      // ירושה בפועל ב־upsertParticipantOnLead בעת create
+      certifyingBody:
+        incoming.certifyingBody === undefined
+          ? undefined
+          : textOrEmpty(incoming.certifyingBody) || null,
       attended: Boolean(incoming.attended),
       ...(incoming.traineeId ? { traineeId: incoming.traineeId } : {}),
     }
@@ -182,6 +189,11 @@ export function buildMergedParticipantData(
       mode === "preferIncoming"
         ? (agreedIncoming ?? existing.agreedPrice)
         : (existing.agreedPrice ?? agreedIncoming),
+    certifyingBody: mergeTextField(
+      incoming.certifyingBody,
+      (existing as { certifyingBody?: string | null }).certifyingBody,
+      mode,
+    ),
     attended:
       incoming.attended !== undefined
         ? Boolean(incoming.attended)
@@ -258,6 +270,19 @@ export async function upsertParticipantOnLead(opts: {
     }
   }
 
+  // יצירה: ירושת תעודות דרך מי מההדרכה (לא לחיצוני)
+  if (merged.certifyingBody === undefined) {
+    const lead = await prisma.lead.findUnique({
+      where: { id: opts.leadId },
+      select: { deliveryMethod: true },
+    })
+    merged.certifyingBody = resolveParticipantCertifyingBodyOnCreate({
+      isExternal: Boolean(merged.isExternal),
+      explicit: opts.data.certifyingBody,
+      leadDeliveryMethod: lead?.deliveryMethod,
+    })
+  }
+
   const created = await prisma.participant.create({
     data: {
       leadId: opts.leadId,
@@ -281,6 +306,7 @@ export async function upsertParticipantOnLead(opts: {
         courseType?: string | null
         courseCategory?: string | null
         agreedPrice?: number | null
+        certifyingBody?: string | null
         attended?: boolean
         traineeId?: string | null
       }),

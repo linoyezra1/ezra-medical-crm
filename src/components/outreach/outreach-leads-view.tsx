@@ -29,11 +29,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  deleteAllIrrelevantOutreachLeadsAction,
   deleteOutreachLeadAction,
   deleteOutreachTemplateAction,
   importOutreachLeadsAction,
   listOutreachLeadsAction,
   listOutreachTemplatesAction,
+  markOutreachLeadIrrelevantAction,
   toggleOutreachWhatsAppBlockedAction,
   updateOutreachLeadNotesAction,
   upsertOutreachTemplateAction,
@@ -104,7 +106,10 @@ export function OutreachLeadsView() {
     templateText: "",
   })
   const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null)
+  /** מחיקה לצמיתות — רק מתוך מסנן «לא רלוונטיים» */
   const [deleteLeadId, setDeleteLeadId] = useState<string | null>(null)
+  const [purgeAllIrrelevantOpen, setPurgeAllIrrelevantOpen] = useState(false)
+  const [purgingIrrelevant, setPurgingIrrelevant] = useState(false)
   const [notesLead, setNotesLead] = useState<LeadRow | null>(null)
   const [notesDraft, setNotesDraft] = useState("")
   const [irrelevantDraft, setIrrelevantDraft] = useState(false)
@@ -207,6 +212,26 @@ export function OutreachLeadsView() {
     void refresh()
   }
 
+  /** מחיקה מרשימת רלוונטיים → סימון כלא רלוונטי (בלי מחיקה מה-DB) */
+  const markLeadIrrelevant = async (leadId: string) => {
+    const prev = leads.find((l) => l.id === leadId)
+    setLeads((list) =>
+      list.map((l) => (l.id === leadId ? { ...l, irrelevant: true } : l)),
+    )
+    const res = await markOutreachLeadIrrelevantAction(leadId)
+    if (!res.ok) {
+      if (prev) {
+        setLeads((list) =>
+          list.map((l) => (l.id === leadId ? prev : l)),
+        )
+      }
+      toast.error(res.error)
+      return
+    }
+    toast.success("הליד סומן כלא רלוונטי")
+  }
+
+  /** מחיקה לצמיתות מתוך מסנן הלא־רלוונטיים */
   const confirmDeleteLead = async () => {
     if (!deleteLeadId) return
     const res = await deleteOutreachLeadAction(deleteLeadId)
@@ -215,8 +240,33 @@ export function OutreachLeadsView() {
       toast.error(res.error)
       return
     }
-    toast.success("הליד נמחק")
+    toast.success("הליד נמחק לצמיתות")
     void refresh()
+  }
+
+  const confirmPurgeAllIrrelevant = async () => {
+    setPurgingIrrelevant(true)
+    const res = await deleteAllIrrelevantOutreachLeadsAction()
+    setPurgingIrrelevant(false)
+    setPurgeAllIrrelevantOpen(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(
+      res.data.deleted > 0
+        ? `נמחקו לצמיתות ${res.data.deleted} לידים לא רלוונטיים`
+        : "אין לידים לא רלוונטיים למחיקה",
+    )
+    void refresh()
+  }
+
+  const onLeadDeleteClick = (lead: LeadRow) => {
+    if (lead.irrelevant || relevanceFilter === "irrelevant") {
+      setDeleteLeadId(lead.id)
+      return
+    }
+    void markLeadIrrelevant(lead.id)
   }
 
   const toggleWhatsAppBlocked = async (leadId: string) => {
@@ -463,6 +513,18 @@ export function OutreachLeadsView() {
             לא רלוונטיים ({relevanceCounts.irrelevant})
           </option>
         </select>
+        {relevanceFilter === "irrelevant" &&
+        relevanceCounts.irrelevant > 0 ? (
+          <Button
+            type="button"
+            variant="destructive"
+            className="gap-1.5 rounded-xl"
+            onClick={() => setPurgeAllIrrelevantOpen(true)}
+          >
+            <Trash2 className="size-4" />
+            מחק את כל הלא רלוונטיים
+          </Button>
+        ) : null}
         {categories.length > 0 ? (
           <select
             className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
@@ -551,7 +613,8 @@ export function OutreachLeadsView() {
                           onToggleWhatsAppBlocked={() =>
                             void toggleWhatsAppBlocked(lead.id)
                           }
-                          onDelete={() => setDeleteLeadId(lead.id)}
+                          onDelete={() => onLeadDeleteClick(lead)}
+                          permanentDelete={relevanceFilter === "irrelevant"}
                         />
                       </td>
                     </tr>
@@ -590,7 +653,8 @@ export function OutreachLeadsView() {
                         onToggleWhatsAppBlocked={() =>
                           void toggleWhatsAppBlocked(lead.id)
                         }
-                        onDelete={() => setDeleteLeadId(lead.id)}
+                        onDelete={() => onLeadDeleteClick(lead)}
+                        permanentDelete={relevanceFilter === "irrelevant"}
                       />
                     </div>
                   </li>
@@ -724,9 +788,21 @@ export function OutreachLeadsView() {
       <ConfirmDeleteDialog
         open={Boolean(deleteLeadId)}
         onOpenChange={(o) => !o && setDeleteLeadId(null)}
-        title="מחיקת ליד"
-        description="למחוק את הליד מרשימת השיווק?"
+        title="מחיקה לצמיתות"
+        description="למחוק את הליד לצמיתות מרשימת השיווק? לא ניתן לשחזר."
+        confirmLabel="כן, מחק לצמיתות"
         onConfirm={() => void confirmDeleteLead()}
+      />
+      <ConfirmDeleteDialog
+        open={purgeAllIrrelevantOpen}
+        onOpenChange={(o) => {
+          if (!purgingIrrelevant) setPurgeAllIrrelevantOpen(o)
+        }}
+        title="מחיקת כל הלא רלוונטיים"
+        description={`למחוק לצמיתות את כל ${relevanceCounts.irrelevant} הלידים המסומנים כלא רלוונטיים? לא ניתן לשחזר.`}
+        confirmLabel="כן, מחק את כולם לצמיתות"
+        confirming={purgingIrrelevant}
+        onConfirm={() => void confirmPurgeAllIrrelevant()}
       />
 
       <Dialog
@@ -792,16 +868,22 @@ function LeadActions({
   onEditNotes,
   onToggleWhatsAppBlocked,
   onDelete,
+  permanentDelete = false,
 }: {
   lead: LeadRow
   waHref: string
   onEditNotes: () => void
   onToggleWhatsAppBlocked: () => void
   onDelete: () => void
+  /** במסנן לא רלוונטיים — מחיקה לצמיתות; אחרת סימון כלא רלוונטי */
+  permanentDelete?: boolean
 }) {
   const blocked = lead.whatsappBlocked
   const hasNotes = Boolean(lead.notes?.trim())
   const isIrrelevant = lead.irrelevant
+  const deleteTitle = permanentDelete
+    ? "מחיקה לצמיתות"
+    : "סימון כלא רלוונטי"
   return (
     <div className="flex items-center justify-end gap-1">
       <a
@@ -871,8 +953,8 @@ function LeadActions({
         type="button"
         className="flex size-9 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         onClick={onDelete}
-        aria-label="מחיקה"
-        title="מחיקה"
+        aria-label={deleteTitle}
+        title={deleteTitle}
       >
         <Trash2 className="size-3.5" />
       </button>

@@ -62,6 +62,10 @@ import {
 } from "@/lib/types";
 import { ASSIGNABLE_LEAD_DB_STATUSES } from "@/lib/trainee-import";
 import {
+  normalizeCertifyingBody,
+  resolveParticipantCertifyingBodyOnCreate,
+} from "@/lib/certifying-body";
+import {
   findParticipantByIdNumber,
   isUsableParticipantIdNumber,
   normalizeParticipantIdNumber,
@@ -1369,6 +1373,10 @@ export async function addExternalParticipant(input: {
   const courseSaved = isExternal && input.courseType?.trim()
     ? resolveCourseTypeForSave(input.courseType.trim())
     : null
+  const certifyingBody = resolveParticipantCertifyingBodyOnCreate({
+    isExternal,
+    leadDeliveryMethod: lead.deliveryMethod,
+  })
   const participantData = {
     fullName: name || "מצטרף נוסף",
     idNumber: id,
@@ -1385,6 +1393,7 @@ export async function addExternalParticipant(input: {
       input.agreedPrice != null && Number.isFinite(input.agreedPrice)
         ? Number(input.agreedPrice)
         : null,
+    certifyingBody,
   }
 
   if (isUsableParticipantIdNumber(id)) {
@@ -1402,6 +1411,7 @@ export async function addExternalParticipant(input: {
         courseType: participantData.courseType || undefined,
         courseCategory: participantData.courseCategory || undefined,
         agreedPrice: participantData.agreedPrice,
+        certifyingBody: certifyingBody,
         source: "manual",
       },
     })
@@ -1843,6 +1853,7 @@ export async function updateParticipantDetails(
     courseType?: string | null;
     courseCategory?: string | null;
     agreedPrice?: number | null;
+    certifyingBody?: string | null;
   },
 ): Promise<ActionResult<{ id: string }>> {
   const isExternal = Boolean(data.isExternal);
@@ -1857,6 +1868,10 @@ export async function updateParticipantDetails(
       : data.agreedPrice === null
         ? null
         : undefined;
+  const certifyingBody =
+    data.certifyingBody === undefined
+      ? undefined
+      : normalizeCertifyingBody(data.certifyingBody) || null;
   const updated = await prisma.participant.update({
     where: { id: participantId },
     data: {
@@ -1882,6 +1897,7 @@ export async function updateParticipantDetails(
             courseCategory: null,
           }),
       ...(agreedPrice !== undefined ? { agreedPrice } : {}),
+      ...(certifyingBody !== undefined ? { certifyingBody } : {}),
     },
   });
   // סנכרון דו-כיווני: פרטי משתתף → מודרך גלובלי
@@ -1890,6 +1906,12 @@ export async function updateParticipantDetails(
     await prisma.trainee.update({
       where: { id: updated.traineeId },
       data: { notes: data.notes?.trim() || null },
+    });
+  }
+  if (certifyingBody !== undefined && updated.traineeId) {
+    await prisma.trainee.update({
+      where: { id: updated.traineeId },
+      data: { certifyingBody },
     });
   }
   revalidatePath(`/leads/${leadId}`);
@@ -1936,6 +1958,9 @@ export async function fetchLeadParticipants(leadId: string) {
     paymentReceiptIssued: Boolean(p.paymentReceiptIssued),
     source: p.source || undefined,
     notes: p.notes || undefined,
+    certifyingBody: normalizeCertifyingBody(
+      (p as { certifyingBody?: string | null }).certifyingBody,
+    ),
     examScore: p.examScore != null ? Number(p.examScore) : undefined,
     examPassed: Boolean(p.examPassed),
     examCompletedAt: p.examCompletedAt
@@ -1965,6 +1990,7 @@ export async function updateTrainee(
     /** תעודה פיזית — ניתן לעדכון ידני; Sheets יכול לסנכרן מעל */
     certificateCardPrinted?: boolean;
     notes?: string;
+    certifyingBody?: string | null;
   },
 ): Promise<ActionResult<{ id: string }>> {
   const existing = await prisma.trainee.findUnique({ where: { id } });
@@ -1996,6 +2022,10 @@ export async function updateTrainee(
     data.email === undefined
       ? existing.email
       : data.email?.trim() || null;
+  const nextCertifyingBody =
+    data.certifyingBody === undefined
+      ? undefined
+      : normalizeCertifyingBody(data.certifyingBody) || null;
 
   // עדכון מקור המודרך + סנכרון לכל רשומות המשתתף המשויכות
   await prisma.$transaction([
@@ -2014,6 +2044,9 @@ export async function updateTrainee(
           : {}),
         notes:
           data.notes === undefined ? undefined : data.notes.trim() || null,
+        ...(nextCertifyingBody !== undefined
+          ? { certifyingBody: nextCertifyingBody }
+          : {}),
       },
     }),
     prisma.participant.updateMany({
@@ -2023,6 +2056,9 @@ export async function updateTrainee(
         idNumber: nextIdNumber,
         phone: nextPhone,
         email: nextEmail,
+        ...(nextCertifyingBody !== undefined
+          ? { certifyingBody: nextCertifyingBody }
+          : {}),
       },
     }),
   ]);
@@ -2784,6 +2820,15 @@ export async function assignTraineesToLead(
     where: { id: { in: traineeIds } },
   });
 
+  const leadRow = await prisma.lead.findUnique({
+    where: { id: targetLeadId },
+    select: { deliveryMethod: true },
+  });
+  const inheritedBody = resolveParticipantCertifyingBodyOnCreate({
+    isExternal: false,
+    leadDeliveryMethod: leadRow?.deliveryMethod,
+  });
+
   let linked = 0;
   let skipped = 0;
 
@@ -2813,6 +2858,10 @@ export async function assignTraineesToLead(
         phone: t.phone,
         email: t.email,
         attended: true,
+        certifyingBody:
+          normalizeCertifyingBody(
+            (t as { certifyingBody?: string | null }).certifyingBody,
+          ) || inheritedBody,
       },
     });
     linked += 1;

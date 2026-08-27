@@ -119,7 +119,7 @@ model Lead {
   shippingHouseNo    String?
   shippingCity       String?
   shippingZip        String?
-  deliveryMethod     String? // עזרה ורפואה | ניתאי | יוסי
+  deliveryMethod     String? // תעודות דרך מי — ערכי CertifyingBody
   notes              String?
   /** האם לאסוף כתובת ומיקוד בטופס המשתתפים הציבורי */
   collectCertificateShipping Boolean @default(false)
@@ -254,6 +254,8 @@ model Participant {
   source          String   @default("manual")
   /** הערות פנימיות על המשתתף */
   notes           String?
+  /** תעודות דרך מי (למשתתף) — ירושה מההדרכה לרגילים; חיצוני ללא ירושה אוטומטית */
+  certifyingBody  String?
   /** ציון מבחן דיגיטלי (0–100) */
   examScore       Int?
   /** האם עבר/ה את המבחן הדיגיטלי (≥72) */
@@ -283,6 +285,8 @@ model Trainee {
   /** קישור PDF לתעודה (למודרכים שיוצאו ללא שיוך להדרכה) */
   certificateUrl         String?
   notes                  String?
+  /** תעודות דרך מי — ברירת מחדל / ערך אחרון למודרך */
+  certifyingBody         String?
   /** ציון מבחן דיגיטלי (0–100) */
   examScore              Int?
   examPassed             Boolean       @default(false)

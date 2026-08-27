@@ -187,6 +187,25 @@ export async function deleteOutreachTemplateAction(
   }
 }
 
+/** סימון ליד כלא רלוונטי (מחיקה רכה — לא נמחק מה-DB) */
+export async function markOutreachLeadIrrelevantAction(
+  id: string,
+): Promise<ActionResult<{ id: string; irrelevant: boolean }>> {
+  try {
+    const updated = await prisma.outreachLead.update({
+      where: { id },
+      data: { irrelevant: true },
+      select: { id: true, irrelevant: true },
+    })
+    revalidatePath("/outreach-leads")
+    return { ok: true, data: updated }
+  } catch (err) {
+    console.error("[markOutreachLeadIrrelevantAction]", err)
+    return { ok: false, error: "שגיאה בסימון הליד כלא רלוונטי" }
+  }
+}
+
+/** מחיקה לצמיתות — בדרך כלל ללידים שכבר סומנו לא רלוונטיים */
 export async function deleteOutreachLeadAction(
   id: string,
 ): Promise<ActionResult<{ id: string }>> {
@@ -197,6 +216,22 @@ export async function deleteOutreachLeadAction(
   } catch (err) {
     console.error("[deleteOutreachLeadAction]", err)
     return { ok: false, error: "שגיאה במחיקת הליד" }
+  }
+}
+
+/** מוחק לצמיתות את כל הלידים המסומנים כלא רלוונטיים */
+export async function deleteAllIrrelevantOutreachLeadsAction(): Promise<
+  ActionResult<{ deleted: number }>
+> {
+  try {
+    const result = await prisma.outreachLead.deleteMany({
+      where: { irrelevant: true },
+    })
+    revalidatePath("/outreach-leads")
+    return { ok: true, data: { deleted: result.count } }
+  } catch (err) {
+    console.error("[deleteAllIrrelevantOutreachLeadsAction]", err)
+    return { ok: false, error: "שגיאה במחיקת הלידים הלא רלוונטיים" }
   }
 }
 

@@ -1336,8 +1336,18 @@ export function LeadForm({ existing }: Props) {
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
                   <SelectItem value="עזרה ורפואה">עזרה ורפואה</SelectItem>
-                  <SelectItem value="ניתאי">ניתאי</SelectItem>
-                  <SelectItem value="יוסי">יוסי</SelectItem>
+                  <SelectItem value="ניתאי עזרה ראשונה">
+                    ניתאי עזרה ראשונה
+                  </SelectItem>
+                  <SelectItem value="ניתאי התנהלות בטוחה">
+                    ניתאי התנהלות בטוחה
+                  </SelectItem>
+                  <SelectItem value="יוסי רענון עזרה ראשונה+התנהלות בטוחה">
+                    יוסי רענון עזרה ראשונה+התנהלות בטוחה
+                  </SelectItem>
+                  <SelectItem value="יוסי התנהלות בטוחה">
+                    יוסי התנהלות בטוחה
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </Field>
