@@ -1,7 +1,7 @@
 import { sessionMeetingLabel } from "@/lib/participant-session"
 import { cn } from "@/lib/utils"
 
-/** תגית דינמית: מפגש 1, מפגש 2… לפי סדר כרונולוגי של ת״ז */
+/** תגית דינמית: מוצגת רק ממפגש 2 ומעלה (מפגש יחיד — בלי תגית) */
 export function SessionMeetingBadge({
   sessionNumber,
   className,
@@ -9,7 +9,7 @@ export function SessionMeetingBadge({
   sessionNumber: number | undefined | null
   className?: string
 }) {
-  if (sessionNumber == null || sessionNumber < 1) return null
+  if (sessionNumber == null || sessionNumber < 2) return null
   return (
     <span
       className={cn(

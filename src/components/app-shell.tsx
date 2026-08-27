@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import {
+  Award,
   Boxes,
   CalendarDays,
   Contact,
@@ -36,7 +37,15 @@ const NAV = [
   { href: "/clients", label: "מודרכים", icon: Contact },
 ]
 
-const MORE = [
+type NavItem = {
+  href: string
+  label: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icon: React.ComponentType<any>
+  badge?: string
+}
+
+const MORE: NavItem[] = [
   { href: "/outreach-leads", label: "לידים לשיווק", icon: MessageCircle },
   { href: "/quick-actions", label: "פעולות מהירות", icon: Zap },
   { href: "/payment-history", label: "היסטוריית תשלומים", icon: Receipt },
@@ -48,11 +57,17 @@ const MORE = [
     label: "ניהול מאגר שאלות מבחן",
     icon: HelpCircle,
   },
+  {
+    href: "/certificates",
+    label: "ניהול תעודות",
+    icon: Award,
+    badge: "ניסיוני",
+  },
   { href: "/settings", label: "הגדרות עסק", icon: Settings },
 ]
 
 /** דסקטופ: פעולות מהירות בסרגל הראשי */
-const DESKTOP_NAV = [
+const DESKTOP_NAV: NavItem[] = [
   ...NAV,
   { href: "/quick-actions", label: "פעולות מהירות", icon: Zap },
   ...MORE.filter((m) => m.href !== "/quick-actions"),
@@ -135,7 +150,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Icon className="size-5 shrink-0" strokeWidth={active ? 2.2 : 1.8} />
-                {item.label}
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {"badge" in item && item.badge ? (
+                  <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900">
+                    {item.badge}
+                  </span>
+                ) : null}
               </Link>
             )
           })}
@@ -202,7 +222,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-secondary/40 p-4 text-center text-xs font-medium text-foreground active:scale-95 transition-transform"
                       >
                         <Icon className="size-7 text-primary" strokeWidth={1.8} />
-                        {item.label}
+                        <span className="leading-tight">{item.label}</span>
+                        {item.badge ? (
+                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900">
+                            {item.badge}
+                          </span>
+                        ) : null}
                       </Link>
                     )
                   })}

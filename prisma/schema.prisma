@@ -266,11 +266,20 @@ model Participant {
   examDraftAnswers Json?
   /** 25 מזהי שאלות שננעלו למבחן של משתתף זה */
   assignedQuestionIds Json?
+  /** סטטוס תעודה דיגיטלית (מודול ניהול תעודות — ניסיוני) */
+  digitalCertStatus   String?  @default("ממתין לתעודה")
+  /** סטטוס תעודה פיזית (מודול ניהול תעודות — ניסיוני) */
+  physicalCertStatus  String?  @default("ממתין לתעודה")
+  /** שיוך למחזור הפקת תעודות */
+  certificateBatchId  String?
+  certificateBatch    CertificateBatch? @relation(fields: [certificateBatchId], references: [id], onDelete: SetNull)
   createdAt       DateTime @default(now())
   trainingSales   TrainingSale[]
 
   @@index([leadId])
   @@index([traineeId])
+  @@index([certificateBatchId])
+  @@index([certifyingBody])
 }
 
 /** מאגר מודרכים גלובלי — נוצר אוטומטית מהרשמת משתתפים */
@@ -301,6 +310,29 @@ model Trainee {
   @@unique([idNumber])
   @@index([fullName])
   @@index([phone])
+}
+
+/** מאגר סטטוסים דינמיים לתעודות (מודול ניהול תעודות — ניסיוני) */
+model CertificateStatusOption {
+  id        String   @id @default(cuid())
+  label     String   @unique
+  type      String   // DIGITAL | PHYSICAL | BOTH
+  color     String?
+  createdAt DateTime @default(now())
+}
+
+/** מחזור הפקת תעודות */
+model CertificateBatch {
+  id             String        @id @default(cuid())
+  name           String
+  certifyingBody String
+  courseSubtype  String?
+  status         String        @default("ממתין להפקה")
+  notes          String?
+  createdAt      DateTime      @default(now())
+  participants   Participant[]
+
+  @@index([certifyingBody])
 }
 
 /** מאגר שאלות למבחן דיגיטלי בעזרה ראשונה */
