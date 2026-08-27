@@ -229,7 +229,10 @@ export function CertificatesBulkBar({
             </div>
             <div>
               <Label className="mb-1.5 block text-sm">סטטוס</Label>
-              <Select value={statusValue} onValueChange={setStatusValue}>
+              <Select
+                value={statusValue}
+                onValueChange={(v) => setStatusValue(v ?? "ממתין לתעודה")}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -307,7 +310,10 @@ export function CertificatesBulkBar({
             ) : (
               <div>
                 <Label className="mb-1.5 block text-sm">בחירת מחזור</Label>
-                <Select value={batchId} onValueChange={setBatchId}>
+                <Select
+                  value={batchId}
+                  onValueChange={(v) => setBatchId(v ?? "")}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="בחר מחזור…" />
                   </SelectTrigger>
