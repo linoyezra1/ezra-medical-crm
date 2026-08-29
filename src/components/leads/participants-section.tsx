@@ -1321,6 +1321,7 @@ export function ParticipantsSection({
                               <div className="overflow-hidden">
                                 <div className="px-3 pb-3 pt-1">
                                   <TraineeContactDetailsPanel
+                                    fullName={p.name}
                                     idNumber={p.idNumber}
                                     phone={p.phone}
                                     email={p.email}

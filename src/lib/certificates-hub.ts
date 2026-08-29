@@ -82,6 +82,9 @@ export type CertificatesHubRow = {
   courseSubtype: string
   digitalCertStatus: string
   physicalCertStatus: string
+  /** דגל סיום מסונכרן (Sheets / סימון ידני) — מקור האמת להסתרה מה-hub */
+  digitalCompleted: boolean
+  physicalCompleted: boolean
   batchId?: string
   batchName?: string
   isExternal?: boolean
@@ -132,24 +135,22 @@ export function resolvePhysicalCertStatus(opts: {
   return stored || DEFAULT_CERT_STATUS
 }
 
-/** תעודה דיגיטלית הושלמה (דגל Sheets או סטטוס הנפקה) */
+/** תווית תיבת סימון בעדכון סטטוס — קובעת את דגל הסיום הבוליאני */
+export const MARK_CERTIFICATE_COMPLETED_LABEL =
+  "סמן כהושלם (הונפקה / הודפסה בהצלחה)"
+
+/** תעודה דיגיטלית הושלמה — רק לפי דגל (לא לפי טקסט סטטוס) */
 export function isDigitalCertificateCompleted(opts: {
-  storedStatus?: string | null
   certificateEmailSent?: boolean
 }): boolean {
-  if (opts.certificateEmailSent) return true
-  const stored = (opts.storedStatus || "").trim()
-  return DIGITAL_ISSUED_STATUSES.has(stored)
+  return Boolean(opts.certificateEmailSent)
 }
 
-/** תעודה פיזית הושלמה (דגל Sheets או סטטוס הדפסה) */
+/** תעודה פיזית הושלמה — רק לפי דגל (לא לפי טקסט סטטוס) */
 export function isPhysicalCertificateCompleted(opts: {
-  storedStatus?: string | null
   certificateCardPrinted?: boolean
 }): boolean {
-  if (opts.certificateCardPrinted) return true
-  const stored = (opts.storedStatus || "").trim()
-  return PHYSICAL_ISSUED_STATUSES.has(stored)
+  return Boolean(opts.certificateCardPrinted)
 }
 
 /**
@@ -163,28 +164,21 @@ export function hasPendingCertificateWork(opts: {
   certificateCardPrinted?: boolean
 }): boolean {
   const digitalDone = isDigitalCertificateCompleted({
-    storedStatus: opts.digitalCertStatus,
     certificateEmailSent: opts.certificateEmailSent,
   })
   const physicalDone = isPhysicalCertificateCompleted({
-    storedStatus: opts.physicalCertStatus,
     certificateCardPrinted: opts.certificateCardPrinted,
   })
   return !digitalDone || !physicalDone
 }
 
-/** האם עדכון סטטוס דיגיטלי צריך לסמן certificateEmailSent */
-export function digitalStatusImpliesIssued(label: string): boolean | null {
-  const s = label.trim()
-  if (!s || s === DEFAULT_CERT_STATUS) return false
-  if (DIGITAL_ISSUED_STATUSES.has(s)) return true
-  return null // סטטוס ביניים — לא משנים את הדגל
+/** @deprecated Hub updates use explicit markCompleted — kept for legacy callers */
+export function digitalStatusImpliesIssued(_label: string): boolean | null {
+  return null
 }
 
-export function physicalStatusImpliesIssued(label: string): boolean | null {
-  const s = label.trim()
-  if (!s || s === DEFAULT_CERT_STATUS) return false
-  if (PHYSICAL_ISSUED_STATUSES.has(s)) return true
+/** @deprecated Hub updates use explicit markCompleted — kept for legacy callers */
+export function physicalStatusImpliesIssued(_label: string): boolean | null {
   return null
 }
 
@@ -268,11 +262,24 @@ export function resolveTrainingTitle(
   return (leadFullName || "").trim() || "הדרכה"
 }
 
-export function formatTrainingTitlesList(titles: string[]): string {
+/** רשימת הדרכות מקור מופרדת בפסיקים — תמיד לפי תאריך כרונולוגי */
+export function formatTrainingTitlesList(
+  entries: { title: string; dateKey?: string | null }[],
+): string {
+  const sorted = [...entries].sort((a, b) => {
+    const da = (a.dateKey || "").trim().slice(0, 10)
+    const db = (b.dateKey || "").trim().slice(0, 10)
+    const aEmpty = !/^\d{4}-\d{2}-\d{2}$/.test(da)
+    const bEmpty = !/^\d{4}-\d{2}-\d{2}$/.test(db)
+    if (aEmpty !== bEmpty) return aEmpty ? 1 : -1
+    if (da !== db) return da.localeCompare(db)
+    return a.title.localeCompare(b.title, "he")
+  })
+
   const unique: string[] = []
   const seen = new Set<string>()
-  for (const t of titles) {
-    const v = t.trim()
+  for (const e of sorted) {
+    const v = e.title.trim()
     if (!v || seen.has(v)) continue
     seen.add(v)
     unique.push(v)
@@ -295,6 +302,21 @@ export function formatCertDateDisplay(isoDate: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return "—"
   const [y, m, d] = isoDate.split("-")
   return `${d}/${m}/${y}`
+}
+
+/** פיצול שם מלא לייצוא אקסל: מילה ראשונה = פרטי, השאר = משפחה */
+export function splitFullNameForExport(fullName: string): {
+  firstName: string
+  lastName: string
+} {
+  const trimmed = (fullName || "").trim()
+  if (!trimmed) return { firstName: "", lastName: "" }
+  const spaceIdx = trimmed.indexOf(" ")
+  if (spaceIdx === -1) return { firstName: trimmed, lastName: "" }
+  return {
+    firstName: trimmed.slice(0, spaceIdx),
+    lastName: trimmed.slice(spaceIdx + 1).trim(),
+  }
 }
 
 export function groupRowsBySection(

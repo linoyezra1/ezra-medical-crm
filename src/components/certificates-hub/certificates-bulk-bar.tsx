@@ -1,10 +1,11 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { FileSpreadsheet, Layers, Tags, X } from "lucide-react"
+import { FileSpreadsheet, Layers, Stamp, Tags, X } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  assignParticipantsCertifyingBodyAction,
   assignParticipantsToBatchAction,
   listCertificateBatchesAction,
   listCertificateStatusOptionsAction,
@@ -29,8 +31,11 @@ import {
 } from "@/lib/certificates-hub-actions"
 import {
   formatCertDateDisplay,
+  MARK_CERTIFICATE_COMPLETED_LABEL,
+  splitFullNameForExport,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
+import { CERTIFYING_BODY_OPTIONS } from "@/lib/types"
 
 export function CertificatesBulkBar({
   selectedIds,
@@ -46,12 +51,14 @@ export function CertificatesBulkBar({
   const count = selectedIds.size
   const [statusOpen, setStatusOpen] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
+  const [bodyOpen, setBodyOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const [statusKind, setStatusKind] = useState<"digital" | "physical">(
     "digital",
   )
   const [statusValue, setStatusValue] = useState("ממתין לתעודה")
+  const [markCompleted, setMarkCompleted] = useState(false)
   const [statusOptions, setStatusOptions] = useState<string[]>([])
 
   const [batches, setBatches] = useState<
@@ -60,6 +67,9 @@ export function CertificatesBulkBar({
   const [batchMode, setBatchMode] = useState<"existing" | "new">("new")
   const [batchId, setBatchId] = useState("")
   const [newBatchName, setNewBatchName] = useState("")
+  const [certifyingBodyValue, setCertifyingBodyValue] = useState<string>(
+    CERTIFYING_BODY_OPTIONS[0],
+  )
 
   const selectedRows = useMemo(() => {
     return [...selectedIds]
@@ -70,6 +80,7 @@ export function CertificatesBulkBar({
   if (count === 0) return null
 
   const openStatus = async () => {
+    setMarkCompleted(false)
     setStatusOpen(true)
     const res = await listCertificateStatusOptionsAction()
     if (res.ok) setStatusOptions(res.data.map((o) => o.label))
@@ -90,8 +101,14 @@ export function CertificatesBulkBar({
     const res = await updateParticipantCertStatusesAction({
       participantIds: [...selectedIds],
       ...(statusKind === "digital"
-        ? { digitalCertStatus: statusValue }
-        : { physicalCertStatus: statusValue }),
+        ? {
+            digitalCertStatus: statusValue,
+            markDigitalCompleted: markCompleted || undefined,
+          }
+        : {
+            physicalCertStatus: statusValue,
+            markPhysicalCompleted: markCompleted || undefined,
+          }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -126,17 +143,55 @@ export function CertificatesBulkBar({
     onDone()
   }
 
+  const openCertifyingBody = () => {
+    const sample = selectedRows[0]
+    const current =
+      sample?.certifyingBody &&
+      sample.certifyingBody !== "ללא גוף מסמיך" &&
+      CERTIFYING_BODY_OPTIONS.includes(
+        sample.certifyingBody as (typeof CERTIFYING_BODY_OPTIONS)[number],
+      )
+        ? sample.certifyingBody
+        : CERTIFYING_BODY_OPTIONS[0]
+    setCertifyingBodyValue(current)
+    setBodyOpen(true)
+  }
+
+  const applyCertifyingBody = async () => {
+    if (!certifyingBodyValue) {
+      toast.error("יש לבחור גוף מסמיך")
+      return
+    }
+    setBusy(true)
+    const res = await assignParticipantsCertifyingBodyAction({
+      participantIds: [...selectedIds],
+      certifyingBody: certifyingBodyValue,
+    })
+    setBusy(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(
+      `שויך «${res.data.certifyingBody}» ל־${res.data.updated} רשומות`,
+    )
+    setBodyOpen(false)
+    onDone()
+  }
+
   const exportExcel = () => {
     if (!selectedRows.length) return
-    const data = selectedRows.map((r) => ({
-      "שם מלא": r.fullName,
-      "תעודת זהות": r.idNumber,
-      "שם מחזור": r.batchName || "",
-      "הדרכת מקור": r.trainingTitle,
-      תאריך: formatCertDateDisplay(r.lastSessionDate),
-      "גוף מסמיך": r.certifyingBody,
-      "סוג תעודה": r.courseSubtype,
-    }))
+    const data = selectedRows.map((r) => {
+      const { firstName, lastName } = splitFullNameForExport(r.fullName)
+      return {
+        "שם פרטי": firstName,
+        "שם משפחה": lastName,
+        "תעודת זהות": r.idNumber,
+        "הדרכת מקור": r.trainingTitle,
+        תאריך: formatCertDateDisplay(r.lastSessionDate),
+        "סוג תעודה": r.courseSubtype,
+      }
+    })
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "תעודות")
@@ -169,7 +224,17 @@ export function CertificatesBulkBar({
               onClick={() => void openStatus()}
             >
               <Tags className="size-3.5" />
-              שינוי סטטוס גורף
+              שינוי סטטוס תעודה
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1.5 rounded-xl"
+              onClick={openCertifyingBody}
+            >
+              <Stamp className="size-3.5" />
+              שיוך תעודות דרך מי
             </Button>
             <Button
               type="button"
@@ -205,9 +270,9 @@ export function CertificatesBulkBar({
       </div>
 
       <Dialog open={statusOpen} onOpenChange={setStatusOpen}>
-        <DialogContent className="rounded-2xl sm:max-w-md">
+        <DialogContent className="rounded-2xl sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-right">שינוי סטטוס גורף</DialogTitle>
+            <DialogTitle className="text-right">שינוי סטטוס תעודה</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -218,7 +283,7 @@ export function CertificatesBulkBar({
                   setStatusKind(v === "physical" ? "physical" : "digital")
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -233,15 +298,19 @@ export function CertificatesBulkBar({
                 value={statusValue}
                 onValueChange={(v) => setStatusValue(v ?? "ממתין לתעודה")}
               >
-                <SelectTrigger>
+                <SelectTrigger className="min-h-9 h-auto w-full py-2 whitespace-normal text-right">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="min-w-[280px] max-w-md">
                   {(statusOptions.length
                     ? statusOptions
                     : ["ממתין לתעודה"]
                   ).map((o) => (
-                    <SelectItem key={o} value={o}>
+                    <SelectItem
+                      key={o}
+                      value={o}
+                      className="whitespace-normal text-right leading-snug"
+                    >
                       {o}
                     </SelectItem>
                   ))}
@@ -254,6 +323,14 @@ export function CertificatesBulkBar({
               placeholder="או הקלדת סטטוס חופשי…"
               className="text-sm"
             />
+            <label className="flex cursor-pointer items-start gap-2 text-right text-sm leading-snug">
+              <Checkbox
+                checked={markCompleted}
+                onCheckedChange={(v) => setMarkCompleted(Boolean(v))}
+                className="mt-0.5"
+              />
+              <span>{MARK_CERTIFICATE_COMPLETED_LABEL}</span>
+            </label>
           </div>
           <DialogFooter className="gap-2 sm:justify-start">
             <Button
@@ -267,6 +344,58 @@ export function CertificatesBulkBar({
               type="button"
               variant="outline"
               onClick={() => setStatusOpen(false)}
+            >
+              ביטול
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bodyOpen} onOpenChange={setBodyOpen}>
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-right">שיוך תעודות דרך מי</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              השיוך נשמר במשתתף ובמודרך הגלובלי — יופיע בכל המסכים (משתתפי
+              הדרכה, מודרכים, תעודות).
+            </p>
+            <div>
+              <Label className="mb-1.5 block text-sm">גוף מסמיך</Label>
+              <Select
+                value={certifyingBodyValue}
+                onValueChange={(v) => setCertifyingBodyValue(v ?? "")}
+              >
+                <SelectTrigger className="min-h-9 h-auto w-full py-2 whitespace-normal text-right">
+                  <SelectValue placeholder="בחר גוף מסמיך…" />
+                </SelectTrigger>
+                <SelectContent className="min-w-[280px] max-w-md">
+                  {CERTIFYING_BODY_OPTIONS.map((o) => (
+                    <SelectItem
+                      key={o}
+                      value={o}
+                      className="whitespace-normal text-right leading-snug"
+                    >
+                      {o}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => void applyCertifyingBody()}
+            >
+              {busy ? "משייך…" : `שיוך ${count} מודרכים`}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBodyOpen(false)}
             >
               ביטול
             </Button>

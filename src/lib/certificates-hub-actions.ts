@@ -10,12 +10,10 @@ import { prisma } from "@/lib/db"
 import {
   DEFAULT_CERT_STATUS,
   DEFAULT_CERT_STATUS_OPTIONS,
-  digitalStatusImpliesIssued,
   formatTrainingTitlesList,
   hasPendingCertificateWork,
   isActivePreCertificateLeadStatus,
   isCertificatePhaseLeadStatus,
-  physicalStatusImpliesIssued,
   resolveCourseSubtypeLabel,
   resolveDigitalCertStatus,
   resolveHubRoutingBody,
@@ -24,6 +22,7 @@ import {
   resolveTrainingTitle,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
+import { normalizeCertifyingBody } from "@/lib/certifying-body"
 import { formatInJerusalem } from "@/lib/timezone"
 import { dbStatusToUi } from "@/lib/types"
 
@@ -248,7 +247,7 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
       const trainingTitle = formatTrainingTitlesList(
         siblingsForId
           .filter((t) => !isLostish(t.status))
-          .map((t) => t.title),
+          .map((t) => ({ title: t.title, dateKey: t.lastDate })),
       )
 
       const lastSessionDate = siblingsForId
@@ -299,6 +298,8 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
           storedStatus: p.physicalCertStatus,
           certificateCardPrinted: cardPrinted,
         }),
+        digitalCompleted: emailSent,
+        physicalCompleted: cardPrinted,
         batchId: p.certificateBatchId || undefined,
         batchName: p.certificateBatch?.name || undefined,
         isExternal: Boolean(p.isExternal),
@@ -317,6 +318,10 @@ export async function updateParticipantCertStatusesAction(input: {
   participantIds: string[]
   digitalCertStatus?: string
   physicalCertStatus?: string
+  /** סימון ידני: תעודה דיגיטלית הושלמה (certificateEmailSent) */
+  markDigitalCompleted?: boolean
+  /** סימון ידני: תעודה פיזית הושלמה (certificateCardPrinted) */
+  markPhysicalCompleted?: boolean
 }): Promise<ActionResult<{ updated: number }>> {
   const ids = [...new Set(input.participantIds.filter(Boolean))]
   if (!ids.length) return { ok: false, error: "לא נבחרו מודרכים" }
@@ -333,7 +338,7 @@ export async function updateParticipantCertStatusesAction(input: {
     data.physicalCertStatus =
       input.physicalCertStatus.trim() || DEFAULT_CERT_STATUS
   }
-  if (!Object.keys(data).length) {
+  if (!Object.keys(data).length && !input.markDigitalCompleted && !input.markPhysicalCompleted) {
     return { ok: false, error: "לא נבחר סטטוס לעדכון" }
   }
 
@@ -375,33 +380,26 @@ export async function updateParticipantCertStatusesAction(input: {
 
     const allIds = [...new Set([...ids, ...siblingIds])]
 
-    const result = await prisma.participant.updateMany({
-      where: { id: { in: allIds } },
-      data,
-    })
+    const result =
+      Object.keys(data).length > 0
+        ? await prisma.participant.updateMany({
+            where: { id: { in: allIds } },
+            data,
+          })
+        : { count: ids.length }
 
-    const digitalFlag =
-      data.digitalCertStatus !== undefined
-        ? digitalStatusImpliesIssued(data.digitalCertStatus)
-        : null
-    const physicalFlag =
-      data.physicalCertStatus !== undefined
-        ? physicalStatusImpliesIssued(data.physicalCertStatus)
-        : null
-
-    if (digitalFlag !== null || physicalFlag !== null) {
+    if (input.markDigitalCompleted || input.markPhysicalCompleted) {
       for (const p of participants) {
         const traineePatch: {
           certificateEmailSent?: boolean
           certificateCardPrinted?: boolean
         } = {}
-        if (digitalFlag !== null) {
-          traineePatch.certificateEmailSent = digitalFlag
+        if (input.markDigitalCompleted) {
+          traineePatch.certificateEmailSent = true
         }
-        if (physicalFlag !== null) {
-          traineePatch.certificateCardPrinted = physicalFlag
+        if (input.markPhysicalCompleted) {
+          traineePatch.certificateCardPrinted = true
         }
-        if (!Object.keys(traineePatch).length) continue
 
         if (p.traineeId) {
           await prisma.trainee.update({
@@ -417,8 +415,8 @@ export async function updateParticipantCertStatusesAction(input: {
               idNumber,
               phone: p.phone,
               email: p.email,
-              certificateEmailSent: digitalFlag === true,
-              certificateCardPrinted: physicalFlag === true,
+              certificateEmailSent: Boolean(input.markDigitalCompleted),
+              certificateCardPrinted: Boolean(input.markPhysicalCompleted),
             },
             update: traineePatch,
           })
@@ -426,9 +424,7 @@ export async function updateParticipantCertStatusesAction(input: {
             where: {
               OR: [
                 { id: p.id },
-                ...(p.idNumber
-                  ? [{ idNumber: p.idNumber.trim() }]
-                  : []),
+                ...(p.idNumber ? [{ idNumber: p.idNumber.trim() }] : []),
               ],
             },
             data: { traineeId: trainee.id },
@@ -523,5 +519,78 @@ export async function assignParticipantsToBatchAction(input: {
   } catch (err) {
     console.error("[assignParticipantsToBatchAction]", err)
     return { ok: false, error: "שגיאה בשיוך למחזור" }
+  }
+}
+
+/** שיוך גורף «תעודות דרך מי» — נשמר ב-participant + trainee (מקור האמת בכל המסכים) */
+export async function assignParticipantsCertifyingBodyAction(input: {
+  participantIds: string[]
+  certifyingBody: string
+}): Promise<ActionResult<{ updated: number; certifyingBody: string }>> {
+  const ids = [...new Set(input.participantIds.filter(Boolean))]
+  if (!ids.length) return { ok: false, error: "לא נבחרו מודרכים" }
+
+  const body = normalizeCertifyingBody(input.certifyingBody)
+  if (!body) return { ok: false, error: "יש לבחור גוף מסמיך תקין" }
+
+  try {
+    const participants = await prisma.participant.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, idNumber: true, traineeId: true },
+    })
+    if (!participants.length) {
+      return { ok: false, error: "לא נמצאו משתתפים" }
+    }
+
+    const idNumbers = [
+      ...new Set(
+        participants.map((p) => (p.idNumber || "").trim()).filter(Boolean),
+      ),
+    ]
+
+    const targetIds =
+      idNumbers.length === 0
+        ? ids
+        : (
+            await prisma.participant.findMany({
+              where: { idNumber: { in: idNumbers } },
+              select: { id: true, traineeId: true },
+            })
+          ).map((p) => p.id)
+
+    const allIds = [...new Set([...ids, ...targetIds])]
+
+    const result = await prisma.participant.updateMany({
+      where: { id: { in: allIds } },
+      data: { certifyingBody: body },
+    })
+
+    const traineeIds = [
+      ...new Set(
+        (
+          await prisma.participant.findMany({
+            where: { id: { in: allIds } },
+            select: { traineeId: true },
+          })
+        )
+          .map((p) => p.traineeId)
+          .filter(Boolean) as string[],
+      ),
+    ]
+
+    if (traineeIds.length) {
+      await prisma.trainee.updateMany({
+        where: { id: { in: traineeIds } },
+        data: { certifyingBody: body },
+      })
+    }
+
+    revalidatePath("/certificates")
+    revalidatePath("/clients")
+    revalidatePath("/leads")
+    return { ok: true, data: { updated: result.count, certifyingBody: body } }
+  } catch (err) {
+    console.error("[assignParticipantsCertifyingBodyAction]", err)
+    return { ok: false, error: "שגיאה בשיוך גוף מסמיך" }
   }
 }

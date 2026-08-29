@@ -936,6 +936,7 @@ export function TraineesPanel() {
                               <div className="overflow-hidden">
                                 <div className="px-3 pb-3 pt-1">
                                   <TraineeContactDetailsPanel
+                                    fullName={t.fullName}
                                     idNumber={t.idNumber}
                                     phone={t.phone}
                                     email={t.email}

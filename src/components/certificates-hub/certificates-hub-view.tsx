@@ -94,7 +94,15 @@ export function CertificatesHubView() {
 
   const applyLocalStatus = (
     id: string,
-    patch: Partial<Pick<CertificatesHubRow, "digitalCertStatus" | "physicalCertStatus">>,
+    patch: Partial<
+      Pick<
+        CertificatesHubRow,
+        | "digitalCertStatus"
+        | "physicalCertStatus"
+        | "digitalCompleted"
+        | "physicalCompleted"
+      >
+    >,
   ) => {
     setRows((list) =>
       list.flatMap((r) => {
@@ -102,8 +110,8 @@ export function CertificatesHubView() {
         const updated = { ...r, ...patch }
         if (
           !hasPendingCertificateWork({
-            digitalCertStatus: updated.digitalCertStatus,
-            physicalCertStatus: updated.physicalCertStatus,
+            certificateEmailSent: updated.digitalCompleted,
+            certificateCardPrinted: updated.physicalCompleted,
           })
         ) {
           return []
@@ -122,14 +130,20 @@ export function CertificatesHubView() {
   const onStatusChange = async (
     row: CertificatesHubRow,
     kind: "digital" | "physical",
-    next: string,
+    payload: { status: string; markCompleted: boolean },
   ) => {
     setStatusBusyId(row.participantId)
     const res = await updateParticipantCertStatusesAction({
       participantIds: [row.participantId],
       ...(kind === "digital"
-        ? { digitalCertStatus: next }
-        : { physicalCertStatus: next }),
+        ? {
+            digitalCertStatus: payload.status,
+            markDigitalCompleted: payload.markCompleted || undefined,
+          }
+        : {
+            physicalCertStatus: payload.status,
+            markPhysicalCompleted: payload.markCompleted || undefined,
+          }),
     })
     setStatusBusyId(null)
     if (!res.ok) {
@@ -139,8 +153,14 @@ export function CertificatesHubView() {
     applyLocalStatus(
       row.participantId,
       kind === "digital"
-        ? { digitalCertStatus: next }
-        : { physicalCertStatus: next },
+        ? {
+            digitalCertStatus: payload.status,
+            ...(payload.markCompleted ? { digitalCompleted: true } : {}),
+          }
+        : {
+            physicalCertStatus: payload.status,
+            ...(payload.markCompleted ? { physicalCompleted: true } : {}),
+          },
     )
   }
 
@@ -307,8 +327,8 @@ export function CertificatesHubView() {
                               value={r.digitalCertStatus}
                               kind="digital"
                               disabled={statusBusyId === r.participantId}
-                              onChange={(next) =>
-                                void onStatusChange(r, "digital", next)
+                              onChange={(payload) =>
+                                void onStatusChange(r, "digital", payload)
                               }
                             />
                           </td>
@@ -317,8 +337,8 @@ export function CertificatesHubView() {
                               value={r.physicalCertStatus}
                               kind="physical"
                               disabled={statusBusyId === r.participantId}
-                              onChange={(next) =>
-                                void onStatusChange(r, "physical", next)
+                              onChange={(payload) =>
+                                void onStatusChange(r, "physical", payload)
                               }
                             />
                           </td>

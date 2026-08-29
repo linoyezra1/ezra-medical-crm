@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 
 /** פאנל פרטים משניים לשורת טבלה מתרחבת (דסקטופ) */
 export function TraineeContactDetailsPanel({
+  fullName,
   idNumber,
   phone,
   email,
@@ -23,6 +24,7 @@ export function TraineeContactDetailsPanel({
   extra,
   className,
 }: {
+  fullName?: string
   idNumber?: string
   phone?: string
   email?: string
@@ -60,6 +62,15 @@ export function TraineeContactDetailsPanel({
         className,
       )}
     >
+      <div>
+        <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
+          שם מלא
+        </p>
+        <p className="font-medium text-foreground">
+          {(fullName || "").trim() || "—"}
+        </p>
+      </div>
+
       <div>
         <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
           תעודת זהות
