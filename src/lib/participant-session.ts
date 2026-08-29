@@ -11,6 +11,13 @@ import type { Lead } from "@/lib/types"
 
 export type SessionLeadSlice = Pick<Lead, "id" | "date" | "participants">
 
+export type ParticipantSessionInfo = {
+  /** מספר מפגש כרונולוגי (1-based) */
+  sessionNumber: number
+  /** סך כל ההדרכות/מפגשים של אותה ת״ז */
+  totalSessions: number
+}
+
 type RankedAssignment = {
   participantId: string
   idKey: string
@@ -48,12 +55,12 @@ function collectAssignments(leads: SessionLeadSlice[]): RankedAssignment[] {
 }
 
 /**
- * מפת participantId → מספר מפגש (1-based) לפי סדר תאריכים לאותה ת״ז.
+ * מפת participantId → מידע מפגש (מספר + סה״כ) לפי סדר תאריכים לאותה ת״ז.
  * תאריכים חסרים נדחפים לסוף; שוויון תאריך — לפי מזהה משתתף ליציבות.
  */
 export function buildParticipantSessionNumbers(
   leads: SessionLeadSlice[],
-): Map<string, number> {
+): Map<string, ParticipantSessionInfo> {
   const byId = new Map<string, RankedAssignment[]>()
   for (const a of collectAssignments(leads)) {
     const list = byId.get(a.idKey)
@@ -61,7 +68,7 @@ export function buildParticipantSessionNumbers(
     else byId.set(a.idKey, [a])
   }
 
-  const result = new Map<string, number>()
+  const result = new Map<string, ParticipantSessionInfo>()
   for (const list of byId.values()) {
     list.sort((a, b) => {
       const aEmpty = !a.dateKey
@@ -70,18 +77,29 @@ export function buildParticipantSessionNumbers(
       if (a.dateKey !== b.dateKey) return a.dateKey.localeCompare(b.dateKey)
       return a.participantId.localeCompare(b.participantId)
     })
+    const totalSessions = list.length
     list.forEach((a, i) => {
-      result.set(a.participantId, i + 1)
+      result.set(a.participantId, {
+        sessionNumber: i + 1,
+        totalSessions,
+      })
     })
   }
   return result
 }
 
+export function getParticipantSessionInfo(
+  sessionByParticipantId: Map<string, ParticipantSessionInfo>,
+  participantId: string,
+): ParticipantSessionInfo | undefined {
+  return sessionByParticipantId.get(participantId)
+}
+
 export function getParticipantSessionNumber(
-  sessionByParticipantId: Map<string, number>,
+  sessionByParticipantId: Map<string, ParticipantSessionInfo>,
   participantId: string,
 ): number | undefined {
-  return sessionByParticipantId.get(participantId)
+  return sessionByParticipantId.get(participantId)?.sessionNumber
 }
 
 /** מיון הדרכות מודרך לפי תאריך (למסך מודרכים) */
@@ -108,6 +126,16 @@ export function sortTrainingsChronologically<
   })
 }
 
-export function sessionMeetingLabel(n: number): string {
-  return `מפגש ${n}`
+export function sessionMeetingLabel(
+  sessionNumber: number,
+  totalSessions: number,
+): string {
+  return `מפגש ${sessionNumber} מתוך ${totalSessions}`
+}
+
+/** האם להציג תגית מפגש — רק כשיש יותר מהדרכה אחת */
+export function shouldShowSessionBadge(
+  info: ParticipantSessionInfo | null | undefined,
+): info is ParticipantSessionInfo {
+  return Boolean(info && info.totalSessions > 1)
 }

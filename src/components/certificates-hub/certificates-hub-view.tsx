@@ -18,6 +18,7 @@ import {
   CERTIFICATES_HUB_TABS,
   formatCertDateDisplay,
   groupRowsBySection,
+  hasPendingCertificateWork,
   tabForCertifyingBody,
   type CertificatesHubRow,
   type CertificatesHubTab,
@@ -91,13 +92,31 @@ export function CertificatesHubView() {
     })
   }
 
-  const patchLocalStatus = (
+  const applyLocalStatus = (
     id: string,
     patch: Partial<Pick<CertificatesHubRow, "digitalCertStatus" | "physicalCertStatus">>,
   ) => {
     setRows((list) =>
-      list.map((r) => (r.participantId === id ? { ...r, ...patch } : r)),
+      list.flatMap((r) => {
+        if (r.participantId !== id) return [r]
+        const updated = { ...r, ...patch }
+        if (
+          !hasPendingCertificateWork({
+            digitalCertStatus: updated.digitalCertStatus,
+            physicalCertStatus: updated.physicalCertStatus,
+          })
+        ) {
+          return []
+        }
+        return [updated]
+      }),
     )
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
   }
 
   const onStatusChange = async (
@@ -117,7 +136,7 @@ export function CertificatesHubView() {
       toast.error(res.error)
       return
     }
-    patchLocalStatus(
+    applyLocalStatus(
       row.participantId,
       kind === "digital"
         ? { digitalCertStatus: next }

@@ -132,6 +132,47 @@ export function resolvePhysicalCertStatus(opts: {
   return stored || DEFAULT_CERT_STATUS
 }
 
+/** תעודה דיגיטלית הושלמה (דגל Sheets או סטטוס הנפקה) */
+export function isDigitalCertificateCompleted(opts: {
+  storedStatus?: string | null
+  certificateEmailSent?: boolean
+}): boolean {
+  if (opts.certificateEmailSent) return true
+  const stored = (opts.storedStatus || "").trim()
+  return DIGITAL_ISSUED_STATUSES.has(stored)
+}
+
+/** תעודה פיזית הושלמה (דגל Sheets או סטטוס הדפסה) */
+export function isPhysicalCertificateCompleted(opts: {
+  storedStatus?: string | null
+  certificateCardPrinted?: boolean
+}): boolean {
+  if (opts.certificateCardPrinted) return true
+  const stored = (opts.storedStatus || "").trim()
+  return PHYSICAL_ISSUED_STATUSES.has(stored)
+}
+
+/**
+ * זכאי לתצוגה ב־Certificates Hub רק אם נותרה עבודה פתוחה:
+ * דיגיטלית ממתינה ו/או פיזית ממתינה — לא כששניהם הושלמו.
+ */
+export function hasPendingCertificateWork(opts: {
+  digitalCertStatus?: string | null
+  physicalCertStatus?: string | null
+  certificateEmailSent?: boolean
+  certificateCardPrinted?: boolean
+}): boolean {
+  const digitalDone = isDigitalCertificateCompleted({
+    storedStatus: opts.digitalCertStatus,
+    certificateEmailSent: opts.certificateEmailSent,
+  })
+  const physicalDone = isPhysicalCertificateCompleted({
+    storedStatus: opts.physicalCertStatus,
+    certificateCardPrinted: opts.certificateCardPrinted,
+  })
+  return !digitalDone || !physicalDone
+}
+
 /** האם עדכון סטטוס דיגיטלי צריך לסמן certificateEmailSent */
 export function digitalStatusImpliesIssued(label: string): boolean | null {
   const s = label.trim()

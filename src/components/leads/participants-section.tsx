@@ -11,6 +11,7 @@ import {
   FileCheck,
   FileSpreadsheet,
   GraduationCap,
+  Loader2,
   MessageCircle,
   MoreVertical,
   Pencil,
@@ -328,6 +329,7 @@ export function ParticipantsSection({
     Record<string, LmsCredentialMeta>
   >({})
   const [editP, setEditP] = useState<Participant | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
   const [payParticipant, setPayParticipant] = useState<Participant | null>(null)
   const [transferP, setTransferP] = useState<Participant | null>(null)
   const [transferLeadId, setTransferLeadId] = useState("")
@@ -676,7 +678,7 @@ export function ParticipantsSection({
   }
 
   const saveEdit = async () => {
-    if (!editP) return
+    if (!editP || editSaving) return
     const priceRaw = editForm.agreedPrice.trim()
     const agreedPrice =
       priceRaw === "" ? null : Number(priceRaw)
@@ -699,7 +701,6 @@ export function ParticipantsSection({
         toast.error(COURSE_TYPE_FORMAT_ERROR)
         return
       }
-      await ensureCustomCourseTypeOption(custom)
       courseType = custom
     }
     let courseCategory = editForm.isExternal ? editForm.courseCategory : null
@@ -711,45 +712,54 @@ export function ParticipantsSection({
       }
       courseCategory = customCat
     }
-    const res = await updateParticipantDetails(editP.id, lead.id, {
-      fullName: editForm.fullName,
-      idNumber: editForm.idNumber,
-      phone: editForm.phone,
-      email: editForm.email,
-      notes: editForm.notes,
-      isExternal: editForm.isExternal,
-      isLead: editForm.isLead,
-      courseType,
-      courseCategory,
-      agreedPrice:
-        editForm.isExternal || editForm.isLead ? agreedPrice : null,
-      certifyingBody: editForm.certifyingBody.trim() || null,
-    })
-    if (!res.ok) {
-      toast.error(res.error)
-      return
+
+    setEditSaving(true)
+    try {
+      if (editForm.isExternal && editForm.courseType === COURSE_TYPE_OTHER) {
+        await ensureCustomCourseTypeOption(editForm.courseTypeOther.trim())
+      }
+      const res = await updateParticipantDetails(editP.id, lead.id, {
+        fullName: editForm.fullName,
+        idNumber: editForm.idNumber,
+        phone: editForm.phone,
+        email: editForm.email,
+        notes: editForm.notes,
+        isExternal: editForm.isExternal,
+        isLead: editForm.isLead,
+        courseType,
+        courseCategory,
+        agreedPrice:
+          editForm.isExternal || editForm.isLead ? agreedPrice : null,
+        certifyingBody: editForm.certifyingBody.trim() || null,
+      })
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      setLeadParticipants(
+        lead.id,
+        participants.map((p) =>
+          p.id === editP.id
+            ? {
+                ...p,
+                name: editForm.fullName.trim(),
+                idNumber: editForm.idNumber.trim(),
+                phone: editForm.phone.trim() || undefined,
+                email: editForm.email.trim() || undefined,
+                notes: editForm.notes.trim() || undefined,
+                isExternal: editForm.isExternal,
+                isLead: editForm.isLead,
+                certifyingBody: editForm.certifyingBody.trim() || undefined,
+              }
+            : p,
+        ),
+      )
+      setEditP(null)
+      toast.success("פרטי המודרך עודכנו בהצלחה")
+      void refresh()
+    } finally {
+      setEditSaving(false)
     }
-    setLeadParticipants(
-      lead.id,
-      participants.map((p) =>
-        p.id === editP.id
-          ? {
-              ...p,
-              name: editForm.fullName.trim(),
-              idNumber: editForm.idNumber.trim(),
-              phone: editForm.phone.trim() || undefined,
-              email: editForm.email.trim() || undefined,
-              notes: editForm.notes.trim() || undefined,
-              isExternal: editForm.isExternal,
-              isLead: editForm.isLead,
-              certifyingBody: editForm.certifyingBody.trim() || undefined,
-            }
-          : p,
-      ),
-    )
-    toast.success("פרטי המשתתף עודכנו")
-    setEditP(null)
-    refresh()
   }
 
   const markLmsLocal = (ids: string[]) => {
@@ -1111,9 +1121,7 @@ export function ParticipantsSection({
                               )}
                               <span className="truncate">{p.name}</span>
                               <SessionMeetingBadge
-                                sessionNumber={sessionByParticipantId.get(
-                                  p.id,
-                                )}
+                                session={sessionByParticipantId.get(p.id)}
                               />
                               {p.isLead ? (
                                 <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
@@ -1397,7 +1405,7 @@ export function ParticipantsSection({
                           {p.name} – {p.idNumber}
                         </span>
                         <SessionMeetingBadge
-                          sessionNumber={sessionByParticipantId.get(p.id)}
+                          session={sessionByParticipantId.get(p.id)}
                         />
                         {p.isLead ? (
                           <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
@@ -1526,12 +1534,17 @@ export function ParticipantsSection({
         </>
       )}
 
-      <Dialog open={Boolean(editP)} onOpenChange={(o) => !o && setEditP(null)}>
-        <DialogContent className="rounded-2xl">
+      <Dialog
+        open={Boolean(editP)}
+        onOpenChange={(o) => {
+          if (!o && !editSaving) setEditP(null)
+        }}
+      >
+        <DialogContent className="rounded-2xl" showCloseButton={!editSaving}>
           <DialogHeader className="text-right">
             <DialogTitle>עריכת משתתף</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
+          <fieldset disabled={editSaving} className="space-y-2 border-0 p-0">
             <Input
               value={editForm.fullName}
               onChange={(e) =>
@@ -1576,6 +1589,7 @@ export function ParticipantsSection({
               <Label className="mb-1.5 block text-sm">תעודות דרך מי</Label>
               <Select
                 value={editForm.certifyingBody || "__empty__"}
+                disabled={editSaving}
                 onValueChange={(v) =>
                   setEditForm((f) => ({
                     ...f,
@@ -1583,7 +1597,7 @@ export function ParticipantsSection({
                   }))
                 }
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full" disabled={editSaving}>
                   <SelectValue placeholder="בחירה…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1599,6 +1613,7 @@ export function ParticipantsSection({
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox
                 checked={editForm.isExternal}
+                disabled={editSaving}
                 onCheckedChange={(v) =>
                   setEditForm((f) => ({ ...f, isExternal: Boolean(v) }))
                 }
@@ -1608,6 +1623,7 @@ export function ParticipantsSection({
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox
                 checked={editForm.isLead}
+                disabled={editSaving}
                 onCheckedChange={(v) =>
                   setEditForm((f) => ({ ...f, isLead: Boolean(v) }))
                 }
@@ -1620,11 +1636,12 @@ export function ParticipantsSection({
                   <Label className="mb-1.5 block text-sm">סוג קורס</Label>
                   <Select
                     value={editForm.courseType || undefined}
+                    disabled={editSaving}
                     onValueChange={(v) =>
                       setEditForm((f) => ({ ...f, courseType: v ?? "" }))
                     }
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full" disabled={editSaving}>
                       <SelectValue placeholder="בחר סוג קורס" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1658,6 +1675,7 @@ export function ParticipantsSection({
                   <Label className="mb-1.5 block text-sm">קטגוריה</Label>
                   <Select
                     value={editForm.courseCategory || undefined}
+                    disabled={editSaving}
                     onValueChange={(v) =>
                       setEditForm((f) => ({
                         ...f,
@@ -1667,7 +1685,7 @@ export function ParticipantsSection({
                       }))
                     }
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full" disabled={editSaving}>
                       <SelectValue placeholder="בחר קטגוריה" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1735,10 +1753,31 @@ export function ParticipantsSection({
                 />
               </div>
             ) : null}
-          </div>
-          <DialogFooter>
-            <Button onClick={saveEdit} className="w-full">
-              שמירה
+          </fieldset>
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              disabled={editSaving}
+              onClick={() => setEditP(null)}
+            >
+              ביטול
+            </Button>
+            <Button
+              type="button"
+              className="w-full gap-2 sm:w-auto"
+              disabled={editSaving}
+              onClick={() => void saveEdit()}
+            >
+              {editSaving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  שומר שינויים...
+                </>
+              ) : (
+                "שמירה"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

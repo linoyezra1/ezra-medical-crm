@@ -965,7 +965,7 @@ export function TraineesPanel() {
                                               className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground"
                                             >
                                               <SessionMeetingBadge
-                                                sessionNumber={sessionByParticipantId.get(
+                                                session={sessionByParticipantId.get(
                                                   tr.participantId,
                                                 )}
                                               />
@@ -1102,7 +1102,7 @@ export function TraineesPanel() {
                           className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground"
                         >
                           <SessionMeetingBadge
-                            sessionNumber={sessionByParticipantId.get(
+                            session={sessionByParticipantId.get(
                               tr.participantId,
                             )}
                           />

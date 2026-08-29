@@ -12,6 +12,7 @@ import {
   DEFAULT_CERT_STATUS_OPTIONS,
   digitalStatusImpliesIssued,
   formatTrainingTitlesList,
+  hasPendingCertificateWork,
   isActivePreCertificateLeadStatus,
   isCertificatePhaseLeadStatus,
   physicalStatusImpliesIssued,
@@ -264,6 +265,17 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
 
       const emailSent = Boolean(p.trainee?.certificateEmailSent)
       const cardPrinted = Boolean(p.trainee?.certificateCardPrinted)
+
+      if (
+        !hasPendingCertificateWork({
+          digitalCertStatus: p.digitalCertStatus,
+          physicalCertStatus: p.physicalCertStatus,
+          certificateEmailSent: emailSent,
+          certificateCardPrinted: cardPrinted,
+        })
+      ) {
+        continue
+      }
 
       out.push({
         participantId: p.id,

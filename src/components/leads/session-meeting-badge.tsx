@@ -1,24 +1,28 @@
-import { sessionMeetingLabel } from "@/lib/participant-session"
+import {
+  sessionMeetingLabel,
+  shouldShowSessionBadge,
+  type ParticipantSessionInfo,
+} from "@/lib/participant-session"
 import { cn } from "@/lib/utils"
 
-/** תגית דינמית: מוצגת רק ממפגש 2 ומעלה (מפגש יחיד — בלי תגית) */
+/** תגית דינמית: מוצגת רק כשיש יותר מהדרכה אחת — «מפגש X מתוך Y» */
 export function SessionMeetingBadge({
-  sessionNumber,
+  session,
   className,
 }: {
-  sessionNumber: number | undefined | null
+  session?: ParticipantSessionInfo | null
   className?: string
 }) {
-  if (sessionNumber == null || sessionNumber < 2) return null
+  if (!shouldShowSessionBadge(session)) return null
   return (
     <span
       className={cn(
         "shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-sky-800",
         className,
       )}
-      title={`מפגש מספר ${sessionNumber} לפי סדר תאריכי ההדרכות של המודרך`}
+      title={`מפגש ${session.sessionNumber} מתוך ${session.totalSessions} לפי סדר תאריכי ההדרכות של המודרך`}
     >
-      {sessionMeetingLabel(sessionNumber)}
+      {sessionMeetingLabel(session.sessionNumber, session.totalSessions)}
     </span>
   )
 }
