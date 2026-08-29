@@ -1,9 +1,11 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import Link from "next/link"
 import {
   Award,
+  ChevronDown,
+  ChevronLeft,
   Download,
   ExternalLink,
   FileCheck,
@@ -27,6 +29,7 @@ import * as XLSX from "xlsx"
 import { ExamScoreBadge } from "@/components/exam/exam-score-badge"
 import { CertifyingBodyBadge } from "@/components/leads/certifying-body-badge"
 import { SessionMeetingBadge } from "@/components/leads/session-meeting-badge"
+import { TraineeContactDetailsPanel } from "@/components/clients/trainee-contact-details-panel"
 import {
   CertificateStatusBadge,
   CertificateStatusSection,
@@ -56,7 +59,6 @@ import {
 } from "@/lib/actions"
 import { formatCourseTypeLabel } from "@/lib/course-type"
 import { formatLeadCategory, formatPhone, whatsappLink } from "@/lib/helpers"
-import { EXAM_PASS_SCORE } from "@/lib/exam-questions"
 import {
   displayCertifyingBody,
   normalizeCertifyingBody,
@@ -813,145 +815,181 @@ export function TraineesPanel() {
                         aria-label="בחר הכל"
                       />
                     </th>
-                    <th className="w-[11%] px-2 py-2 font-semibold">שם מודרך</th>
-                    <th className="w-[8%] px-2 py-2 font-semibold">ת״ז</th>
-                    <th className="w-[9%] px-2 py-2 font-semibold">טלפון</th>
-                    <th className="w-[10%] px-2 py-2 font-semibold">אימייל</th>
-                    <th className="w-[10%] px-2 py-2 font-semibold">
+                    <th className="w-[16%] px-2 py-2 font-semibold">שם מודרך</th>
+                    <th className="w-[12%] px-2 py-2 font-semibold">
                       תעודות דרך מי
                     </th>
-                    <th className="w-[9%] px-2 py-2 font-semibold">
+                    <th className="w-[12%] px-2 py-2 font-semibold">
                       הדרכה שיוך
                     </th>
-                    <th className="w-[9%] px-2 py-2 font-semibold">
-                      סוג קורס
-                    </th>
-                    <th className="w-[9%] px-2 py-2 font-semibold">
-                      קטגוריה
-                    </th>
+                    <th className="w-[11%] px-2 py-2 font-semibold">סוג קורס</th>
+                    <th className="w-[10%] px-2 py-2 font-semibold">קטגוריה</th>
                     <th className="w-[9%] px-2 py-2 font-semibold">
                       תעודה דיגיטלית
                     </th>
                     <th className="w-[9%] px-2 py-2 font-semibold">
                       תעודה פיזית
                     </th>
-                    <th className="w-[8%] px-2 py-2 font-semibold">הערות</th>
-                    <th className="w-[7%] px-2 py-2 font-semibold">מבחן</th>
+                    <th className="w-[11%] px-2 py-2 font-semibold">הערות</th>
                     <th className="w-[10%] px-2 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((t) => {
                     const via = trainingLabel(t)
+                    const open = expandedId === t.id
                     return (
-                      <tr
-                        key={t.id}
-                        className={cn(
-                          "border-t border-border hover:bg-secondary/30",
-                          selectedIds.has(t.id) && "bg-primary/5",
-                        )}
-                      >
-                        <td className="px-2 py-2">
-                          <Checkbox
-                            checked={selectedIds.has(t.id)}
-                            onCheckedChange={(v) =>
-                              toggleSelected(t.id, Boolean(v))
-                            }
-                            aria-label={`בחירה ${t.fullName}`}
-                          />
-                        </td>
-                        <td className="max-w-0 truncate px-2 py-2 font-medium">
-                          <span className="inline-flex max-w-full items-center gap-1.5">
-                            <span className="truncate">{t.fullName}</span>
-                            {t.isExternal ? <ExternalTag /> : null}
-                          </span>
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-2 py-2 dir-ltr text-left"
-                          dir="ltr"
+                      <Fragment key={t.id}>
+                        <tr
+                          className={cn(
+                            "border-t border-border hover:bg-secondary/30",
+                            selectedIds.has(t.id) && "bg-primary/5",
+                            open && "bg-secondary/20",
+                          )}
                         >
-                          {t.idNumber}
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-2 py-2 dir-ltr text-left"
-                          dir="ltr"
-                        >
-                          {t.phone ? formatPhone(t.phone) : "—"}
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-2 py-2 dir-ltr text-left text-xs"
-                          dir="ltr"
-                          title={t.email || undefined}
-                        >
-                          {t.email || "—"}
-                        </td>
-                        <td className="max-w-0 truncate px-2 py-2">
-                          <CertifyingBodyBadge
-                            value={traineeCertifyingBodyLabel(t, leads)}
-                          />
-                        </td>
-                        <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
-                          {via}
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-2 py-2 text-muted-foreground"
-                          title={traineeCourseTypeLabel(t)}
-                        >
-                          {traineeCourseTypeLabel(t)}
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-2 py-2 text-muted-foreground"
-                          title={traineeCategoryLabel(t)}
-                        >
-                          {traineeCategoryLabel(t)}
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex justify-center">
-                            <CertificateStatusBadge
-                              kind="digital"
-                              done={t.certificateEmailSent}
+                          <td className="px-2 py-2">
+                            <Checkbox
+                              checked={selectedIds.has(t.id)}
+                              onCheckedChange={(v) =>
+                                toggleSelected(t.id, Boolean(v))
+                              }
+                              aria-label={`בחירה ${t.fullName}`}
                             />
-                          </div>
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex justify-center">
-                            <CertificateStatusBadge
-                              kind="physical"
-                              done={t.certificateCardPrinted}
+                          </td>
+                          <td className="max-w-0 px-2 py-2 font-medium">
+                            <button
+                              type="button"
+                              className="inline-flex max-w-full items-center gap-1.5 text-right hover:text-primary"
+                              onClick={() =>
+                                setExpandedId(open ? null : t.id)
+                              }
+                              aria-expanded={open}
+                            >
+                              {open ? (
+                                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
+                              )}
+                              <span className="truncate">{t.fullName}</span>
+                              {t.isExternal ? <ExternalTag /> : null}
+                            </button>
+                          </td>
+                          <td className="max-w-0 truncate px-2 py-2">
+                            <CertifyingBodyBadge
+                              value={traineeCertifyingBodyLabel(t, leads)}
                             />
-                          </div>
-                        </td>
-                        <td className="px-2 py-2">
-                          <Input
-                            value={t.notes || ""}
-                            onChange={(e) =>
-                              updateTraineeLocal(t.id, {
-                                notes: e.target.value,
-                              })
-                            }
-                            onBlur={(e) =>
-                              void patch(t, { notes: e.target.value })
-                            }
-                            placeholder="הערות"
-                            className="h-8 text-xs"
-                          />
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          {t.examScore != null && t.examCompletedAt ? (
-                            <span
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-2 py-2 text-muted-foreground"
+                            title={via}
+                          >
+                            {via}
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-2 py-2 text-muted-foreground"
+                            title={traineeCourseTypeLabel(t)}
+                          >
+                            {traineeCourseTypeLabel(t)}
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-2 py-2 text-muted-foreground"
+                            title={traineeCategoryLabel(t)}
+                          >
+                            {traineeCategoryLabel(t)}
+                          </td>
+                          <td className="px-2 py-2">
+                            <div className="flex justify-center">
+                              <CertificateStatusBadge
+                                kind="digital"
+                                done={t.certificateEmailSent}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            <div className="flex justify-center">
+                              <CertificateStatusBadge
+                                kind="physical"
+                                done={t.certificateCardPrinted}
+                              />
+                            </div>
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-2 py-2 text-xs text-muted-foreground"
+                            title={t.notes || undefined}
+                          >
+                            {t.notes?.trim() || "—"}
+                          </td>
+                          <td className="px-2 py-2">
+                            {actionButtons(t, true)}
+                          </td>
+                        </tr>
+                        <tr className="border-0">
+                          <td colSpan={10} className="p-0">
+                            <div
                               className={cn(
-                                "inline-flex rounded-lg px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
-                                t.examScore >= EXAM_PASS_SCORE
-                                  ? "bg-emerald-50 text-emerald-800"
-                                  : "bg-red-50 text-red-700",
+                                "grid transition-[grid-template-rows] duration-300 ease-out",
+                                open
+                                  ? "grid-rows-[1fr]"
+                                  : "grid-rows-[0fr]",
                               )}
                             >
-                              {t.examScore}/100
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-2 py-2">{actionButtons(t, true)}</td>
-                      </tr>
+                              <div className="overflow-hidden">
+                                <div className="px-3 pb-3 pt-1">
+                                  <TraineeContactDetailsPanel
+                                    idNumber={t.idNumber}
+                                    phone={t.phone}
+                                    email={t.email}
+                                    examScore={t.examScore}
+                                    examPassed={t.examPassed}
+                                    examCompletedAt={t.examCompletedAt}
+                                    examDraftAnswers={t.examDraftAnswers}
+                                    notes={t.notes}
+                                    notesEditable
+                                    onNotesChange={(value) =>
+                                      updateTraineeLocal(t.id, {
+                                        notes: value,
+                                      })
+                                    }
+                                    onNotesBlur={(value) =>
+                                      void patch(t, { notes: value })
+                                    }
+                                    extra={
+                                      t.trainings.length > 0 ? (
+                                        <div className="space-y-1">
+                                          {sortTrainingsChronologically(
+                                            t.trainings,
+                                            leadDateById,
+                                          ).map((tr) => (
+                                            <p
+                                              key={tr.participantId}
+                                              className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground"
+                                            >
+                                              <SessionMeetingBadge
+                                                sessionNumber={sessionByParticipantId.get(
+                                                  tr.participantId,
+                                                )}
+                                              />
+                                              <span>
+                                                הדרכה דרך:{" "}
+                                                {tr.organizerName ||
+                                                  tr.leadName}
+                                                {tr.courseDate ||
+                                                leadDateById.get(tr.leadId)
+                                                  ? ` · ${tr.courseDate || leadDateById.get(tr.leadId)}`
+                                                  : ""}
+                                              </span>
+                                            </p>
+                                          ))}
+                                        </div>
+                                      ) : null
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      </Fragment>
                     )
                   })}
                 </tbody>

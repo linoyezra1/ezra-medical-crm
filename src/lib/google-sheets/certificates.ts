@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/db"
 import {
+  DEFAULT_CERT_STATUS,
+  ISSUED_DIGITAL_CERT_STATUS,
+  ISSUED_PHYSICAL_CERT_STATUS,
+} from "@/lib/certificates-hub"
+import {
   certificateScopeForSheet,
   resolveParticipantCertificateCourseType,
 } from "@/lib/course-type"
@@ -974,6 +979,49 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
             await prisma.trainee.update({
               where: { id: traineeId },
               data: patch,
+            })
+            didUpdate = true
+          }
+        }
+
+        // סנכרון סטטוסי מודול תעודות עם דגלי הגיליון
+        if (emailSent || cardPrinted) {
+          const hubPatch: {
+            digitalCertStatus?: string
+            physicalCertStatus?: string
+          } = {}
+          if (emailSent) {
+            hubPatch.digitalCertStatus = ISSUED_DIGITAL_CERT_STATUS
+          }
+          if (cardPrinted) {
+            hubPatch.physicalCertStatus = ISSUED_PHYSICAL_CERT_STATUS
+          }
+          const current = await prisma.participant.findUnique({
+            where: { id: participant.id },
+            select: {
+              digitalCertStatus: true,
+              physicalCertStatus: true,
+            },
+          })
+          const toApply: typeof hubPatch = {}
+          if (
+            hubPatch.digitalCertStatus &&
+            (!current?.digitalCertStatus?.trim() ||
+              current.digitalCertStatus.trim() === DEFAULT_CERT_STATUS)
+          ) {
+            toApply.digitalCertStatus = hubPatch.digitalCertStatus
+          }
+          if (
+            hubPatch.physicalCertStatus &&
+            (!current?.physicalCertStatus?.trim() ||
+              current.physicalCertStatus.trim() === DEFAULT_CERT_STATUS)
+          ) {
+            toApply.physicalCertStatus = hubPatch.physicalCertStatus
+          }
+          if (Object.keys(toApply).length) {
+            await prisma.participant.update({
+              where: { id: participant.id },
+              data: toApply,
             })
             didUpdate = true
           }

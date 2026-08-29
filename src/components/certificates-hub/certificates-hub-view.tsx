@@ -18,6 +18,7 @@ import {
   CERTIFICATES_HUB_TABS,
   formatCertDateDisplay,
   groupRowsBySection,
+  tabForCertifyingBody,
   type CertificatesHubRow,
   type CertificatesHubTab,
 } from "@/lib/certificates-hub"
@@ -61,11 +62,11 @@ export function CertificatesHubView() {
       ezra: 0,
       nitai: 0,
       yossi: 0,
+      unassigned: 0,
     }
     for (const r of rows) {
-      if (r.certifyingBody === "עזרה ורפואה") counts.ezra++
-      else if (String(r.certifyingBody).startsWith("ניתאי")) counts.nitai++
-      else if (String(r.certifyingBody).startsWith("יוסי")) counts.yossi++
+      const t = tabForCertifyingBody(r.certifyingBody) || "unassigned"
+      counts[t]++
     }
     return counts
   }, [rows])
@@ -177,7 +178,9 @@ export function CertificatesHubView() {
         ) : sections.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
             <Award className="mx-auto mb-2 size-8 opacity-40" />
-            אין מודרכים זכאים בטאב זה (נדרשים נוכחות + גוף מסמיך)
+            {tab === "unassigned"
+              ? "אין משתתפים חיצוניים ללא גוף מסמיך — או אין זכאים בטאב זה"
+              : "אין מודרכים זכאים בטאב זה (הדרכה הסתיימה/ממתינה לתעודות + נוכחות + סיום כל המחזורים)"}
           </div>
         ) : (
           sections.map(({ section, rows: sectionRows }) => {
@@ -189,7 +192,7 @@ export function CertificatesHubView() {
                 key={section}
                 title={section}
                 subtitle={`${sectionRows.length} מודרכים`}
-                defaultOpen
+                defaultOpen={false}
               >
                 <div className="overflow-x-auto p-2">
                   <table className="w-full min-w-[900px] text-right text-sm">
@@ -235,12 +238,24 @@ export function CertificatesHubView() {
                             />
                           </td>
                           <td className="px-2 py-2 font-medium">
-                            <Link
-                              href={`/leads/${r.leadId}`}
-                              className="text-primary hover:underline"
-                            >
-                              {r.fullName}
-                            </Link>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Link
+                                href={`/leads/${r.leadId}`}
+                                className="text-primary hover:underline"
+                              >
+                                {r.fullName}
+                              </Link>
+                              {r.unassignedBody ? (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                                  חסר גוף מסמיך
+                                </span>
+                              ) : null}
+                              {r.isExternal ? (
+                                <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-900">
+                                  חיצוני
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                           <td
                             className="px-2 py-2 tabular-nums text-muted-foreground"
@@ -248,7 +263,10 @@ export function CertificatesHubView() {
                           >
                             {r.idNumber}
                           </td>
-                          <td className="max-w-[160px] truncate px-2 py-2 text-muted-foreground">
+                          <td
+                            className="max-w-[200px] truncate px-2 py-2 text-muted-foreground"
+                            title={r.trainingTitle}
+                          >
                             {r.trainingTitle}
                           </td>
                           <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">

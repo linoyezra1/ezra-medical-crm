@@ -1,11 +1,13 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useState, Fragment } from "react"
 import {
   ArrowRightLeft,
   Award,
   BadgeCheck,
   CheckCheck,
+  ChevronDown,
+  ChevronLeft,
   FileCheck,
   FileSpreadsheet,
   GraduationCap,
@@ -27,6 +29,7 @@ import * as XLSX from "xlsx"
 import { ExamScoreBadge } from "@/components/exam/exam-score-badge"
 import { CertifyingBodyBadge } from "@/components/leads/certifying-body-badge"
 import { SessionMeetingBadge } from "@/components/leads/session-meeting-badge"
+import { TraineeContactDetailsPanel } from "@/components/clients/trainee-contact-details-panel"
 import {
   CertificateStatusBadge,
   CertificateStatusSection,
@@ -101,7 +104,6 @@ import {
 import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
-import { EXAM_PASS_SCORE } from "@/lib/exam-questions"
 import { displayCertifyingBody } from "@/lib/certifying-body"
 import { buildParticipantSessionNumbers } from "@/lib/participant-session"
 import { isParticipantPaid } from "@/lib/training-profit"
@@ -1024,25 +1026,23 @@ export function ParticipantsSection({
                         aria-label="בחר הכל"
                       />
                     </th>
-                    <th className="w-[13%] px-3 py-2 font-semibold">שם</th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">טלפון</th>
-                    <th className="w-[9%] px-3 py-2 font-semibold">ת״ז</th>
-                    <th className="w-[11%] px-3 py-2 font-semibold">דוא״ל</th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">
+                    <th className="w-[16%] px-3 py-2 font-semibold">שם מודרך</th>
+                    <th className="w-[12%] px-3 py-2 font-semibold">
                       תעודות דרך מי
                     </th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">סוג קורס</th>
-                    <th className="w-[9%] px-3 py-2 font-semibold">קטגוריה</th>
-                    <th className="w-[8%] px-3 py-2 font-semibold">מחיר</th>
+                    <th className="w-[12%] px-3 py-2 font-semibold">
+                      הדרכה שיוך
+                    </th>
+                    <th className="w-[11%] px-3 py-2 font-semibold">סוג קורס</th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">קטגוריה</th>
                     <th className="w-[9%] px-3 py-2 font-semibold">
                       תעודה דיגיטלית
                     </th>
                     <th className="w-[9%] px-3 py-2 font-semibold">
                       תעודה פיזית
                     </th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">הערות</th>
-                    <th className="w-[9%] px-3 py-2 font-semibold">מבחן</th>
-                    <th className="w-[8%] px-3 py-2 font-semibold">פעולות</th>
+                    <th className="w-[11%] px-3 py-2 font-semibold">הערות</th>
+                    <th className="w-[10%] px-3 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1067,260 +1067,290 @@ export function ParticipantsSection({
                           ? lead.categoryOther
                           : lead.category),
                     )
+                    const open = expandedId === p.id
+                    const notes = participantNotes(p)
+                    const examScore = p.examScore ?? trainee?.examScore
+                    const examCompletedAt =
+                      p.examCompletedAt || trainee?.examCompletedAt
                     return (
-                      <tr
-                        key={p.id}
-                        className="border-t border-border hover:bg-secondary/30"
-                      >
-                        <td className="px-3 py-2">
-                          <Checkbox
-                            checked={selectedIds.has(p.id)}
-                            onCheckedChange={(v) =>
-                              toggleSelected(p.id, Boolean(v))
-                            }
-                            aria-label={`בחירה ${p.name}`}
-                          />
-                        </td>
-                        <td className="max-w-0 truncate px-3 py-2 font-medium">
-                          <span className="inline-flex items-center gap-1.5">
-                            {p.attended && (
-                              <span
-                                className="size-1.5 shrink-0 rounded-full bg-emerald-500"
-                                title="נוכח"
-                              />
-                            )}
-                            <span className="truncate">{p.name}</span>
-                            <SessionMeetingBadge
-                              sessionNumber={sessionByParticipantId.get(p.id)}
+                      <Fragment key={p.id}>
+                        <tr
+                          className={cn(
+                            "border-t border-border hover:bg-secondary/30",
+                            open && "bg-secondary/20",
+                          )}
+                        >
+                          <td className="px-3 py-2">
+                            <Checkbox
+                              checked={selectedIds.has(p.id)}
+                              onCheckedChange={(v) =>
+                                toggleSelected(p.id, Boolean(v))
+                              }
+                              aria-label={`בחירה ${p.name}`}
                             />
-                            {p.isLead ? (
-                              <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
-                                ליד
-                              </span>
-                            ) : null}
-                            {p.isExternal ? <ExternalTag /> : null}
-                            {p.source === "Wix" ? <WixTag /> : null}
-                          </span>
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-3 py-2 dir-ltr text-left"
-                          dir="ltr"
-                        >
-                          {p.phone || "—"}
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-3 py-2 dir-ltr text-left"
-                          dir="ltr"
-                        >
-                          {p.idNumber}
-                        </td>
-                        <td className="max-w-0 truncate px-3 py-2 text-muted-foreground">
-                          {p.email || "—"}
-                        </td>
-                        <td className="max-w-0 truncate px-3 py-2">
-                          <CertifyingBodyBadge
-                            value={displayCertifyingBody({
-                              certifyingBody: p.certifyingBody,
-                              isExternal: p.isExternal,
-                              leadCertificateDelivery: lead.certificateDelivery,
-                            })}
-                          />
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-3 py-2 text-muted-foreground"
-                          title={courseTypeLabel}
-                        >
-                          {courseTypeLabel}
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-3 py-2 text-muted-foreground"
-                          title={categoryLabel}
-                        >
-                          {categoryLabel}
-                        </td>
-                        <td
-                          className={`whitespace-nowrap px-3 py-2 text-sm font-semibold tabular-nums ${
-                            (p.isExternal || p.isLead) && p.agreedPrice != null
-                              ? isParticipantPaid(p)
-                                ? "text-emerald-700"
-                                : "text-red-600"
-                              : "text-muted-foreground"
-                          }`}
-                        >
-                          {(p.isExternal || p.isLead) && p.agreedPrice != null
-                            ? formatCurrency(p.agreedPrice)
-                            : "—"}
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex justify-center">
-                            <CertificateStatusBadge
-                              kind="digital"
-                              done={digitalDone}
-                            />
-                          </div>
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex justify-center">
-                            <CertificateStatusBadge
-                              kind="physical"
-                              done={physicalDone}
-                            />
-                          </div>
-                        </td>
-                        <td
-                          className="max-w-0 truncate px-2 py-2 text-xs text-muted-foreground"
-                          title={participantNotes(p) || undefined}
-                        >
-                          {participantNotes(p) || "—"}
-                        </td>
-                        <td className="px-2 py-2">
-                          {(() => {
-                            const t = traineeForParticipant(p)
-                            const score = p.examScore ?? t?.examScore
-                            const completed =
-                              (p.examCompletedAt || t?.examCompletedAt) &&
-                              score != null
-                            if (!completed) return null
-                            const good = Number(score) >= EXAM_PASS_SCORE
-                            return (
-                              <span
-                                className={`inline-flex rounded-lg px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                                  good
-                                    ? "bg-emerald-50 text-emerald-800"
-                                    : "bg-red-50 text-red-700"
-                                }`}
-                              >
-                                {score}/100
-                              </span>
-                            )
-                          })()}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
-                                aria-label={`פעולות · ${p.name}`}
-                              >
-                                <MoreVertical className="size-4" />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                align="end"
-                                className="min-w-60"
-                              >
-                                {!p.hasLmsAccess ? (
-                                  <DropdownMenuItem
-                                    disabled={Boolean(lmsBusy)}
-                                    onClick={() =>
-                                      void createLmsUsers([p.id])
-                                    }
-                                  >
-                                    {busy ? (
-                                      <RefreshCw className="animate-spin" />
-                                    ) : (
-                                      <UserCheck className="text-primary" />
-                                    )}
-                                    פתח משתמש בלמידה
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem disabled>
-                                    <BadgeCheck className="text-emerald-600" />
-                                    משתמש LMS פעיל
-                                  </DropdownMenuItem>
+                          </td>
+                          <td className="max-w-0 px-3 py-2 font-medium">
+                            <button
+                              type="button"
+                              className="inline-flex max-w-full items-center gap-1.5 text-right hover:text-primary"
+                              onClick={() =>
+                                setExpandedId(open ? null : p.id)
+                              }
+                              aria-expanded={open}
+                            >
+                              {open ? (
+                                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
+                              )}
+                              {p.attended && (
+                                <span
+                                  className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+                                  title="נוכח"
+                                />
+                              )}
+                              <span className="truncate">{p.name}</span>
+                              <SessionMeetingBadge
+                                sessionNumber={sessionByParticipantId.get(
+                                  p.id,
                                 )}
-                                <DropdownMenuItem
-                                  onClick={() => openWhatsApp(p)}
+                              />
+                              {p.isLead ? (
+                                <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                                  ליד
+                                </span>
+                              ) : null}
+                              {p.isExternal ? <ExternalTag /> : null}
+                              {p.source === "Wix" ? <WixTag /> : null}
+                            </button>
+                          </td>
+                          <td className="max-w-0 truncate px-3 py-2">
+                            <CertifyingBodyBadge
+                              value={displayCertifyingBody({
+                                certifyingBody: p.certifyingBody,
+                                isExternal: p.isExternal,
+                                leadCertificateDelivery:
+                                  lead.certificateDelivery,
+                              })}
+                            />
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-3 py-2 text-muted-foreground"
+                            title={lead.name}
+                          >
+                            {lead.name}
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-3 py-2 text-muted-foreground"
+                            title={courseTypeLabel}
+                          >
+                            {courseTypeLabel}
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-3 py-2 text-muted-foreground"
+                            title={categoryLabel}
+                          >
+                            {categoryLabel}
+                          </td>
+                          <td className="px-2 py-2">
+                            <div className="flex justify-center">
+                              <CertificateStatusBadge
+                                kind="digital"
+                                done={digitalDone}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            <div className="flex justify-center">
+                              <CertificateStatusBadge
+                                kind="physical"
+                                done={physicalDone}
+                              />
+                            </div>
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-2 py-2 text-xs text-muted-foreground"
+                            title={notes || undefined}
+                          >
+                            {notes || "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                  aria-label={`פעולות · ${p.name}`}
                                 >
-                                  <MessageCircle className="text-emerald-700" />
-                                  שלח הודעת וואטסאפ
-                                </DropdownMenuItem>
-                                {canSendZoom ? (
+                                  <MoreVertical className="size-4" />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="end"
+                                  className="min-w-60"
+                                >
+                                  {!p.hasLmsAccess ? (
+                                    <DropdownMenuItem
+                                      disabled={Boolean(lmsBusy)}
+                                      onClick={() =>
+                                        void createLmsUsers([p.id])
+                                      }
+                                    >
+                                      {busy ? (
+                                        <RefreshCw className="animate-spin" />
+                                      ) : (
+                                        <UserCheck className="text-primary" />
+                                      )}
+                                      פתח משתמש בלמידה
+                                    </DropdownMenuItem>
+                                  ) : (
+                                    <DropdownMenuItem disabled>
+                                      <BadgeCheck className="text-emerald-600" />
+                                      משתמש LMS פעיל
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem
-                                    onClick={() => openZoomSend(p)}
+                                    onClick={() => openWhatsApp(p)}
                                   >
-                                    <Video className="text-sky-700" />
-                                    שלח קישור לזום (מייל / וואטסאפ)
+                                    <MessageCircle className="text-emerald-700" />
+                                    שלח הודעת וואטסאפ
                                   </DropdownMenuItem>
-                                ) : null}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => openIssueForParticipant(p)}
-                                >
-                                  <Award className="text-amber-600" />
-                                  הנפקת תעודה דיגיטלית
-                                </DropdownMenuItem>
-                                {p.certificateUrl?.trim() ? (
+                                  {canSendZoom ? (
+                                    <DropdownMenuItem
+                                      onClick={() => openZoomSend(p)}
+                                    >
+                                      <Video className="text-sky-700" />
+                                      שלח קישור לזום (מייל / וואטסאפ)
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => openIssueForParticipant(p)}
+                                  >
+                                    <Award className="text-amber-600" />
+                                    הנפקת תעודה דיגיטלית
+                                  </DropdownMenuItem>
+                                  {p.certificateUrl?.trim() ? (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        window.open(
+                                          p.certificateUrl!.trim(),
+                                          "_blank",
+                                          "noopener,noreferrer",
+                                        )
+                                      }
+                                    >
+                                      <FileCheck className="text-amber-500" />
+                                      פתח תעודת PDF
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  <DropdownMenuSeparator />
+                                  {p.phone?.trim() ? (
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        window.location.href = `tel:${p.phone}`
+                                      }}
+                                    >
+                                      <Phone className="text-primary" />
+                                      חיוג
+                                    </DropdownMenuItem>
+                                  ) : null}
                                   <DropdownMenuItem
                                     onClick={() =>
-                                      window.open(
-                                        p.certificateUrl!.trim(),
-                                        "_blank",
-                                        "noopener,noreferrer",
-                                      )
+                                      void toggleAttended(p, !p.attended)
                                     }
                                   >
-                                    <FileCheck className="text-amber-500" />
-                                    פתח תעודת PDF
+                                    <CheckCheck
+                                      className={
+                                        p.attended
+                                          ? "text-emerald-700"
+                                          : "text-muted-foreground"
+                                      }
+                                    />
+                                    {p.attended
+                                      ? "בטל נוכחות"
+                                      : "סמן נוכחות"}
                                   </DropdownMenuItem>
-                                ) : null}
-                                <DropdownMenuSeparator />
-                                {p.phone?.trim() ? (
                                   <DropdownMenuItem
-                                    onClick={() => {
-                                      window.location.href = `tel:${p.phone}`
-                                    }}
+                                    onClick={() => openEdit(p)}
                                   >
-                                    <Phone className="text-primary" />
-                                    חיוג
+                                    <Pencil />
+                                    עריכת פרטי מודרך
                                   </DropdownMenuItem>
-                                ) : null}
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    void toggleAttended(p, !p.attended)
-                                  }
-                                >
-                                  <CheckCheck
-                                    className={
-                                      p.attended
-                                        ? "text-emerald-700"
-                                        : "text-muted-foreground"
+                                  <DropdownMenuItem
+                                    onClick={() => setPayParticipant(p)}
+                                  >
+                                    <ScrollText className="text-primary" />
+                                    רישום תשלום למשתתף
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => openTransfer(p)}
+                                  >
+                                    <ArrowRightLeft className="text-primary" />
+                                    העבר לקורס אחר
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setDeleteTarget(p)}
+                                  >
+                                    <Trash2 />
+                                    מחיקת מודרך
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </td>
+                        </tr>
+                        <tr className="border-0">
+                          <td colSpan={10} className="p-0">
+                            <div
+                              className={cn(
+                                "grid transition-[grid-template-rows] duration-300 ease-out",
+                                open
+                                  ? "grid-rows-[1fr]"
+                                  : "grid-rows-[0fr]",
+                              )}
+                            >
+                              <div className="overflow-hidden">
+                                <div className="px-3 pb-3 pt-1">
+                                  <TraineeContactDetailsPanel
+                                    idNumber={p.idNumber}
+                                    phone={p.phone}
+                                    email={p.email}
+                                    examScore={examScore}
+                                    examPassed={
+                                      p.examPassed ?? trainee?.examPassed
+                                    }
+                                    examCompletedAt={examCompletedAt}
+                                    examDraftAnswers={
+                                      p.examDraftAnswers ??
+                                      trainee?.examDraftAnswers
+                                    }
+                                    notes={notes}
+                                    extra={
+                                      (p.isExternal || p.isLead) &&
+                                      p.agreedPrice != null ? (
+                                        <p
+                                          className={cn(
+                                            "text-sm font-semibold tabular-nums",
+                                            isParticipantPaid(p)
+                                              ? "text-emerald-700"
+                                              : "text-red-600",
+                                          )}
+                                        >
+                                          {p.isLead
+                                            ? "מחיר אופציה: "
+                                            : "מחיר: "}
+                                          {formatCurrency(p.agreedPrice)}
+                                        </p>
+                                      ) : null
                                     }
                                   />
-                                  {p.attended
-                                    ? "בטל נוכחות"
-                                    : "סמן נוכחות"}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => openEdit(p)}
-                                >
-                                  <Pencil />
-                                  עריכת פרטי מודרך
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => setPayParticipant(p)}
-                                >
-                                  <ScrollText className="text-primary" />
-                                  רישום תשלום למשתתף
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => openTransfer(p)}
-                                >
-                                  <ArrowRightLeft className="text-primary" />
-                                  העבר לקורס אחר
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setDeleteTarget(p)}
-                                >
-                                  <Trash2 />
-                                  מחיקת מודרך
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </tr>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      </Fragment>
                     )
                   })}
                 </tbody>

@@ -1,7 +1,8 @@
 "use server"
 
 /**
- * Server actions למודול ניהול תעודות (ניסיוני) — מבודד מזרימות קיימות.
+ * Server actions למודול ניהול תעודות (ניסיוני).
+ * סטטוסים מסונכרנים עם certificateEmailSent / certificateCardPrinted.
  */
 
 import { revalidatePath } from "next/cache"
@@ -9,20 +10,27 @@ import { prisma } from "@/lib/db"
 import {
   DEFAULT_CERT_STATUS,
   DEFAULT_CERT_STATUS_OPTIONS,
+  digitalStatusImpliesIssued,
+  formatTrainingTitlesList,
+  isActivePreCertificateLeadStatus,
+  isCertificatePhaseLeadStatus,
+  physicalStatusImpliesIssued,
   resolveCourseSubtypeLabel,
-  resolveEffectiveCertifyingBody,
+  resolveDigitalCertStatus,
+  resolveHubRoutingBody,
   resolveLastSessionDate,
+  resolvePhysicalCertStatus,
+  resolveTrainingTitle,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
 import { formatInJerusalem } from "@/lib/timezone"
+import { dbStatusToUi } from "@/lib/types"
 
 type ActionResult<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; error: string }
 
 async function ensureDefaultStatusOptions() {
-  const count = await prisma.certificateStatusOption.count()
-  if (count > 0) return
   await prisma.certificateStatusOption.createMany({
     data: DEFAULT_CERT_STATUS_OPTIONS.map((o) => ({
       label: o.label,
@@ -98,13 +106,19 @@ export async function createCertificateStatusOptionAction(input: {
   }
 }
 
-/** מודרכים זכאים לתעודה — נוכחות + גוף מסמיך */
+/**
+ * זכאים לתעודה:
+ * 1. נוכחות
+ * 2. הדרכת המשתתף ב־«ממתין לתעודות» / «הסתיים»
+ * 3. כל ההדרכות של אותו ת״ז (למעט אבודות) הגיעו לשלב תעודות — אין הדרכה פעילה/מתוזמנת
+ */
 export async function listEligibleCertificateParticipantsAction(): Promise<
   ActionResult<CertificatesHubRow[]>
 > {
   try {
     await ensureDefaultStatusOptions()
-    const rows = await prisma.participant.findMany({
+
+    const candidates = await prisma.participant.findMany({
       where: { attended: true },
       include: {
         lead: {
@@ -115,6 +129,14 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
             courseType: true,
             courseTypeOther: true,
             scheduledStart: true,
+            courseStatus: true,
+          },
+        },
+        trainee: {
+          select: {
+            id: true,
+            certificateEmailSent: true,
+            certificateCardPrinted: true,
           },
         },
         certificateBatch: {
@@ -124,40 +146,151 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
       orderBy: { createdAt: "desc" },
     })
 
+    // רק משתתפים שההדרכה הנוכחית שלהם בשלב תעודות
+    const phaseCandidates = candidates.filter((p) =>
+      isCertificatePhaseLeadStatus(p.lead?.courseStatus),
+    )
+
+    const idNumbers = [
+      ...new Set(
+        phaseCandidates
+          .map((p) => (p.idNumber || "").trim())
+          .filter(Boolean),
+      ),
+    ]
+
+    // כל ההרשמות לפי ת״ז — לבדיקת מחזור מלא + שמות הדרכות
+    const siblings =
+      idNumbers.length === 0
+        ? []
+        : await prisma.participant.findMany({
+            where: { idNumber: { in: idNumbers } },
+            select: {
+              id: true,
+              idNumber: true,
+              courseDate: true,
+              lead: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  courseStatus: true,
+                  scheduledStart: true,
+                },
+              },
+            },
+          })
+
+    type SiblingInfo = {
+      leadId: string
+      title: string
+      status: string
+      lastDate: string
+    }
+    const byIdNumber = new Map<string, SiblingInfo[]>()
+    for (const s of siblings) {
+      const key = (s.idNumber || "").trim()
+      if (!key || !s.lead) continue
+      const leadDate = s.lead.scheduledStart
+        ? formatInJerusalem(s.lead.scheduledStart).date
+        : undefined
+      const entry: SiblingInfo = {
+        leadId: s.lead.id,
+        title: resolveTrainingTitle(s.lead.fullName),
+        status: s.lead.courseStatus,
+        lastDate: resolveLastSessionDate({
+          courseDate: s.courseDate,
+          leadDate,
+        }),
+      }
+      const list = byIdNumber.get(key)
+      if (list) list.push(entry)
+      else byIdNumber.set(key, [entry])
+    }
+
+    function isLostish(status: string): boolean {
+      return dbStatusToUi(status) === "lost"
+    }
+
+    function idNumberFullyEligible(idNumber: string): boolean {
+      const all = byIdNumber.get(idNumber) || []
+      if (!all.length) return true
+      // מתעלמים מהדרכות אבודות/מבוטלות
+      const relevant = all.filter((t) => !isLostish(t.status) && t.status)
+      if (!relevant.length) return false
+      // אם יש הדרכה שעדיין פעילה/מתוזמנת — לא זכאי
+      if (relevant.some((t) => isActivePreCertificateLeadStatus(t.status))) {
+        return false
+      }
+      // כל הרלוונטיות חייבות להיות בשלב תעודות / הסתיים
+      return relevant.every((t) => isCertificatePhaseLeadStatus(t.status))
+    }
+
     const out: CertificatesHubRow[] = []
-    for (const p of rows) {
-      const body = resolveEffectiveCertifyingBody({
+    const seenIdNumbers = new Set<string>()
+
+    for (const p of phaseCandidates) {
+      const idNumber = (p.idNumber || "").trim()
+      if (!idNumber) continue
+      if (!idNumberFullyEligible(idNumber)) continue
+
+      // שורה אחת לכל ת״ז (מניעת כפילות בין מספר הדרכות)
+      if (seenIdNumbers.has(idNumber)) continue
+      seenIdNumbers.add(idNumber)
+
+      const routing = resolveHubRoutingBody({
         participantBody: p.certifyingBody,
         isExternal: p.isExternal,
         leadDeliveryMethod: p.lead?.deliveryMethod,
       })
-      if (!body) continue
 
-      const leadDate = p.lead?.scheduledStart
-        ? formatInJerusalem(p.lead.scheduledStart).date
-        : undefined
+      const siblingsForId = byIdNumber.get(idNumber) || []
+      const trainingTitle = formatTrainingTitlesList(
+        siblingsForId
+          .filter((t) => !isLostish(t.status))
+          .map((t) => t.title),
+      )
+
+      const lastSessionDate = siblingsForId
+        .map((t) => t.lastDate)
+        .filter(Boolean)
+        .sort()
+        .at(-1) ||
+        resolveLastSessionDate({
+          courseDate: p.courseDate,
+          leadDate: p.lead?.scheduledStart
+            ? formatInJerusalem(p.lead.scheduledStart).date
+            : undefined,
+        })
+
+      const emailSent = Boolean(p.trainee?.certificateEmailSent)
+      const cardPrinted = Boolean(p.trainee?.certificateCardPrinted)
 
       out.push({
         participantId: p.id,
-        traineeId: p.traineeId || undefined,
+        traineeId: p.traineeId || p.trainee?.id || undefined,
         leadId: p.leadId,
         fullName: p.fullName,
-        idNumber: p.idNumber,
-        trainingTitle: p.organizerName || p.lead?.fullName || "הדרכה",
-        lastSessionDate: resolveLastSessionDate({
-          courseDate: p.courseDate,
-          leadDate,
-        }),
-        certifyingBody: body,
+        idNumber,
+        trainingTitle,
+        lastSessionDate,
+        certifyingBody: routing.body,
         courseSubtype: resolveCourseSubtypeLabel({
           participantCourseType: p.courseType,
           leadCourseType: p.lead?.courseType,
           leadCourseTypeOther: p.lead?.courseTypeOther,
         }),
-        digitalCertStatus: p.digitalCertStatus?.trim() || DEFAULT_CERT_STATUS,
-        physicalCertStatus: p.physicalCertStatus?.trim() || DEFAULT_CERT_STATUS,
+        digitalCertStatus: resolveDigitalCertStatus({
+          storedStatus: p.digitalCertStatus,
+          certificateEmailSent: emailSent,
+        }),
+        physicalCertStatus: resolvePhysicalCertStatus({
+          storedStatus: p.physicalCertStatus,
+          certificateCardPrinted: cardPrinted,
+        }),
         batchId: p.certificateBatchId || undefined,
         batchName: p.certificateBatch?.name || undefined,
+        isExternal: Boolean(p.isExternal),
+        unassignedBody: routing.unassigned,
       })
     }
 
@@ -193,7 +326,6 @@ export async function updateParticipantCertStatusesAction(input: {
   }
 
   try {
-    // שמירת סטטוס חדש במאגר אם צריך
     for (const label of [
       data.digitalCertStatus,
       data.physicalCertStatus,
@@ -201,11 +333,100 @@ export async function updateParticipantCertStatusesAction(input: {
       await createCertificateStatusOptionAction({ label, type: "BOTH" })
     }
 
-    const result = await prisma.participant.updateMany({
+    const participants = await prisma.participant.findMany({
       where: { id: { in: ids } },
+      select: {
+        id: true,
+        traineeId: true,
+        idNumber: true,
+        fullName: true,
+        phone: true,
+        email: true,
+      },
+    })
+
+    // מעדכנים גם אחים לפי ת״ז — אותם דגלי Sheets לכל ההרשמות
+    const idNumbers = [
+      ...new Set(
+        participants.map((p) => (p.idNumber || "").trim()).filter(Boolean),
+      ),
+    ]
+    const siblingIds =
+      idNumbers.length === 0
+        ? ids
+        : (
+            await prisma.participant.findMany({
+              where: { idNumber: { in: idNumbers } },
+              select: { id: true },
+            })
+          ).map((p) => p.id)
+
+    const allIds = [...new Set([...ids, ...siblingIds])]
+
+    const result = await prisma.participant.updateMany({
+      where: { id: { in: allIds } },
       data,
     })
+
+    const digitalFlag =
+      data.digitalCertStatus !== undefined
+        ? digitalStatusImpliesIssued(data.digitalCertStatus)
+        : null
+    const physicalFlag =
+      data.physicalCertStatus !== undefined
+        ? physicalStatusImpliesIssued(data.physicalCertStatus)
+        : null
+
+    if (digitalFlag !== null || physicalFlag !== null) {
+      for (const p of participants) {
+        const traineePatch: {
+          certificateEmailSent?: boolean
+          certificateCardPrinted?: boolean
+        } = {}
+        if (digitalFlag !== null) {
+          traineePatch.certificateEmailSent = digitalFlag
+        }
+        if (physicalFlag !== null) {
+          traineePatch.certificateCardPrinted = physicalFlag
+        }
+        if (!Object.keys(traineePatch).length) continue
+
+        if (p.traineeId) {
+          await prisma.trainee.update({
+            where: { id: p.traineeId },
+            data: traineePatch,
+          })
+        } else {
+          const idNumber = (p.idNumber || "").trim() || `hub-${p.id}`
+          const trainee = await prisma.trainee.upsert({
+            where: { idNumber },
+            create: {
+              fullName: p.fullName || "ללא שם",
+              idNumber,
+              phone: p.phone,
+              email: p.email,
+              certificateEmailSent: digitalFlag === true,
+              certificateCardPrinted: physicalFlag === true,
+            },
+            update: traineePatch,
+          })
+          await prisma.participant.updateMany({
+            where: {
+              OR: [
+                { id: p.id },
+                ...(p.idNumber
+                  ? [{ idNumber: p.idNumber.trim() }]
+                  : []),
+              ],
+            },
+            data: { traineeId: trainee.id },
+          })
+        }
+      }
+    }
+
     revalidatePath("/certificates")
+    revalidatePath("/clients")
     return { ok: true, data: { updated: result.count } }
   } catch (err) {
     console.error("[updateParticipantCertStatusesAction]", err)

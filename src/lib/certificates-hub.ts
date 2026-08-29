@@ -1,16 +1,37 @@
 /**
- * מודול ניהול תעודות (Certificates Hub) — ניסיוני / מבודד.
- * לא משנה לוגיקת תעודות קיימת (certificateEmailSent וכו').
+ * מודול ניהול תעודות (Certificates Hub) — ניסיוני.
+ * סטטוסי תעודה מסונכרנים עם certificateEmailSent / certificateCardPrinted (Sheets).
  */
 
 import {
-  displayCertifyingBody,
   normalizeCertifyingBody,
+  resolveLeadCertifyingBody,
 } from "@/lib/certifying-body"
 import { formatCourseTypeLabel } from "@/lib/course-type"
-import type { CertifyingBody } from "@/lib/types"
+import { dbStatusToUi } from "@/lib/types"
+import type { CertifyingBody, LeadStatus } from "@/lib/types"
 
 export const DEFAULT_CERT_STATUS = "ממתין לתעודה"
+
+/** סטטוס מוצג כש־Sheets/CRM סימנו הנפקה בלי סטטוס מותאם במודול */
+export const ISSUED_DIGITAL_CERT_STATUS = "הונפקה תעודה"
+export const ISSUED_PHYSICAL_CERT_STATUS = "הודפס פיזית"
+
+/** חיצוניים ללא גוף מסמיך אישי */
+export const UNASSIGNED_CERTIFYING_BODY = "ללא גוף מסמיך"
+
+/** סטטוסים שמסמנים תעודה דיגיטלית כהונפקה (מסונכרן ל־certificateEmailSent) */
+export const DIGITAL_ISSUED_STATUSES = new Set([
+  ISSUED_DIGITAL_CERT_STATUS,
+  "נשלח במייל",
+  "נשלח בווצאפ",
+])
+
+/** סטטוסים שמסמנים תעודה פיזית כהודפסה (מסונכרן ל־certificateCardPrinted) */
+export const PHYSICAL_ISSUED_STATUSES = new Set([
+  ISSUED_PHYSICAL_CERT_STATUS,
+  "הודפס פיזית",
+])
 
 export const DEFAULT_CERT_STATUS_OPTIONS: {
   label: string
@@ -20,12 +41,13 @@ export const DEFAULT_CERT_STATUS_OPTIONS: {
   { label: "נשלח ליוסי להפקה", type: "BOTH" },
   { label: "נשלח לניתאי להפקה", type: "BOTH" },
   { label: "הגיע במייל ממתין לשליחה", type: "DIGITAL" },
+  { label: ISSUED_DIGITAL_CERT_STATUS, type: "DIGITAL" },
   { label: "נשלח במייל", type: "DIGITAL" },
   { label: "נשלח בווצאפ", type: "DIGITAL" },
-  { label: "הודפס פיזית", type: "PHYSICAL" },
+  { label: ISSUED_PHYSICAL_CERT_STATUS, type: "PHYSICAL" },
 ]
 
-export type CertificatesHubTab = "ezra" | "nitai" | "yossi"
+export type CertificatesHubTab = "ezra" | "nitai" | "yossi" | "unassigned"
 
 export const CERTIFICATES_HUB_TABS: {
   id: CertificatesHubTab
@@ -34,6 +56,7 @@ export const CERTIFICATES_HUB_TABS: {
   { id: "ezra", label: "עזרה ורפואה" },
   { id: "nitai", label: "ניתאי" },
   { id: "yossi", label: "יוסי עמר" },
+  { id: "unassigned", label: "ללא שיוך" },
 ]
 
 /** גופי מסמיך מפורטים לפי טאב */
@@ -61,21 +84,85 @@ export type CertificatesHubRow = {
   physicalCertStatus: string
   batchId?: string
   batchName?: string
+  isExternal?: boolean
+  unassignedBody?: boolean
+}
+
+/** סטטוסי הדרכה שמאפשרים כניסה למודול תעודות */
+export function isCertificatePhaseLeadStatus(
+  dbOrUiStatus: string | LeadStatus | null | undefined,
+): boolean {
+  const ui = dbStatusToUi(String(dbOrUiStatus || ""))
+  return ui === "pending_certificates" || ui === "completed"
+}
+
+/** הדרכה שעדיין פעילה / מתוזמנת — חוסמת זכאות עד סיום כל המחזורים */
+export function isActivePreCertificateLeadStatus(
+  dbOrUiStatus: string | LeadStatus | null | undefined,
+): boolean {
+  const ui = dbStatusToUi(String(dbOrUiStatus || ""))
+  return ui === "new" || ui === "closed"
+}
+
+/**
+ * חישוב סטטוס דיגיטלי לתצוגה — עדיפות לדגלים המסונכרנים מ־Sheets.
+ * אם certificateEmailSent=true לא מחזירים «ממתין לתעודה».
+ */
+export function resolveDigitalCertStatus(opts: {
+  storedStatus?: string | null
+  certificateEmailSent?: boolean
+}): string {
+  const stored = (opts.storedStatus || "").trim()
+  if (opts.certificateEmailSent) {
+    if (stored && stored !== DEFAULT_CERT_STATUS) return stored
+    return ISSUED_DIGITAL_CERT_STATUS
+  }
+  return stored || DEFAULT_CERT_STATUS
+}
+
+export function resolvePhysicalCertStatus(opts: {
+  storedStatus?: string | null
+  certificateCardPrinted?: boolean
+}): string {
+  const stored = (opts.storedStatus || "").trim()
+  if (opts.certificateCardPrinted) {
+    if (stored && stored !== DEFAULT_CERT_STATUS) return stored
+    return ISSUED_PHYSICAL_CERT_STATUS
+  }
+  return stored || DEFAULT_CERT_STATUS
+}
+
+/** האם עדכון סטטוס דיגיטלי צריך לסמן certificateEmailSent */
+export function digitalStatusImpliesIssued(label: string): boolean | null {
+  const s = label.trim()
+  if (!s || s === DEFAULT_CERT_STATUS) return false
+  if (DIGITAL_ISSUED_STATUSES.has(s)) return true
+  return null // סטטוס ביניים — לא משנים את הדגל
+}
+
+export function physicalStatusImpliesIssued(label: string): boolean | null {
+  const s = label.trim()
+  if (!s || s === DEFAULT_CERT_STATUS) return false
+  if (PHYSICAL_ISSUED_STATUSES.has(s)) return true
+  return null
 }
 
 export function tabForCertifyingBody(
   body: string | null | undefined,
 ): CertificatesHubTab | null {
-  const n = normalizeCertifyingBody(body)
-  if (!n) return null
+  const raw = (body || "").trim()
+  if (!raw || raw === UNASSIGNED_CERTIFYING_BODY) return "unassigned"
+  const n = normalizeCertifyingBody(raw)
+  if (!n) return "unassigned"
   if (n === "עזרה ורפואה") return "ezra"
   if (n.startsWith("ניתאי")) return "nitai"
   if (n.startsWith("יוסי")) return "yossi"
-  return null
+  return "unassigned"
 }
 
 export function sectionKeyForRow(row: CertificatesHubRow): string {
   const tab = tabForCertifyingBody(row.certifyingBody)
+  if (tab === "unassigned") return UNASSIGNED_CERTIFYING_BODY
   if (tab === "nitai" || tab === "yossi") {
     return row.certifyingBody
   }
@@ -92,23 +179,64 @@ export function resolveCourseSubtypeLabel(opts: {
     (opts.leadCourseTypeOther || "").trim() ||
     (opts.leadCourseType || "").trim()
   if (!raw) return "ללא סוג קורס"
-  return formatCourseTypeLabel(raw, {
-    other: opts.leadCourseTypeOther || undefined,
-  }) || raw
+  return (
+    formatCourseTypeLabel(raw, {
+      other: opts.leadCourseTypeOther || undefined,
+    }) || raw
+  )
 }
 
+/**
+ * ניתוב לטאב תעודות:
+ * - רגיל: גוף מסמיך של ההדרכה (deliveryMethod)
+ * - חיצוני: רק certifyingBody אישי; בלי — ללא שיוך
+ */
+export function resolveHubRoutingBody(opts: {
+  participantBody?: string | null
+  isExternal?: boolean
+  leadDeliveryMethod?: string | null
+}): { body: string; unassigned: boolean } {
+  if (opts.isExternal) {
+    const own = normalizeCertifyingBody(opts.participantBody)
+    if (!own) {
+      return { body: UNASSIGNED_CERTIFYING_BODY, unassigned: true }
+    }
+    return { body: own, unassigned: false }
+  }
+  return {
+    body: resolveLeadCertifyingBody(opts.leadDeliveryMethod),
+    unassigned: false,
+  }
+}
+
+/** @deprecated השתמשו ב־resolveHubRoutingBody */
 export function resolveEffectiveCertifyingBody(opts: {
   participantBody?: string | null
   isExternal?: boolean
   leadDeliveryMethod?: string | null
 }): string | undefined {
-  return (
-    displayCertifyingBody({
-      certifyingBody: opts.participantBody,
-      isExternal: opts.isExternal,
-      leadCertificateDelivery: opts.leadDeliveryMethod,
-    }) || undefined
-  )
+  const { body, unassigned } = resolveHubRoutingBody(opts)
+  if (unassigned) return undefined
+  return body
+}
+
+/** שם הדרכת מקור מה־CRM (שם לקוח / הדרכה) — לא organizerName מ־Wix */
+export function resolveTrainingTitle(
+  leadFullName?: string | null,
+): string {
+  return (leadFullName || "").trim() || "הדרכה"
+}
+
+export function formatTrainingTitlesList(titles: string[]): string {
+  const unique: string[] = []
+  const seen = new Set<string>()
+  for (const t of titles) {
+    const v = t.trim()
+    if (!v || seen.has(v)) continue
+    seen.add(v)
+    unique.push(v)
+  }
+  return unique.join(", ") || "הדרכה"
 }
 
 export function resolveLastSessionDate(opts: {
