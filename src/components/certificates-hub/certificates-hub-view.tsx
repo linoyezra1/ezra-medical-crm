@@ -14,6 +14,7 @@ import {
   listEligibleCertificateParticipantsAction,
   updateParticipantCertStatusesAction,
 } from "@/lib/certificates-hub-actions"
+import { syncCertificatesFromSheetsAction } from "@/lib/actions"
 import {
   CERTIFICATES_HUB_TABS,
   formatCertDateDisplay,
@@ -29,6 +30,7 @@ export function CertificatesHubView() {
   const [tab, setTab] = useState<CertificatesHubTab>("ezra")
   const [rows, setRows] = useState<CertificatesHubRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [syncingSheets, setSyncingSheets] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null)
 
@@ -46,6 +48,23 @@ export function CertificatesHubView() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const syncFromSheets = async () => {
+    setSyncingSheets(true)
+    const res = await syncCertificatesFromSheetsAction()
+    setSyncingSheets(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(
+      `סנכרון הושלם: יוצאו ${res.data.exported} חדשים · עודכנו ${res.data.updated} מודרכים` +
+        (res.data.autoCompleted
+          ? ` · ${res.data.autoCompleted} הדרכות הושלמו אוטומטית`
+          : ""),
+    )
+    void load()
+  }
 
   const sections = useMemo(
     () => groupRowsBySection(rows, tab),
@@ -149,11 +168,11 @@ export function CertificatesHubView() {
       kind === "digital"
         ? {
             digitalCertStatus: payload.status,
-            ...(payload.isCompleted ? { digitalCompleted: true } : {}),
+            digitalCompleted: payload.isCompleted,
           }
         : {
             physicalCertStatus: payload.status,
-            ...(payload.isCompleted ? { physicalCompleted: true } : {}),
+            physicalCompleted: payload.isCompleted,
           },
     )
   }
@@ -170,10 +189,28 @@ export function CertificatesHubView() {
             </span>
             <Button
               type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 gap-2 rounded-xl"
+              disabled={syncingSheets || loading}
+              onClick={() => void syncFromSheets()}
+              title="סנכרון סטטוסי תעודות מ-Google Sheets"
+            >
+              <RefreshCw
+                className={cn(
+                  "size-4",
+                  (syncingSheets || loading) && "animate-spin",
+                )}
+              />
+              סנכרון מ-Sheets
+            </Button>
+            <Button
+              type="button"
               size="icon"
               variant="outline"
               className="size-9 rounded-xl"
               onClick={() => void load()}
+              disabled={loading || syncingSheets}
               aria-label="רענון"
             >
               <RefreshCw className={cn("size-4", loading && "animate-spin")} />
@@ -336,6 +373,7 @@ export function CertificatesHubView() {
                               kind="digital"
                               compact
                               disabled={statusBusyId === r.participantId}
+                              onRegistryChange={() => void load()}
                               onChange={(payload) =>
                                 void onStatusChange(r, "digital", payload)
                               }
@@ -347,6 +385,7 @@ export function CertificatesHubView() {
                               kind="physical"
                               compact
                               disabled={statusBusyId === r.participantId}
+                              onRegistryChange={() => void load()}
                               onChange={(payload) =>
                                 void onStatusChange(r, "physical", payload)
                               }

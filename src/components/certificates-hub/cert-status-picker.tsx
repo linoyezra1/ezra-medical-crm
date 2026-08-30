@@ -1,28 +1,33 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Check, Plus } from "lucide-react"
+import { useCallback, useEffect, useState, type MouseEvent } from "react"
+import { Check, Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
+import { CertStatusCompletionDialog } from "@/components/certificates-hub/cert-status-completion-dialog"
+import { CertStatusEditDialog } from "@/components/certificates-hub/cert-status-edit-dialog"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   createCertificateStatusOptionAction,
   listCertificateStatusOptionsAction,
+  updateCertificateStatusOptionAction,
 } from "@/lib/certificates-hub-actions"
 import { DEFAULT_CERT_STATUS } from "@/lib/certificates-hub"
 import { cn } from "@/lib/utils"
 
 type StatusKind = "digital" | "physical"
 
+type StatusOption = {
+  id?: string
+  label: string
+  isCompleted: boolean
+}
+
 export type CertStatusChangePayload = {
   status: string
   isCompleted: boolean
 }
-
-const NEW_STATUS_COMPLETED_LABEL =
-  "סטטוס זה מציין סיום והשלמת התעודה (הופק/נמסר)"
 
 export function CertStatusPicker({
   value,
@@ -30,48 +35,61 @@ export function CertStatusPicker({
   onChange,
   disabled,
   compact,
+  onRegistryChange,
 }: {
   value: string
   kind: StatusKind
   onChange: (payload: CertStatusChangePayload) => void
   disabled?: boolean
-  /** גודל קומפקטי לטבלאות */
   compact?: boolean
+  /** נקרא לאחר עריכת סטטוס גלובלי — לרענון ה-hub */
+  onRegistryChange?: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const [options, setOptions] = useState<
-    { label: string; isCompleted: boolean }[]
-  >([{ label: DEFAULT_CERT_STATUS, isCompleted: false }])
+  const [options, setOptions] = useState<StatusOption[]>([
+    { label: DEFAULT_CERT_STATUS, isCompleted: false },
+  ])
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState("")
-  const [newIsCompleted, setNewIsCompleted] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  const [completionOpen, setCompletionOpen] = useState(false)
+  const [pendingLabel, setPendingLabel] = useState("")
+  const [pendingApply, setPendingApply] = useState<
+    ((isCompleted: boolean) => void) | null
+  >(null)
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<StatusOption | null>(null)
+
+  const statusType = kind === "digital" ? "DIGITAL" : "PHYSICAL"
+
+  const loadOptions = useCallback(async () => {
+    const res = await listCertificateStatusOptionsAction(statusType)
+    if (!res.ok) return
+    let list: StatusOption[] = res.data.map((o) => ({
+      id: o.id,
+      label: o.label,
+      isCompleted: o.isCompleted,
+    }))
+    if (!list.some((o) => o.label === DEFAULT_CERT_STATUS)) {
+      list.unshift({ label: DEFAULT_CERT_STATUS, isCompleted: false })
+    }
+    if (value && !list.some((o) => o.label === value)) {
+      list.push({ label: value, isCompleted: false })
+    }
+    setOptions(list)
+  }, [statusType, value])
 
   useEffect(() => {
     if (!open) return
-    void listCertificateStatusOptionsAction(
-      kind === "digital" ? "DIGITAL" : "PHYSICAL",
-    ).then((res) => {
-      if (!res.ok) return
-      let list = res.data.map((o) => ({
-        label: o.label,
-        isCompleted: o.isCompleted,
-      }))
-      if (!list.some((o) => o.label === DEFAULT_CERT_STATUS)) {
-        list.unshift({ label: DEFAULT_CERT_STATUS, isCompleted: false })
-      }
-      if (value && !list.some((o) => o.label === value)) {
-        list.push({ label: value, isCompleted: false })
-      }
-      setOptions(list)
-    })
-  }, [open, kind, value])
+    void loadOptions()
+  }, [open, loadOptions])
 
   const close = () => {
     setOpen(false)
     setAdding(false)
     setDraft("")
-    setNewIsCompleted(false)
   }
 
   const pick = (label: string, isCompleted: boolean) => {
@@ -79,21 +97,77 @@ export function CertStatusPicker({
     close()
   }
 
-  const saveCustom = async () => {
-    const label = draft.trim()
-    if (!label) return
+  const promptCompletion = (
+    label: string,
+    onDone: (isCompleted: boolean) => void,
+  ) => {
+    setPendingLabel(label)
+    setPendingApply(() => onDone)
+    setCompletionOpen(true)
+  }
+
+  const handleCompletionConfirm = async (isCompleted: boolean) => {
+    const label = pendingLabel.trim()
+    if (!label || !pendingApply) return
     setBusy(true)
     const res = await createCertificateStatusOptionAction({
       label,
-      type: kind === "digital" ? "DIGITAL" : "PHYSICAL",
-      isCompleted: newIsCompleted,
+      type: statusType,
+      isCompleted,
     })
     setBusy(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
-    pick(res.data.label, res.data.isCompleted)
+    setCompletionOpen(false)
+    setPendingApply(null)
+    await loadOptions()
+    pendingApply(isCompleted)
+  }
+
+  const saveCustom = () => {
+    const label = draft.trim()
+    if (!label) return
+    const known = options.find((o) => o.label === label)
+    if (known) {
+      pick(known.label, known.isCompleted)
+      return
+    }
+    promptCompletion(label, (isCompleted) => {
+      pick(label, isCompleted)
+    })
+  }
+
+  const openEdit = (o: StatusOption, e: MouseEvent) => {
+    e.stopPropagation()
+    if (!o.id) return
+    setEditTarget(o)
+    setEditOpen(true)
+  }
+
+  const saveEdit = async (next: { label: string; isCompleted: boolean }) => {
+    if (!editTarget?.id) return
+    setBusy(true)
+    const res = await updateCertificateStatusOptionAction({
+      id: editTarget.id,
+      label: next.label,
+      isCompleted: next.isCompleted,
+    })
+    setBusy(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(
+      res.data.participantsUpdated
+        ? `הסטטוס עודכן · ${res.data.participantsUpdated} משתתפים סונכרנו`
+        : "הסטטוס עודכן",
+    )
+    setEditOpen(false)
+    setEditTarget(null)
+    await loadOptions()
+    onRegistryChange?.()
   }
 
   return (
@@ -144,27 +218,19 @@ export function CertStatusPicker({
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault()
-                      void saveCustom()
+                      saveCustom()
                     }
                   }}
                 />
-                <label className="flex cursor-pointer items-start gap-2 text-right text-xs leading-snug">
-                  <Checkbox
-                    checked={newIsCompleted}
-                    onCheckedChange={(v) => setNewIsCompleted(Boolean(v))}
-                    className="mt-0.5"
-                  />
-                  <span>{NEW_STATUS_COMPLETED_LABEL}</span>
-                </label>
                 <div className="flex gap-2">
                   <Button
                     type="button"
                     size="sm"
                     className="flex-1"
                     disabled={busy}
-                    onClick={() => void saveCustom()}
+                    onClick={saveCustom}
                   >
-                    {busy ? "שומר…" : "שמירה"}
+                    המשך
                   </Button>
                   <Button
                     type="button"
@@ -181,10 +247,10 @@ export function CertStatusPicker({
               <>
                 <ul className="max-h-56 overflow-y-auto">
                   {options.map((o) => (
-                    <li key={o.label}>
+                    <li key={o.id || o.label} className="group flex">
                       <button
                         type="button"
-                        className="flex w-full items-start gap-2 px-3 py-2.5 text-right hover:bg-secondary"
+                        className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2.5 text-right hover:bg-secondary"
                         onClick={() => pick(o.label, o.isCompleted)}
                       >
                         {value === o.label ? (
@@ -194,8 +260,23 @@ export function CertStatusPicker({
                         )}
                         <span className="min-w-0 flex-1 break-words whitespace-normal leading-snug">
                           {o.label}
+                          {o.isCompleted ? (
+                            <span className="ms-1 text-[10px] text-emerald-700">
+                              (הושלם)
+                            </span>
+                          ) : null}
                         </span>
                       </button>
+                      {o.id ? (
+                        <button
+                          type="button"
+                          className="shrink-0 px-2 py-2.5 text-muted-foreground opacity-60 hover:text-primary group-hover:opacity-100"
+                          aria-label={`עריכת ${o.label}`}
+                          onClick={(e) => openEdit(o, e)}
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -215,6 +296,28 @@ export function CertStatusPicker({
             )}
           </div>
         </>
+      ) : null}
+
+      <CertStatusCompletionDialog
+        open={completionOpen}
+        label={pendingLabel}
+        busy={busy}
+        onOpenChange={(v) => {
+          setCompletionOpen(v)
+          if (!v) setPendingApply(null)
+        }}
+        onConfirm={(isCompleted) => void handleCompletionConfirm(isCompleted)}
+      />
+
+      {editTarget ? (
+        <CertStatusEditDialog
+          open={editOpen}
+          label={editTarget.label}
+          isCompleted={editTarget.isCompleted}
+          busy={busy}
+          onOpenChange={setEditOpen}
+          onSave={(next) => void saveEdit(next)}
+        />
       ) : null}
     </div>
   )

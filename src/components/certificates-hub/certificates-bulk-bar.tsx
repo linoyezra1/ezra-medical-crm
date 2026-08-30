@@ -24,10 +24,12 @@ import {
 import {
   assignParticipantsCertifyingBodyAction,
   assignParticipantsToBatchAction,
+  createCertificateStatusOptionAction,
   listCertificateBatchesAction,
   listCertificateStatusOptionsAction,
   updateParticipantCertStatusesAction,
 } from "@/lib/certificates-hub-actions"
+import { CertStatusCompletionDialog } from "@/components/certificates-hub/cert-status-completion-dialog"
 import {
   formatCertDateDisplay,
   splitFullNameForExport,
@@ -57,8 +59,10 @@ export function CertificatesBulkBar({
   )
   const [statusValue, setStatusValue] = useState("ממתין לתעודה")
   const [statusOptions, setStatusOptions] = useState<
-    { label: string; isCompleted: boolean }[]
+    { id?: string; label: string; isCompleted: boolean }[]
   >([])
+  const [completionOpen, setCompletionOpen] = useState(false)
+  const [pendingStatusLabel, setPendingStatusLabel] = useState("")
 
   const [batches, setBatches] = useState<
     { id: string; name: string; count: number }[]
@@ -84,6 +88,7 @@ export function CertificatesBulkBar({
     if (res.ok) {
       setStatusOptions(
         res.data.map((o) => ({
+          id: o.id,
           label: o.label,
           isCompleted: o.isCompleted,
         })),
@@ -101,13 +106,13 @@ export function CertificatesBulkBar({
     }
   }
 
-  const applyStatus = async () => {
+  const runApplyStatus = async (label: string) => {
     setBusy(true)
     const res = await updateParticipantCertStatusesAction({
       participantIds: [...selectedIds],
       ...(statusKind === "digital"
-        ? { digitalCertStatus: statusValue }
-        : { physicalCertStatus: statusValue }),
+        ? { digitalCertStatus: label }
+        : { physicalCertStatus: label }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -116,7 +121,40 @@ export function CertificatesBulkBar({
     }
     toast.success(`עודכן סטטוס ל־${res.data.updated} מודרכים`)
     setStatusOpen(false)
+    setCompletionOpen(false)
     onDone()
+  }
+
+  const applyStatus = async () => {
+    const label = statusValue.trim()
+    if (!label) {
+      toast.error("יש לבחור או להקליד סטטוס")
+      return
+    }
+    const known = statusOptions.find((o) => o.label === label)
+    if (known) {
+      await runApplyStatus(label)
+      return
+    }
+    setPendingStatusLabel(label)
+    setCompletionOpen(true)
+  }
+
+  const confirmNewStatusAndApply = async (isCompleted: boolean) => {
+    const label = pendingStatusLabel.trim()
+    if (!label) return
+    setBusy(true)
+    const created = await createCertificateStatusOptionAction({
+      label,
+      type: statusKind === "digital" ? "DIGITAL" : "PHYSICAL",
+      isCompleted,
+    })
+    if (!created.ok) {
+      setBusy(false)
+      toast.error(created.error)
+      return
+    }
+    await runApplyStatus(label)
   }
 
   const applyBatch = async () => {
@@ -341,6 +379,14 @@ export function CertificatesBulkBar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CertStatusCompletionDialog
+        open={completionOpen}
+        label={pendingStatusLabel}
+        busy={busy}
+        onOpenChange={setCompletionOpen}
+        onConfirm={(isCompleted) => void confirmNewStatusAndApply(isCompleted)}
+      />
 
       <Dialog open={bodyOpen} onOpenChange={setBodyOpen}>
         <DialogContent className="rounded-2xl sm:max-w-md">

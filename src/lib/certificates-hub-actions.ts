@@ -122,6 +122,230 @@ export async function createCertificateStatusOptionAction(input: {
   }
 }
 
+async function syncTraineeFlagsForParticipants(
+  participants: {
+    id: string
+    traineeId: string | null
+    idNumber: string | null
+    fullName: string
+    phone: string | null
+    email: string | null
+    digitalCertStatus: string | null
+    physicalCertStatus: string | null
+  }[],
+  patch: {
+    digitalCertStatus?: string
+    digitalIsCompleted?: boolean
+    physicalCertStatus?: string
+    physicalIsCompleted?: boolean
+  },
+): Promise<void> {
+  const byTrainee = new Map<
+    string,
+    {
+      traineeId: string | null
+      idNumber: string
+      fullName: string
+      phone: string | null
+      email: string | null
+      emailSent?: boolean
+      cardPrinted?: boolean
+    }
+  >()
+
+  for (const p of participants) {
+    const idNumber = (p.idNumber || "").trim() || `hub-${p.id}`
+    const key = p.traineeId || idNumber
+    const row = byTrainee.get(key) || {
+      traineeId: p.traineeId,
+      idNumber,
+      fullName: p.fullName || "ללא שם",
+      phone: p.phone,
+      email: p.email,
+    }
+
+    if (
+      patch.digitalCertStatus !== undefined &&
+      (p.digitalCertStatus || "").trim() === patch.digitalCertStatus &&
+      patch.digitalIsCompleted !== undefined
+    ) {
+      row.emailSent = patch.digitalIsCompleted
+    }
+    if (
+      patch.physicalCertStatus !== undefined &&
+      (p.physicalCertStatus || "").trim() === patch.physicalCertStatus &&
+      patch.physicalIsCompleted !== undefined
+    ) {
+      row.cardPrinted = patch.physicalIsCompleted
+    }
+    byTrainee.set(key, row)
+  }
+
+  for (const row of byTrainee.values()) {
+    const traineePatch: {
+      certificateEmailSent?: boolean
+      certificateCardPrinted?: boolean
+    } = {}
+    if (row.emailSent !== undefined) {
+      traineePatch.certificateEmailSent = row.emailSent
+    }
+    if (row.cardPrinted !== undefined) {
+      traineePatch.certificateCardPrinted = row.cardPrinted
+    }
+    if (!Object.keys(traineePatch).length) continue
+
+    if (row.traineeId) {
+      await prisma.trainee.update({
+        where: { id: row.traineeId },
+        data: traineePatch,
+      })
+    } else {
+      await prisma.trainee.upsert({
+        where: { idNumber: row.idNumber },
+        create: {
+          fullName: row.fullName,
+          idNumber: row.idNumber,
+          phone: row.phone,
+          email: row.email,
+          certificateEmailSent: row.emailSent ?? false,
+          certificateCardPrinted: row.cardPrinted ?? false,
+        },
+        update: traineePatch,
+      })
+    }
+  }
+}
+
+/** עדכון סטטוס קיים + סנכרון דגלים לכל המשתתפים עם אותו label */
+export async function updateCertificateStatusOptionAction(input: {
+  id: string
+  label?: string
+  isCompleted?: boolean
+}): Promise<
+  ActionResult<{
+    id: string
+    label: string
+    isCompleted: boolean
+    participantsUpdated: number
+  }>
+> {
+  const id = input.id.trim()
+  if (!id) return { ok: false, error: "חסר מזהה סטטוס" }
+
+  try {
+    const existing = await prisma.certificateStatusOption.findUnique({
+      where: { id },
+    })
+    if (!existing) return { ok: false, error: "סטטוס לא נמצא" }
+
+    const nextLabel = input.label?.trim() || existing.label
+    const nextCompleted =
+      input.isCompleted !== undefined
+        ? Boolean(input.isCompleted)
+        : Boolean(existing.isCompleted)
+
+    if (!nextLabel) return { ok: false, error: "יש להזין שם סטטוס" }
+
+    if (nextLabel !== existing.label) {
+      const conflict = await prisma.certificateStatusOption.findUnique({
+        where: { label: nextLabel },
+      })
+      if (conflict && conflict.id !== id) {
+        return { ok: false, error: "סטטוס בשם זה כבר קיים" }
+      }
+    }
+
+    const affectsDigital =
+      existing.type === "DIGITAL" || existing.type === "BOTH"
+    const affectsPhysical =
+      existing.type === "PHYSICAL" || existing.type === "BOTH"
+
+    let participantsUpdated = 0
+
+    if (nextLabel !== existing.label) {
+      if (affectsDigital) {
+        const r = await prisma.participant.updateMany({
+          where: { digitalCertStatus: existing.label },
+          data: { digitalCertStatus: nextLabel },
+        })
+        participantsUpdated += r.count
+      }
+      if (affectsPhysical) {
+        const r = await prisma.participant.updateMany({
+          where: { physicalCertStatus: existing.label },
+          data: { physicalCertStatus: nextLabel },
+        })
+        participantsUpdated += r.count
+      }
+    }
+
+    await prisma.certificateStatusOption.update({
+      where: { id },
+      data: {
+        label: nextLabel,
+        isCompleted: nextCompleted,
+      },
+    })
+
+    const participantWhere =
+      affectsDigital && affectsPhysical
+        ? {
+            OR: [
+              { digitalCertStatus: nextLabel },
+              { physicalCertStatus: nextLabel },
+            ],
+          }
+        : affectsDigital
+          ? { digitalCertStatus: nextLabel }
+          : { physicalCertStatus: nextLabel }
+
+    const affected = await prisma.participant.findMany({
+      where: participantWhere,
+      select: {
+        id: true,
+        traineeId: true,
+        idNumber: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        digitalCertStatus: true,
+        physicalCertStatus: true,
+      },
+    })
+
+    if (affected.length) {
+      if (affectsDigital) {
+        await syncTraineeFlagsForParticipants(affected, {
+          digitalCertStatus: nextLabel,
+          digitalIsCompleted: nextCompleted,
+        })
+      }
+      if (affectsPhysical) {
+        await syncTraineeFlagsForParticipants(affected, {
+          physicalCertStatus: nextLabel,
+          physicalIsCompleted: nextCompleted,
+        })
+      }
+      if (!participantsUpdated) participantsUpdated = affected.length
+    }
+
+    revalidatePath("/certificates")
+    revalidatePath("/clients")
+    return {
+      ok: true,
+      data: {
+        id,
+        label: nextLabel,
+        isCompleted: nextCompleted,
+        participantsUpdated,
+      },
+    }
+  } catch (err) {
+    console.error("[updateCertificateStatusOptionAction]", err)
+    return { ok: false, error: "שגיאה בעדכון הסטטוס" }
+  }
+}
+
 /**
  * זכאים לתעודה:
  * 1. נוכחות
@@ -365,20 +589,6 @@ export async function updateParticipantCertStatusesAction(input: {
   try {
     const registry = await loadCertificateStatusRegistry()
 
-    for (const label of [
-      data.digitalCertStatus,
-      data.physicalCertStatus,
-    ].filter(Boolean) as string[]) {
-      const resolved = resolveCertificateStatusLabel(label, registry)
-      if (!resolved.known) {
-        await createCertificateStatusOptionAction({
-          label: resolved.label,
-          type: "BOTH",
-          isCompleted: false,
-        })
-      }
-    }
-
     const digitalResolved =
       data.digitalCertStatus !== undefined
         ? resolveCertificateStatusLabel(data.digitalCertStatus, registry)
@@ -387,6 +597,19 @@ export async function updateParticipantCertStatusesAction(input: {
       data.physicalCertStatus !== undefined
         ? resolveCertificateStatusLabel(data.physicalCertStatus, registry)
         : null
+
+    if (digitalResolved && !digitalResolved.known) {
+      return {
+        ok: false,
+        error: `סטטוס דיגיטלי לא מוכר: «${digitalResolved.label}» — יש ליצור אותו קודם`,
+      }
+    }
+    if (physicalResolved && !physicalResolved.known) {
+      return {
+        ok: false,
+        error: `סטטוס פיזי לא מוכר: «${physicalResolved.label}» — יש ליצור אותו קודם`,
+      }
+    }
 
     const participants = await prisma.participant.findMany({
       where: { id: { in: ids } },

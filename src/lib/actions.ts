@@ -2094,6 +2094,7 @@ export async function syncCertificatesFromSheetsAction(): Promise<
   }
   revalidatePath("/clients");
   revalidatePath("/leads");
+  revalidatePath("/certificates");
   revalidatePath("/dashboard");
   revalidatePath("/calendar");
   return {
