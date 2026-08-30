@@ -1,9 +1,13 @@
 import { prisma } from "@/lib/db"
 import {
-  DEFAULT_CERT_STATUS,
-  ISSUED_DIGITAL_CERT_STATUS,
-  ISSUED_PHYSICAL_CERT_STATUS,
+  resolveDigitalCertStatus,
+  resolvePhysicalCertStatus,
 } from "@/lib/certificates-hub"
+import {
+  loadCertificateStatusRegistry,
+  parseSheetCertificateCell,
+  type ResolvedCertificateStatus,
+} from "@/lib/certificate-status-registry"
 import {
   certificateScopeForSheet,
   resolveParticipantCertificateCourseType,
@@ -84,20 +88,24 @@ const SHEET_RANGE_CRM_IDS = "M:M"
 /** כותרות A–O לפני הרחבת כתובת/קטגוריה */
 const LEGACY_HEADER_COLS = 15
 
-function truthyCell(value: unknown): boolean {
-  if (value === true || value === 1) return true
-  const s = String(value ?? "")
-    .trim()
-    .toLowerCase()
-  return (
-    s === "true" ||
-    s === "yes" ||
-    s === "1" ||
-    s === "v" ||
-    s === "✓" ||
-    s === "כן" ||
-    s === "TRUE"
-  )
+function sheetCertStatusCells(p: {
+  digitalCertStatus?: string | null
+  physicalCertStatus?: string | null
+  trainee?: {
+    certificateEmailSent: boolean
+    certificateCardPrinted: boolean
+  } | null
+}): [string, string] {
+  return [
+    resolvePhysicalCertStatus({
+      storedStatus: p.physicalCertStatus,
+      certificateCardPrinted: p.trainee?.certificateCardPrinted,
+    }),
+    resolveDigitalCertStatus({
+      storedStatus: p.digitalCertStatus,
+      certificateEmailSent: p.trainee?.certificateEmailSent,
+    }),
+  ]
 }
 
 async function ensureHeaderRow() {
@@ -246,6 +254,8 @@ function participantRow(p: {
   isExternal?: boolean | null
   courseType?: string | null
   courseCategory?: string | null
+  digitalCertStatus?: string | null
+  physicalCertStatus?: string | null
   shippingCity?: string | null
   shippingStreet?: string | null
   shippingHouseNo?: string | null
@@ -270,8 +280,8 @@ function participantRow(p: {
     certCourse.courseTypeOther,
   )
   const exportTimestamp = formatSheetDateTimeDdMmYyyy(new Date())
+  const [physicalStatus, digitalStatus] = sheetCertStatusCells(p)
 
-  // I/J מתחילים ריקים — ממולאים בגיליון; סנכרון קורא משם חזרה ל-CRM
   return [
     p.fullName || "", // A
     p.idNumber || "", // B
@@ -281,8 +291,8 @@ function participantRow(p: {
     hoursScope, // F — «22» או «רענון 22» לפי סוג הקורס
     "", // G — מספר תעודה (מילוי בגיליון)
     "", // H — תוקף תעודה (מילוי בגיליון)
-    "", // I — הודפס כרטיס (מילוי בגיליון)
-    "", // J — נשלח במייל (מילוי בגיליון)
+    physicalStatus, // I — תעודה פיזית (טקסט סטטוס)
+    digitalStatus, // J — תעודה דיגיטלית (טקסט סטטוס)
     p.organizerName || p.lead?.fullName || "", // K
     exportTimestamp, // L — DD/MM/YYYY HH:mm
     p.id, // M — CRM_PARTICIPANT_ID
@@ -368,6 +378,7 @@ export async function exportLeadParticipantsToSheets(
 
     const attendanceUpdates: { range: string; values: string[][] }[] = []
     const addressUpdates: { range: string; values: string[][] }[] = []
+    const certStatusUpdates: { range: string; values: string[][] }[] = []
     for (const p of participants) {
       const rowIndex = rowIndexFor(p)
       if (!rowIndex) continue
@@ -379,8 +390,17 @@ export async function exportLeadParticipantsToSheets(
         range: sheetA1(tab, `P${rowIndex}:T${rowIndex}`),
         values: [addressAndCategoryCells(p)],
       })
+      const [physicalStatus, digitalStatus] = sheetCertStatusCells(p)
+      certStatusUpdates.push({
+        range: sheetA1(tab, `I${rowIndex}:J${rowIndex}`),
+        values: [[physicalStatus, digitalStatus]],
+      })
     }
-    const sheetUpdates = [...attendanceUpdates, ...addressUpdates]
+    const sheetUpdates = [
+      ...attendanceUpdates,
+      ...addressUpdates,
+      ...certStatusUpdates,
+    ]
     if (sheetUpdates.length) {
       await sheets.spreadsheets.values.batchUpdate({
         spreadsheetId,
@@ -592,7 +612,19 @@ export async function exportTraineesToCertificateSheet(
       include: {
         participants: {
           orderBy: { createdAt: "desc" },
-          include: {
+          select: {
+            id: true,
+            courseDate: true,
+            organizerName: true,
+            isExternal: true,
+            courseType: true,
+            digitalCertStatus: true,
+            physicalCertStatus: true,
+            shippingCity: true,
+            shippingStreet: true,
+            shippingHouseNo: true,
+            shippingZip: true,
+            courseCategory: true,
             lead: {
               select: {
                 fullName: true,
@@ -626,6 +658,21 @@ export async function exportTraineesToCertificateSheet(
         courseType: p?.courseType,
         lead,
       })
+      const [physicalStatus, digitalStatus] = p
+        ? sheetCertStatusCells({
+            digitalCertStatus: p.digitalCertStatus,
+            physicalCertStatus: p.physicalCertStatus,
+            trainee: {
+              certificateEmailSent: t.certificateEmailSent,
+              certificateCardPrinted: t.certificateCardPrinted,
+            },
+          })
+        : sheetCertStatusCells({
+            trainee: {
+              certificateEmailSent: t.certificateEmailSent,
+              certificateCardPrinted: t.certificateCardPrinted,
+            },
+          })
       return [
         t.fullName || "",
         t.idNumber || "",
@@ -635,8 +682,8 @@ export async function exportTraineesToCertificateSheet(
         hoursScopeForSheet(certCourse.courseType, certCourse.courseTypeOther),
         "",
         "",
-        "",
-        "",
+        physicalStatus,
+        digitalStatus,
         p?.organizerName || lead?.fullName || "",
         formatSheetDateTimeDdMmYyyy(new Date()),
         p?.id || t.id, // M — מזהה משתתף אם יש, אחרת מודרך
@@ -809,7 +856,127 @@ export async function syncCertificateHoursForParticipantIds(
   }
 }
 
-/** סנכרון דגלים מגיליון → CRM (מייל / כרטיס) */
+/** CRM → Sheets: כתיבת טקסט סטטוס תעודה (I/J) לשורות קיימות */
+export async function syncCertificateStatusesToSheets(): Promise<
+  { ok: true; updated: number } | { ok: false; error: string }
+> {
+  if (!isGoogleSheetsConfigured()) {
+    return { ok: true, updated: 0 }
+  }
+
+  try {
+    await ensureHeaderRow()
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: sheetA1(tab, SHEET_RANGE_DATA),
+    })
+    const rows = res.data.values || []
+    if (!rows.length) return { ok: true, updated: 0 }
+
+    const crmIds = rows
+      .map((row) => String(row[COL.crmId] || "").trim())
+      .filter(Boolean)
+    if (!crmIds.length) return { ok: true, updated: 0 }
+
+    const participants = await prisma.participant.findMany({
+      where: { id: { in: crmIds } },
+      select: {
+        id: true,
+        digitalCertStatus: true,
+        physicalCertStatus: true,
+        trainee: {
+          select: {
+            certificateEmailSent: true,
+            certificateCardPrinted: true,
+          },
+        },
+      },
+    })
+    const participantById = new Map(participants.map((p) => [p.id, p]))
+
+    const trainees = await prisma.trainee.findMany({
+      where: { id: { in: crmIds } },
+      select: {
+        id: true,
+        certificateEmailSent: true,
+        certificateCardPrinted: true,
+      },
+    })
+    const traineeById = new Map(trainees.map((t) => [t.id, t]))
+
+    const updates: { range: string; values: string[][] }[] = []
+    rows.forEach((row, i) => {
+      const crmId = String(row[COL.crmId] || "").trim()
+      if (!crmId || isNonAttendedCell(row[COL.attended])) return
+
+      const participant = participantById.get(crmId)
+      const traineeOnly = traineeById.get(crmId)
+      if (!participant && !traineeOnly) return
+
+      const [physicalStatus, digitalStatus] = participant
+        ? sheetCertStatusCells(participant)
+        : sheetCertStatusCells({ trainee: traineeOnly })
+
+      const currentPhysical = String(row[COL.cardPrinted] || "").trim()
+      const currentDigital = String(row[COL.emailSent] || "").trim()
+      if (
+        currentPhysical === physicalStatus &&
+        currentDigital === digitalStatus
+      ) {
+        return
+      }
+
+      updates.push({
+        range: sheetA1(tab, `I${i + 2}:J${i + 2}`),
+        values: [[physicalStatus, digitalStatus]],
+      })
+    })
+
+    if (!updates.length) return { ok: true, updated: 0 }
+
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "USER_ENTERED",
+        data: updates,
+      },
+    })
+    return { ok: true, updated: updates.length }
+  } catch (err) {
+    console.error("[syncCertificateStatusesToSheets]", err)
+    return {
+      ok: false,
+      error:
+        err instanceof Error ? err.message : "שגיאה בכתיבת סטטוסים ל-Google Sheets",
+    }
+  }
+}
+
+function traineeFlagsFromParsed(opts: {
+  digital?: ResolvedCertificateStatus | null
+  physical?: ResolvedCertificateStatus | null
+}): {
+  certificateEmailSent?: boolean
+  certificateCardPrinted?: boolean
+} {
+  const out: {
+    certificateEmailSent?: boolean
+    certificateCardPrinted?: boolean
+  } = {}
+  if (opts.digital) {
+    out.certificateEmailSent = opts.digital.isCompleted
+  }
+  if (opts.physical) {
+    out.certificateCardPrinted = opts.physical.isCompleted
+  }
+  return out
+}
+
+/** סנכרון דו-כיווני: משיכת I/J מהגיליון → CRM (מילון סטטוסים + isCompleted) */
 export async function syncCertificateFlagsFromSheets(): Promise<{
   ok: true
   updated: number
@@ -824,6 +991,7 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
 
   try {
     await ensureHeaderRow()
+    const registry = await loadCertificateStatusRegistry()
     const sheets = await getSheetsClient()
     const spreadsheetId = getSpreadsheetId()
     const tab = getSheetTabName()
@@ -837,17 +1005,23 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
     const touchedLeadIds = new Set<string>()
 
     for (const row of rows) {
-      // M (index 12) — מזהה משתתף / מודרך
       const crmId = String(row[COL.crmId] || "").trim()
       if (!crmId) continue
       if (isNonAttendedCell(row[COL.attended])) continue
 
-      // I / J — דגלי תעודה · N — קישור PDF
-      const cardPrinted = truthyCell(row[COL.cardPrinted])
-      const emailSent = truthyCell(row[COL.emailSent])
+      const physicalParsed = parseSheetCertificateCell(
+        row[COL.cardPrinted],
+        "physical",
+        registry,
+      )
+      const digitalParsed = parseSheetCertificateCell(
+        row[COL.emailSent],
+        "digital",
+        registry,
+      )
       const pdfUrl = String(row[COL.pdfUrl] || "").trim()
 
-      if (!emailSent && !cardPrinted && !pdfUrl) continue
+      if (!physicalParsed && !digitalParsed && !pdfUrl) continue
 
       const participant = await prisma.participant.findUnique({
         where: { id: crmId },
@@ -860,10 +1034,11 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
           phone: true,
           email: true,
           certificateUrl: true,
+          digitalCertStatus: true,
+          physicalCertStatus: true,
         },
       })
 
-      // מזהה מודרך ללא רשומת משתתף (ייצוא ממסך מודרכים)
       if (!participant) {
         const trainee = await prisma.trainee.findUnique({
           where: { id: crmId },
@@ -880,23 +1055,27 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
           certificateEmailSent?: boolean
           certificateCardPrinted?: boolean
           certificateUrl?: string
-        } = {}
-        if (emailSent && !trainee.certificateEmailSent) {
-          traineePatch.certificateEmailSent = true
-        }
-        if (cardPrinted && !trainee.certificateCardPrinted) {
-          traineePatch.certificateCardPrinted = true
-        }
+        } = traineeFlagsFromParsed({
+          digital: digitalParsed,
+          physical: physicalParsed,
+        })
         if (pdfUrl && pdfUrl !== (trainee.certificateUrl || "")) {
           traineePatch.certificateUrl = pdfUrl
         }
-        if (!Object.keys(traineePatch).length) continue
+        const hasChange =
+          (traineePatch.certificateEmailSent !== undefined &&
+            traineePatch.certificateEmailSent !==
+              trainee.certificateEmailSent) ||
+          (traineePatch.certificateCardPrinted !== undefined &&
+            traineePatch.certificateCardPrinted !==
+              trainee.certificateCardPrinted) ||
+          traineePatch.certificateUrl !== undefined
+        if (!hasChange) continue
 
         await prisma.trainee.update({
           where: { id: trainee.id },
           data: traineePatch,
         })
-        // סנכרון URL גם למשתתפים מקושרים אם יש
         if (traineePatch.certificateUrl) {
           await prisma.participant.updateMany({
             where: { traineeId: trainee.id },
@@ -908,17 +1087,50 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
       }
 
       let didUpdate = false
+      const participantPatch: {
+        digitalCertStatus?: string
+        physicalCertStatus?: string
+        certificateUrl?: string
+      } = {}
 
+      if (digitalParsed) {
+        participantPatch.digitalCertStatus = digitalParsed.label
+      }
+      if (physicalParsed) {
+        participantPatch.physicalCertStatus = physicalParsed.label
+      }
       if (pdfUrl && pdfUrl !== (participant.certificateUrl || "")) {
-        await prisma.participant.update({
-          where: { id: participant.id },
-          data: { certificateUrl: pdfUrl },
-        })
-        didUpdate = true
+        participantPatch.certificateUrl = pdfUrl
       }
 
+      if (Object.keys(participantPatch).length) {
+        const changed =
+          (participantPatch.digitalCertStatus !== undefined &&
+            participantPatch.digitalCertStatus !==
+              (participant.digitalCertStatus || "").trim()) ||
+          (participantPatch.physicalCertStatus !== undefined &&
+            participantPatch.physicalCertStatus !==
+              (participant.physicalCertStatus || "").trim()) ||
+          participantPatch.certificateUrl !== undefined
+        if (changed) {
+          await prisma.participant.update({
+            where: { id: participant.id },
+            data: participantPatch,
+          })
+          didUpdate = true
+        }
+      }
+
+      const flagPatch = traineeFlagsFromParsed({
+        digital: digitalParsed,
+        physical: physicalParsed,
+      })
+
       let traineeId = participant.traineeId
-      if (!traineeId && (emailSent || cardPrinted)) {
+      if (
+        !traineeId &&
+        (digitalParsed || physicalParsed || pdfUrl)
+      ) {
         const idNumber =
           participant.idNumber?.trim() || `sheet-${participant.id}`
         const trainee = await prisma.trainee.upsert({
@@ -928,13 +1140,13 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
             idNumber,
             phone: participant.phone,
             email: participant.email,
-            certificateEmailSent: emailSent,
-            certificateCardPrinted: cardPrinted,
+            certificateEmailSent: flagPatch.certificateEmailSent ?? false,
+            certificateCardPrinted:
+              flagPatch.certificateCardPrinted ?? false,
             certificateUrl: pdfUrl || null,
           },
           update: {
-            ...(emailSent ? { certificateEmailSent: true } : {}),
-            ...(cardPrinted ? { certificateCardPrinted: true } : {}),
+            ...flagPatch,
             ...(pdfUrl ? { certificateUrl: pdfUrl } : {}),
           },
         })
@@ -951,7 +1163,7 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
         continue
       }
 
-      if (traineeId && (emailSent || cardPrinted || pdfUrl)) {
+      if (traineeId && (digitalParsed || physicalParsed || pdfUrl)) {
         const trainee = await prisma.trainee.findUnique({
           where: { id: traineeId },
           select: {
@@ -965,63 +1177,22 @@ export async function syncCertificateFlagsFromSheets(): Promise<{
             certificateEmailSent?: boolean
             certificateCardPrinted?: boolean
             certificateUrl?: string
-          } = {}
-          if (emailSent && !trainee.certificateEmailSent) {
-            patch.certificateEmailSent = true
-          }
-          if (cardPrinted && !trainee.certificateCardPrinted) {
-            patch.certificateCardPrinted = true
-          }
+          } = { ...flagPatch }
           if (pdfUrl && pdfUrl !== (trainee.certificateUrl || "")) {
             patch.certificateUrl = pdfUrl
           }
-          if (Object.keys(patch).length) {
+          const hasChange =
+            (patch.certificateEmailSent !== undefined &&
+              patch.certificateEmailSent !== trainee.certificateEmailSent) ||
+            (patch.certificateCardPrinted !== undefined &&
+              patch.certificateCardPrinted !==
+                trainee.certificateCardPrinted) ||
+            (patch.certificateUrl !== undefined &&
+              patch.certificateUrl !== (trainee.certificateUrl || ""))
+          if (hasChange) {
             await prisma.trainee.update({
               where: { id: traineeId },
               data: patch,
-            })
-            didUpdate = true
-          }
-        }
-
-        // סנכרון סטטוסי מודול תעודות עם דגלי הגיליון
-        if (emailSent || cardPrinted) {
-          const hubPatch: {
-            digitalCertStatus?: string
-            physicalCertStatus?: string
-          } = {}
-          if (emailSent) {
-            hubPatch.digitalCertStatus = ISSUED_DIGITAL_CERT_STATUS
-          }
-          if (cardPrinted) {
-            hubPatch.physicalCertStatus = ISSUED_PHYSICAL_CERT_STATUS
-          }
-          const current = await prisma.participant.findUnique({
-            where: { id: participant.id },
-            select: {
-              digitalCertStatus: true,
-              physicalCertStatus: true,
-            },
-          })
-          const toApply: typeof hubPatch = {}
-          if (
-            hubPatch.digitalCertStatus &&
-            (!current?.digitalCertStatus?.trim() ||
-              current.digitalCertStatus.trim() === DEFAULT_CERT_STATUS)
-          ) {
-            toApply.digitalCertStatus = hubPatch.digitalCertStatus
-          }
-          if (
-            hubPatch.physicalCertStatus &&
-            (!current?.physicalCertStatus?.trim() ||
-              current.physicalCertStatus.trim() === DEFAULT_CERT_STATUS)
-          ) {
-            toApply.physicalCertStatus = hubPatch.physicalCertStatus
-          }
-          if (Object.keys(toApply).length) {
-            await prisma.participant.update({
-              where: { id: participant.id },
-              data: toApply,
             })
             didUpdate = true
           }

@@ -130,20 +130,14 @@ export function CertificatesHubView() {
   const onStatusChange = async (
     row: CertificatesHubRow,
     kind: "digital" | "physical",
-    payload: { status: string; markCompleted: boolean },
+    payload: { status: string; isCompleted: boolean },
   ) => {
     setStatusBusyId(row.participantId)
     const res = await updateParticipantCertStatusesAction({
       participantIds: [row.participantId],
       ...(kind === "digital"
-        ? {
-            digitalCertStatus: payload.status,
-            markDigitalCompleted: payload.markCompleted || undefined,
-          }
-        : {
-            physicalCertStatus: payload.status,
-            markPhysicalCompleted: payload.markCompleted || undefined,
-          }),
+        ? { digitalCertStatus: payload.status }
+        : { physicalCertStatus: payload.status }),
     })
     setStatusBusyId(null)
     if (!res.ok) {
@@ -155,11 +149,11 @@ export function CertificatesHubView() {
       kind === "digital"
         ? {
             digitalCertStatus: payload.status,
-            ...(payload.markCompleted ? { digitalCompleted: true } : {}),
+            ...(payload.isCompleted ? { digitalCompleted: true } : {}),
           }
         : {
             physicalCertStatus: payload.status,
-            ...(payload.markCompleted ? { physicalCompleted: true } : {}),
+            ...(payload.isCompleted ? { physicalCompleted: true } : {}),
           },
     )
   }
@@ -234,10 +228,20 @@ export function CertificatesHubView() {
                 defaultOpen={false}
               >
                 <div className="overflow-x-auto p-2">
-                  <table className="w-full min-w-[900px] text-right text-sm">
+                  <table className="w-full min-w-[880px] table-fixed text-right text-sm">
+                    <colgroup>
+                      <col className="w-10" />
+                      <col className="w-[11%]" />
+                      <col className="w-[10%]" />
+                      <col />
+                      <col className="w-[11%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[140px]" />
+                      <col className="w-[140px]" />
+                    </colgroup>
                     <thead>
                       <tr className="border-b border-border text-xs text-muted-foreground">
-                        <th className="w-10 px-2 py-2">
+                        <th className="px-2 py-2">
                           <Checkbox
                             checked={allSelected && sectionRows.length > 0}
                             onCheckedChange={(v) =>
@@ -247,8 +251,10 @@ export function CertificatesHubView() {
                           />
                         </th>
                         <th className="px-2 py-2 font-semibold">שם מלא</th>
-                        <th className="px-2 py-2 font-semibold">ת״ז</th>
-                        <th className="px-2 py-2 font-semibold">הדרכת מקור</th>
+                        <th className="px-2 py-2 font-semibold">קטגוריה</th>
+                        <th className="min-w-[220px] px-2 py-2 font-semibold">
+                          הדרכת מקור
+                        </th>
                         <th className="px-2 py-2 font-semibold">
                           תאריך סיום / מפגש אחרון
                         </th>
@@ -280,7 +286,7 @@ export function CertificatesHubView() {
                             <div className="flex flex-wrap items-center gap-1.5">
                               <Link
                                 href={`/leads/${r.leadId}`}
-                                className="text-primary hover:underline"
+                                className="break-words text-primary hover:underline"
                               >
                                 {r.fullName}
                               </Link>
@@ -296,14 +302,16 @@ export function CertificatesHubView() {
                               ) : null}
                             </div>
                           </td>
-                          <td
-                            className="px-2 py-2 tabular-nums text-muted-foreground"
-                            dir="ltr"
-                          >
-                            {r.idNumber}
+                          <td className="px-2 py-2">
+                            <span
+                              className="inline-block max-w-full break-words rounded-lg bg-secondary/80 px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground"
+                              title={r.category}
+                            >
+                              {r.category}
+                            </span>
                           </td>
                           <td
-                            className="max-w-[200px] truncate px-2 py-2 text-muted-foreground"
+                            className="min-w-[220px] px-2 py-2 leading-snug break-words text-muted-foreground"
                             title={r.trainingTitle}
                           >
                             {r.trainingTitle}
@@ -313,7 +321,7 @@ export function CertificatesHubView() {
                           </td>
                           <td className="px-2 py-2">
                             {r.batchName ? (
-                              <span className="rounded-lg bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200">
+                              <span className="inline-block max-w-full truncate rounded-lg bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200">
                                 {r.batchName}
                               </span>
                             ) : (
@@ -326,6 +334,7 @@ export function CertificatesHubView() {
                             <CertStatusPicker
                               value={r.digitalCertStatus}
                               kind="digital"
+                              compact
                               disabled={statusBusyId === r.participantId}
                               onChange={(payload) =>
                                 void onStatusChange(r, "digital", payload)
@@ -336,6 +345,7 @@ export function CertificatesHubView() {
                             <CertStatusPicker
                               value={r.physicalCertStatus}
                               kind="physical"
+                              compact
                               disabled={statusBusyId === r.participantId}
                               onChange={(payload) =>
                                 void onStatusChange(r, "physical", payload)

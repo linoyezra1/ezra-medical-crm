@@ -126,11 +126,9 @@ export function sortTrainingsChronologically<
   })
 }
 
-export function sessionMeetingLabel(
-  sessionNumber: number,
-  totalSessions: number,
-): string {
-  return `מפגש ${sessionNumber} מתוך ${totalSessions}`
+/** תווית קצרה לתגית — «מפגש X» בלבד (הסבר מלא ב-title) */
+export function sessionMeetingLabel(sessionNumber: number): string {
+  return `מפגש ${sessionNumber}`
 }
 
 /** האם להציג תגית מפגש — רק כשיש יותר מהדרכה אחת */

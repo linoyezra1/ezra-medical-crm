@@ -49,6 +49,7 @@ import {
   exportMissingAttendedToSheets,
   syncParticipantAttendanceToSheets,
   syncCertificateFlagsFromSheets,
+  syncCertificateStatusesToSheets,
   syncCertificateHoursForParticipantIds,
   tryAutoCompleteTrainingIfReady,
   exportTraineesToCertificateSheet,
@@ -2075,7 +2076,7 @@ export async function updateTrainee(
   return { ok: true, data: { id } };
 }
 
-/** סנכרון ידני: קודם מוסיף נוכחים חסרים לגיליון, אחר כך דגלים מ-Sheets → CRM */
+/** סנכרון ידני: מוסיף נוכחים חסרים, מושך סטטוסים מהגיליון, ודוחף טקסט סטטוס מה-CRM */
 export async function syncCertificatesFromSheetsAction(): Promise<
   ActionResult<{ updated: number; autoCompleted: number; exported: number }>
 > {
@@ -2087,6 +2088,10 @@ export async function syncCertificatesFromSheetsAction(): Promise<
   }
   const res = await syncCertificateFlagsFromSheets();
   if (!res.ok) return { ok: false, error: res.error };
+  if (isGoogleSheetsConfigured()) {
+    const statusPush = await syncCertificateStatusesToSheets();
+    if (!statusPush.ok) return { ok: false, error: statusPush.error };
+  }
   revalidatePath("/clients");
   revalidatePath("/leads");
   revalidatePath("/dashboard");

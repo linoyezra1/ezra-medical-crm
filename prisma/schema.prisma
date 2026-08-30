@@ -314,11 +314,12 @@ model Trainee {
 
 /** מאגר סטטוסים דינמיים לתעודות (מודול ניהול תעודות — ניסיוני) */
 model CertificateStatusOption {
-  id        String   @id @default(cuid())
-  label     String   @unique
-  type      String   // DIGITAL | PHYSICAL | BOTH
-  color     String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  label       String   @unique
+  type        String   // DIGITAL | PHYSICAL | BOTH
+  isCompleted Boolean  @default(false)
+  color       String?
+  createdAt   DateTime @default(now())
 }
 
 /** מחזור הפקת תעודות */

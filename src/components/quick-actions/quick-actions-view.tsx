@@ -115,7 +115,7 @@ const ACTIONS: QuickActionDef[] = [
   {
     id: "digital_exam",
     label: "מבחן דיגיטלי",
-    description: "שליחת קישור למבחן הדיגיטלי במערכת",
+    description: "פתיחת WhatsApp לבחירת איש קשר + קישור למבחן",
     icon: ClipboardList,
   },
   {
@@ -160,6 +160,10 @@ export function QuickActionsView() {
       openBookletWhatsApp()
       return
     }
+    if (action.id === "digital_exam") {
+      openDigitalExamWhatsApp()
+      return
+    }
     if (action.id === "presentation_44_pdf") {
       window.open(courseMaterialUrl("presentation44Pdf"), "_blank", "noopener,noreferrer")
       return
@@ -170,6 +174,16 @@ export function QuickActionsView() {
   const openBookletWhatsApp = () => {
     const fileUrl = courseMaterialUrl("booklet44Pdf")
     const text = booklet44WhatsAppMessage("", fileUrl)
+    window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
+  }
+
+  const openDigitalExamWhatsApp = () => {
+    const examUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/exam`
+        : "/exam"
+    const text = `קישור למבחן הדיגיטלי בעזרה ראשונה:\n${examUrl}`
+    // ללא מספר יעד — בחירת איש קשר ידנית ב‑WhatsApp
     window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
   }
 
@@ -223,15 +237,9 @@ export function QuickActionsView() {
       case "exam_v2":
         sendStatic("exam44v2", "מבחן 44 גרסה 2")
         break
-      case "digital_exam": {
-        const examUrl =
-          typeof window !== "undefined"
-            ? `${window.location.origin}/exam`
-            : "/exam"
-        const text = `היי ${contact}, קישור למבחן הדיגיטלי בעזרה ראשונה:\n${examUrl}`
-        window.open(whatsappLink(lead.phone, text), "_blank", "noopener,noreferrer")
+      case "digital_exam":
+        openDigitalExamWhatsApp()
         break
-      }
       case "participants_table":
         sendStatic("participantsTable", "פורמט טבלת משתתפים")
         break

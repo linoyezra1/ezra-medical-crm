@@ -8,6 +8,7 @@ import {
   resolveLeadCertifyingBody,
 } from "@/lib/certifying-body"
 import { formatCourseTypeLabel } from "@/lib/course-type"
+import { formatLeadCategory } from "@/lib/helpers"
 import { dbStatusToUi } from "@/lib/types"
 import type { CertifyingBody, LeadStatus } from "@/lib/types"
 
@@ -19,33 +20,6 @@ export const ISSUED_PHYSICAL_CERT_STATUS = "הודפס פיזית"
 
 /** חיצוניים ללא גוף מסמיך אישי */
 export const UNASSIGNED_CERTIFYING_BODY = "ללא גוף מסמיך"
-
-/** סטטוסים שמסמנים תעודה דיגיטלית כהונפקה (מסונכרן ל־certificateEmailSent) */
-export const DIGITAL_ISSUED_STATUSES = new Set([
-  ISSUED_DIGITAL_CERT_STATUS,
-  "נשלח במייל",
-  "נשלח בווצאפ",
-])
-
-/** סטטוסים שמסמנים תעודה פיזית כהודפסה (מסונכרן ל־certificateCardPrinted) */
-export const PHYSICAL_ISSUED_STATUSES = new Set([
-  ISSUED_PHYSICAL_CERT_STATUS,
-  "הודפס פיזית",
-])
-
-export const DEFAULT_CERT_STATUS_OPTIONS: {
-  label: string
-  type: "DIGITAL" | "PHYSICAL" | "BOTH"
-}[] = [
-  { label: "ממתין לתעודה", type: "BOTH" },
-  { label: "נשלח ליוסי להפקה", type: "BOTH" },
-  { label: "נשלח לניתאי להפקה", type: "BOTH" },
-  { label: "הגיע במייל ממתין לשליחה", type: "DIGITAL" },
-  { label: ISSUED_DIGITAL_CERT_STATUS, type: "DIGITAL" },
-  { label: "נשלח במייל", type: "DIGITAL" },
-  { label: "נשלח בווצאפ", type: "DIGITAL" },
-  { label: ISSUED_PHYSICAL_CERT_STATUS, type: "PHYSICAL" },
-]
 
 export type CertificatesHubTab = "ezra" | "nitai" | "yossi" | "unassigned"
 
@@ -76,6 +50,7 @@ export type CertificatesHubRow = {
   leadId: string
   fullName: string
   idNumber: string
+  category: string
   trainingTitle: string
   lastSessionDate: string
   certifyingBody: CertifyingBody | string
@@ -134,10 +109,6 @@ export function resolvePhysicalCertStatus(opts: {
   }
   return stored || DEFAULT_CERT_STATUS
 }
-
-/** תווית תיבת סימון בעדכון סטטוס — קובעת את דגל הסיום הבוליאני */
-export const MARK_CERTIFICATE_COMPLETED_LABEL =
-  "סמן כהושלם (הונפקה / הודפסה בהצלחה)"
 
 /** תעודה דיגיטלית הושלמה — רק לפי דגל (לא לפי טקסט סטטוס) */
 export function isDigitalCertificateCompleted(opts: {
@@ -304,6 +275,39 @@ export function formatCertDateDisplay(isoDate: string): string {
   return `${d}/${m}/${y}`
 }
 
+/** קטגוריה לתצוגה — חיצוני: courseCategory אישי; אחרת מההדרכה */
+export function resolveHubCategoryLabel(opts: {
+  isExternal?: boolean
+  participantCategory?: string | null
+  leadCategory?: string | null
+  leadCategoryOther?: string | null
+}): string {
+  const raw =
+    (opts.isExternal && opts.participantCategory?.trim()
+      ? opts.participantCategory.trim()
+      : "") ||
+    opts.leadCategoryOther?.trim() ||
+    opts.leadCategory?.trim() ||
+    opts.participantCategory?.trim() ||
+    ""
+  if (!raw) return "—"
+  const label = formatLeadCategory(raw)
+  return label === "—" ? raw : label
+}
+
+/** מיון שורות: הדרכת מקור (א-ת) ואז תאריך מפגש אחרון (ישן → חדש) */
+export function sortCertificatesHubRows(
+  rows: CertificatesHubRow[],
+): CertificatesHubRow[] {
+  return [...rows].sort((a, b) => {
+    const byTitle = a.trainingTitle.localeCompare(b.trainingTitle, "he")
+    if (byTitle !== 0) return byTitle
+    const da = a.lastSessionDate || "9999-99-99"
+    const db = b.lastSessionDate || "9999-99-99"
+    return da.localeCompare(db)
+  })
+}
+
 /** פיצול שם מלא לייצוא אקסל: מילה ראשונה = פרטי, השאר = משפחה */
 export function splitFullNameForExport(fullName: string): {
   firstName: string
@@ -352,8 +356,6 @@ export function groupRowsBySection(
 
   return keys.map((section) => ({
     section,
-    rows: (map.get(section) || []).sort((a, b) =>
-      a.fullName.localeCompare(b.fullName, "he"),
-    ),
+    rows: sortCertificatesHubRows(map.get(section) || []),
   }))
 }

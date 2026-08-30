@@ -9,19 +9,25 @@ import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db"
 import {
   DEFAULT_CERT_STATUS,
-  DEFAULT_CERT_STATUS_OPTIONS,
   formatTrainingTitlesList,
   hasPendingCertificateWork,
   isActivePreCertificateLeadStatus,
   isCertificatePhaseLeadStatus,
   resolveCourseSubtypeLabel,
   resolveDigitalCertStatus,
+  resolveHubCategoryLabel,
   resolveHubRoutingBody,
   resolveLastSessionDate,
   resolvePhysicalCertStatus,
   resolveTrainingTitle,
+  sortCertificatesHubRows,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
+import {
+  ensureCertificateStatusRegistry,
+  loadCertificateStatusRegistry,
+  resolveCertificateStatusLabel,
+} from "@/lib/certificate-status-registry"
 import { normalizeCertifyingBody } from "@/lib/certifying-body"
 import { formatInJerusalem } from "@/lib/timezone"
 import { dbStatusToUi } from "@/lib/types"
@@ -31,18 +37,16 @@ type ActionResult<T = unknown> =
   | { ok: false; error: string }
 
 async function ensureDefaultStatusOptions() {
-  await prisma.certificateStatusOption.createMany({
-    data: DEFAULT_CERT_STATUS_OPTIONS.map((o) => ({
-      label: o.label,
-      type: o.type,
-    })),
-    skipDuplicates: true,
-  })
+  await ensureCertificateStatusRegistry()
 }
 
 export async function listCertificateStatusOptionsAction(
   type?: "DIGITAL" | "PHYSICAL" | "BOTH",
-): Promise<ActionResult<{ id: string; label: string; type: string }[]>> {
+): Promise<
+  ActionResult<
+    { id: string; label: string; type: string; isCompleted: boolean }[]
+  >
+> {
   try {
     await ensureDefaultStatusOptions()
     const rows = await prisma.certificateStatusOption.findMany({
@@ -57,6 +61,7 @@ export async function listCertificateStatusOptionsAction(
         id: r.id,
         label: r.label,
         type: r.type,
+        isCompleted: Boolean(r.isCompleted),
       })),
     }
   } catch (err) {
@@ -68,7 +73,15 @@ export async function listCertificateStatusOptionsAction(
 export async function createCertificateStatusOptionAction(input: {
   label: string
   type?: "DIGITAL" | "PHYSICAL" | "BOTH"
-}): Promise<ActionResult<{ id: string; label: string; type: string }>> {
+  isCompleted?: boolean
+}): Promise<
+  ActionResult<{
+    id: string
+    label: string
+    type: string
+    isCompleted: boolean
+  }>
+> {
   const label = input.label.trim()
   if (!label) return { ok: false, error: "יש להזין שם סטטוס" }
   try {
@@ -82,6 +95,7 @@ export async function createCertificateStatusOptionAction(input: {
           id: existing.id,
           label: existing.label,
           type: existing.type,
+          isCompleted: Boolean(existing.isCompleted),
         },
       }
     }
@@ -89,6 +103,7 @@ export async function createCertificateStatusOptionAction(input: {
       data: {
         label,
         type: input.type || "BOTH",
+        isCompleted: Boolean(input.isCompleted),
       },
     })
     revalidatePath("/certificates")
@@ -98,6 +113,7 @@ export async function createCertificateStatusOptionAction(input: {
         id: created.id,
         label: created.label,
         type: created.type,
+        isCompleted: Boolean(created.isCompleted),
       },
     }
   } catch (err) {
@@ -128,6 +144,8 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
             deliveryMethod: true,
             courseType: true,
             courseTypeOther: true,
+            courseCategory: true,
+            courseCategoryOther: true,
             scheduledStart: true,
             courseStatus: true,
           },
@@ -282,6 +300,12 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
         leadId: p.leadId,
         fullName: p.fullName,
         idNumber,
+        category: resolveHubCategoryLabel({
+          isExternal: p.isExternal,
+          participantCategory: p.courseCategory,
+          leadCategory: p.lead?.courseCategory,
+          leadCategoryOther: p.lead?.courseCategoryOther,
+        }),
         trainingTitle,
         lastSessionDate,
         certifyingBody: routing.body,
@@ -307,7 +331,7 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
       })
     }
 
-    return { ok: true, data: out }
+    return { ok: true, data: sortCertificatesHubRows(out) }
   } catch (err) {
     console.error("[listEligibleCertificateParticipantsAction]", err)
     return { ok: false, error: "שגיאה בטעינת זכאים לתעודות" }
@@ -318,10 +342,6 @@ export async function updateParticipantCertStatusesAction(input: {
   participantIds: string[]
   digitalCertStatus?: string
   physicalCertStatus?: string
-  /** סימון ידני: תעודה דיגיטלית הושלמה (certificateEmailSent) */
-  markDigitalCompleted?: boolean
-  /** סימון ידני: תעודה פיזית הושלמה (certificateCardPrinted) */
-  markPhysicalCompleted?: boolean
 }): Promise<ActionResult<{ updated: number }>> {
   const ids = [...new Set(input.participantIds.filter(Boolean))]
   if (!ids.length) return { ok: false, error: "לא נבחרו מודרכים" }
@@ -338,17 +358,35 @@ export async function updateParticipantCertStatusesAction(input: {
     data.physicalCertStatus =
       input.physicalCertStatus.trim() || DEFAULT_CERT_STATUS
   }
-  if (!Object.keys(data).length && !input.markDigitalCompleted && !input.markPhysicalCompleted) {
+  if (!Object.keys(data).length) {
     return { ok: false, error: "לא נבחר סטטוס לעדכון" }
   }
 
   try {
+    const registry = await loadCertificateStatusRegistry()
+
     for (const label of [
       data.digitalCertStatus,
       data.physicalCertStatus,
     ].filter(Boolean) as string[]) {
-      await createCertificateStatusOptionAction({ label, type: "BOTH" })
+      const resolved = resolveCertificateStatusLabel(label, registry)
+      if (!resolved.known) {
+        await createCertificateStatusOptionAction({
+          label: resolved.label,
+          type: "BOTH",
+          isCompleted: false,
+        })
+      }
     }
+
+    const digitalResolved =
+      data.digitalCertStatus !== undefined
+        ? resolveCertificateStatusLabel(data.digitalCertStatus, registry)
+        : null
+    const physicalResolved =
+      data.physicalCertStatus !== undefined
+        ? resolveCertificateStatusLabel(data.physicalCertStatus, registry)
+        : null
 
     const participants = await prisma.participant.findMany({
       where: { id: { in: ids } },
@@ -362,7 +400,6 @@ export async function updateParticipantCertStatusesAction(input: {
       },
     })
 
-    // מעדכנים גם אחים לפי ת״ז — אותם דגלי Sheets לכל ההרשמות
     const idNumbers = [
       ...new Set(
         participants.map((p) => (p.idNumber || "").trim()).filter(Boolean),
@@ -380,25 +417,25 @@ export async function updateParticipantCertStatusesAction(input: {
 
     const allIds = [...new Set([...ids, ...siblingIds])]
 
-    const result =
-      Object.keys(data).length > 0
-        ? await prisma.participant.updateMany({
-            where: { id: { in: allIds } },
-            data,
-          })
-        : { count: ids.length }
+    const result = await prisma.participant.updateMany({
+      where: { id: { in: allIds } },
+      data,
+    })
 
-    if (input.markDigitalCompleted || input.markPhysicalCompleted) {
+    const needDigitalFlag = digitalResolved !== null
+    const needPhysicalFlag = physicalResolved !== null
+
+    if (needDigitalFlag || needPhysicalFlag) {
       for (const p of participants) {
         const traineePatch: {
           certificateEmailSent?: boolean
           certificateCardPrinted?: boolean
         } = {}
-        if (input.markDigitalCompleted) {
-          traineePatch.certificateEmailSent = true
+        if (needDigitalFlag) {
+          traineePatch.certificateEmailSent = digitalResolved!.isCompleted
         }
-        if (input.markPhysicalCompleted) {
-          traineePatch.certificateCardPrinted = true
+        if (needPhysicalFlag) {
+          traineePatch.certificateCardPrinted = physicalResolved!.isCompleted
         }
 
         if (p.traineeId) {
@@ -415,8 +452,8 @@ export async function updateParticipantCertStatusesAction(input: {
               idNumber,
               phone: p.phone,
               email: p.email,
-              certificateEmailSent: Boolean(input.markDigitalCompleted),
-              certificateCardPrinted: Boolean(input.markPhysicalCompleted),
+              certificateEmailSent: digitalResolved?.isCompleted ?? false,
+              certificateCardPrinted: physicalResolved?.isCompleted ?? false,
             },
             update: traineePatch,
           })

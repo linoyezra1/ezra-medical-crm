@@ -5,7 +5,6 @@ import { FileSpreadsheet, Layers, Stamp, Tags, X } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -31,7 +30,6 @@ import {
 } from "@/lib/certificates-hub-actions"
 import {
   formatCertDateDisplay,
-  MARK_CERTIFICATE_COMPLETED_LABEL,
   splitFullNameForExport,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
@@ -58,8 +56,9 @@ export function CertificatesBulkBar({
     "digital",
   )
   const [statusValue, setStatusValue] = useState("ממתין לתעודה")
-  const [markCompleted, setMarkCompleted] = useState(false)
-  const [statusOptions, setStatusOptions] = useState<string[]>([])
+  const [statusOptions, setStatusOptions] = useState<
+    { label: string; isCompleted: boolean }[]
+  >([])
 
   const [batches, setBatches] = useState<
     { id: string; name: string; count: number }[]
@@ -80,10 +79,16 @@ export function CertificatesBulkBar({
   if (count === 0) return null
 
   const openStatus = async () => {
-    setMarkCompleted(false)
     setStatusOpen(true)
     const res = await listCertificateStatusOptionsAction()
-    if (res.ok) setStatusOptions(res.data.map((o) => o.label))
+    if (res.ok) {
+      setStatusOptions(
+        res.data.map((o) => ({
+          label: o.label,
+          isCompleted: o.isCompleted,
+        })),
+      )
+    }
   }
 
   const openBatch = async () => {
@@ -101,14 +106,8 @@ export function CertificatesBulkBar({
     const res = await updateParticipantCertStatusesAction({
       participantIds: [...selectedIds],
       ...(statusKind === "digital"
-        ? {
-            digitalCertStatus: statusValue,
-            markDigitalCompleted: markCompleted || undefined,
-          }
-        : {
-            physicalCertStatus: statusValue,
-            markPhysicalCompleted: markCompleted || undefined,
-          }),
+        ? { digitalCertStatus: statusValue }
+        : { physicalCertStatus: statusValue }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -298,20 +297,20 @@ export function CertificatesBulkBar({
                 value={statusValue}
                 onValueChange={(v) => setStatusValue(v ?? "ממתין לתעודה")}
               >
-                <SelectTrigger className="min-h-9 h-auto w-full py-2 whitespace-normal text-right">
+                <SelectTrigger className="min-h-9 h-auto w-full break-words py-2 whitespace-normal text-right">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="min-w-[280px] max-w-md">
+                <SelectContent className="min-w-[300px] max-w-md">
                   {(statusOptions.length
                     ? statusOptions
-                    : ["ממתין לתעודה"]
+                    : [{ label: "ממתין לתעודה", isCompleted: false }]
                   ).map((o) => (
                     <SelectItem
-                      key={o}
-                      value={o}
-                      className="whitespace-normal text-right leading-snug"
+                      key={o.label}
+                      value={o.label}
+                      className="break-words whitespace-normal text-right leading-snug"
                     >
-                      {o}
+                      {o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -320,17 +319,9 @@ export function CertificatesBulkBar({
             <Input
               value={statusValue}
               onChange={(e) => setStatusValue(e.target.value)}
-              placeholder="או הקלדת סטטוס חופשי…"
+              placeholder="או הקלדת סטטוס חופשי (ברירת מחדל: בתהליך)…"
               className="text-sm"
             />
-            <label className="flex cursor-pointer items-start gap-2 text-right text-sm leading-snug">
-              <Checkbox
-                checked={markCompleted}
-                onCheckedChange={(v) => setMarkCompleted(Boolean(v))}
-                className="mt-0.5"
-              />
-              <span>{MARK_CERTIFICATE_COMPLETED_LABEL}</span>
-            </label>
           </div>
           <DialogFooter className="gap-2 sm:justify-start">
             <Button
