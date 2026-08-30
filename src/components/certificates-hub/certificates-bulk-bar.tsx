@@ -5,6 +5,7 @@ import { FileSpreadsheet, Layers, Stamp, Tags, X } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -27,15 +28,20 @@ import {
   createCertificateStatusOptionAction,
   listCertificateBatchesAction,
   listCertificateStatusOptionsAction,
+  updateCertificateStatusOptionAction,
   updateParticipantCertStatusesAction,
 } from "@/lib/certificates-hub-actions"
-import { CertStatusCompletionDialog } from "@/components/certificates-hub/cert-status-completion-dialog"
 import {
+  DEFAULT_CERT_STATUS,
   formatCertDateDisplay,
   splitFullNameForExport,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
 import { CERTIFYING_BODY_OPTIONS } from "@/lib/types"
+
+const OTHER_STATUS_VALUE = "__other__"
+const MARK_COMPLETED_LABEL =
+  "סמן סטטוס זה כהושלם / הסתיים (isCompleted)"
 
 export function CertificatesBulkBar({
   selectedIds,
@@ -57,12 +63,13 @@ export function CertificatesBulkBar({
   const [statusKind, setStatusKind] = useState<"digital" | "physical">(
     "digital",
   )
-  const [statusValue, setStatusValue] = useState("ממתין לתעודה")
+  /** ערך ב-Select: label קיים או OTHER_STATUS_VALUE */
+  const [statusSelect, setStatusSelect] = useState(DEFAULT_CERT_STATUS)
+  const [customStatus, setCustomStatus] = useState("")
+  const [markCompleted, setMarkCompleted] = useState(false)
   const [statusOptions, setStatusOptions] = useState<
-    { id?: string; label: string; isCompleted: boolean }[]
+    { id: string; label: string; isCompleted: boolean }[]
   >([])
-  const [completionOpen, setCompletionOpen] = useState(false)
-  const [pendingStatusLabel, setPendingStatusLabel] = useState("")
 
   const [batches, setBatches] = useState<
     { id: string; name: string; count: number }[]
@@ -80,20 +87,58 @@ export function CertificatesBulkBar({
       .filter(Boolean) as CertificatesHubRow[]
   }, [selectedIds, rowsById])
 
+  const isOtherStatus = statusSelect === OTHER_STATUS_VALUE
+  const selectedOption = statusOptions.find((o) => o.label === statusSelect)
+
   if (count === 0) return null
+
+  const loadStatusOptions = async (kind: "digital" | "physical") => {
+    const res = await listCertificateStatusOptionsAction(
+      kind === "digital" ? "DIGITAL" : "PHYSICAL",
+    )
+    if (!res.ok) return []
+    return res.data.map((o) => ({
+      id: o.id,
+      label: o.label,
+      isCompleted: o.isCompleted,
+    }))
+  }
 
   const openStatus = async () => {
     setStatusOpen(true)
-    const res = await listCertificateStatusOptionsAction()
-    if (res.ok) {
-      setStatusOptions(
-        res.data.map((o) => ({
-          id: o.id,
-          label: o.label,
-          isCompleted: o.isCompleted,
-        })),
-      )
+    setStatusSelect(DEFAULT_CERT_STATUS)
+    setCustomStatus("")
+    const list = await loadStatusOptions(statusKind)
+    setStatusOptions(list)
+    const def = list.find((o) => o.label === DEFAULT_CERT_STATUS)
+    setMarkCompleted(Boolean(def?.isCompleted))
+  }
+
+  const onStatusKindChange = async (kind: "digital" | "physical") => {
+    setStatusKind(kind)
+    const list = await loadStatusOptions(kind)
+    setStatusOptions(list)
+    const stillValid = list.some((o) => o.label === statusSelect)
+    if (!stillValid && statusSelect !== OTHER_STATUS_VALUE) {
+      const def = list.find((o) => o.label === DEFAULT_CERT_STATUS)
+      setStatusSelect(def?.label || list[0]?.label || DEFAULT_CERT_STATUS)
+      setMarkCompleted(Boolean(def?.isCompleted ?? list[0]?.isCompleted))
+      setCustomStatus("")
+    } else if (statusSelect !== OTHER_STATUS_VALUE) {
+      const hit = list.find((o) => o.label === statusSelect)
+      setMarkCompleted(Boolean(hit?.isCompleted))
     }
+  }
+
+  const onStatusSelectChange = (value: string) => {
+    const next = value || DEFAULT_CERT_STATUS
+    setStatusSelect(next)
+    if (next === OTHER_STATUS_VALUE) {
+      setMarkCompleted(false)
+      return
+    }
+    const hit = statusOptions.find((o) => o.label === next)
+    setMarkCompleted(Boolean(hit?.isCompleted))
   }
 
   const openBatch = async () => {
@@ -106,8 +151,59 @@ export function CertificatesBulkBar({
     }
   }
 
-  const runApplyStatus = async (label: string) => {
+  const applyStatus = async () => {
+    const label = isOtherStatus
+      ? customStatus.trim()
+      : statusSelect.trim()
+    if (!label) {
+      toast.error(
+        isOtherStatus
+          ? "יש להקליד שם לסטטוס החדש"
+          : "יש לבחור סטטוס",
+      )
+      return
+    }
+
     setBusy(true)
+    const statusType = statusKind === "digital" ? "DIGITAL" : "PHYSICAL"
+
+    if (isOtherStatus) {
+      const created = await createCertificateStatusOptionAction({
+        label,
+        type: statusType,
+        isCompleted: markCompleted,
+      })
+      if (!created.ok) {
+        setBusy(false)
+        toast.error(created.error)
+        return
+      }
+    } else if (selectedOption?.id) {
+      if (selectedOption.isCompleted !== markCompleted) {
+        const updated = await updateCertificateStatusOptionAction({
+          id: selectedOption.id,
+          isCompleted: markCompleted,
+        })
+        if (!updated.ok) {
+          setBusy(false)
+          toast.error(updated.error)
+          return
+        }
+      }
+    } else {
+      // סטטוס ברירת מחדל שעדיין לא ב-DB — יוצרים
+      const created = await createCertificateStatusOptionAction({
+        label,
+        type: statusType,
+        isCompleted: markCompleted,
+      })
+      if (!created.ok) {
+        setBusy(false)
+        toast.error(created.error)
+        return
+      }
+    }
+
     const res = await updateParticipantCertStatusesAction({
       participantIds: [...selectedIds],
       ...(statusKind === "digital"
@@ -121,40 +217,7 @@ export function CertificatesBulkBar({
     }
     toast.success(`עודכן סטטוס ל־${res.data.updated} מודרכים`)
     setStatusOpen(false)
-    setCompletionOpen(false)
     onDone()
-  }
-
-  const applyStatus = async () => {
-    const label = statusValue.trim()
-    if (!label) {
-      toast.error("יש לבחור או להקליד סטטוס")
-      return
-    }
-    const known = statusOptions.find((o) => o.label === label)
-    if (known) {
-      await runApplyStatus(label)
-      return
-    }
-    setPendingStatusLabel(label)
-    setCompletionOpen(true)
-  }
-
-  const confirmNewStatusAndApply = async (isCompleted: boolean) => {
-    const label = pendingStatusLabel.trim()
-    if (!label) return
-    setBusy(true)
-    const created = await createCertificateStatusOptionAction({
-      label,
-      type: statusKind === "digital" ? "DIGITAL" : "PHYSICAL",
-      isCompleted,
-    })
-    if (!created.ok) {
-      setBusy(false)
-      toast.error(created.error)
-      return
-    }
-    await runApplyStatus(label)
   }
 
   const applyBatch = async () => {
@@ -317,7 +380,9 @@ export function CertificatesBulkBar({
               <Select
                 value={statusKind}
                 onValueChange={(v) =>
-                  setStatusKind(v === "physical" ? "physical" : "digital")
+                  void onStatusKindChange(
+                    v === "physical" ? "physical" : "digital",
+                  )
                 }
               >
                 <SelectTrigger className="w-full">
@@ -330,36 +395,59 @@ export function CertificatesBulkBar({
               </Select>
             </div>
             <div>
-              <Label className="mb-1.5 block text-sm">סטטוס</Label>
+              <Label className="mb-1.5 block text-sm">בחירת סטטוס</Label>
               <Select
-                value={statusValue}
-                onValueChange={(v) => setStatusValue(v ?? "ממתין לתעודה")}
+                value={statusSelect}
+                onValueChange={(v) =>
+                  onStatusSelectChange(v ?? DEFAULT_CERT_STATUS)
+                }
               >
                 <SelectTrigger className="min-h-9 h-auto w-full break-words py-2 whitespace-normal text-right">
-                  <SelectValue />
+                  <SelectValue placeholder="בחרו סטטוס…" />
                 </SelectTrigger>
                 <SelectContent className="min-w-[300px] max-w-md">
                   {(statusOptions.length
                     ? statusOptions
-                    : [{ label: "ממתין לתעודה", isCompleted: false }]
+                    : [{ id: "", label: DEFAULT_CERT_STATUS, isCompleted: false }]
                   ).map((o) => (
                     <SelectItem
-                      key={o.label}
+                      key={o.id || o.label}
                       value={o.label}
                       className="break-words whitespace-normal text-right leading-snug"
                     >
                       {o.label}
+                      {o.isCompleted ? " · הושלם" : ""}
                     </SelectItem>
                   ))}
+                  <SelectItem
+                    value={OTHER_STATUS_VALUE}
+                    className="break-words whitespace-normal text-right font-semibold leading-snug"
+                  >
+                    אחר / סטטוס חדש…
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <Input
-              value={statusValue}
-              onChange={(e) => setStatusValue(e.target.value)}
-              placeholder="או הקלדת סטטוס חופשי (ברירת מחדל: בתהליך)…"
-              className="text-sm"
-            />
+            {isOtherStatus ? (
+              <div>
+                <Label className="mb-1.5 block text-sm">שם הסטטוס החדש</Label>
+                <Input
+                  value={customStatus}
+                  onChange={(e) => setCustomStatus(e.target.value)}
+                  placeholder="הקלידו שם סטטוס…"
+                  className="text-sm"
+                  autoFocus
+                />
+              </div>
+            ) : null}
+            <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-border bg-secondary/40 px-3 py-2.5 text-right text-sm leading-snug">
+              <Checkbox
+                checked={markCompleted}
+                onCheckedChange={(v) => setMarkCompleted(Boolean(v))}
+                className="mt-0.5"
+              />
+              <span>{MARK_COMPLETED_LABEL}</span>
+            </label>
           </div>
           <DialogFooter className="gap-2 sm:justify-start">
             <Button
@@ -379,14 +467,6 @@ export function CertificatesBulkBar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <CertStatusCompletionDialog
-        open={completionOpen}
-        label={pendingStatusLabel}
-        busy={busy}
-        onOpenChange={setCompletionOpen}
-        onConfirm={(isCompleted) => void confirmNewStatusAndApply(isCompleted)}
-      />
 
       <Dialog open={bodyOpen} onOpenChange={setBodyOpen}>
         <DialogContent className="rounded-2xl sm:max-w-md">

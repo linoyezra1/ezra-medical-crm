@@ -89,6 +89,25 @@ export async function createCertificateStatusOptionAction(input: {
       where: { label },
     })
     if (existing) {
+      if (
+        input.isCompleted !== undefined &&
+        Boolean(existing.isCompleted) !== Boolean(input.isCompleted)
+      ) {
+        const updated = await prisma.certificateStatusOption.update({
+          where: { id: existing.id },
+          data: { isCompleted: Boolean(input.isCompleted) },
+        })
+        revalidatePath("/certificates")
+        return {
+          ok: true,
+          data: {
+            id: updated.id,
+            label: updated.label,
+            type: updated.type,
+            isCompleted: Boolean(updated.isCompleted),
+          },
+        }
+      }
       return {
         ok: true,
         data: {
