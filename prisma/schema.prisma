@@ -145,6 +145,7 @@ model Lead {
   tasks         FollowUpTask[]
   trainingSales TrainingSale[]
   activityLogs  ActivityLog[]
+  cohortDocumentations CohortDocumentation[]
 
   @@index([phone])
   @@index([courseStatus])
@@ -508,4 +509,36 @@ model OutreachMessageTemplate {
   templateText String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+/** תיעוד מחזור — ארכיון קבצי Excel ומטא-דאטה */
+model CohortDocumentation {
+  id             String   @id @default(cuid())
+  cohortName     String
+  sessionNumber  Int?
+  sessionDate    DateTime
+  instructorName String?
+  durationHours  String?
+  notes          String?
+
+  /** האם המחזור שולם */
+  isPaid     Boolean @default(false)
+  /** סכום ששולם (₪) — רלוונטי כש-isPaid */
+  paidAmount Float?
+
+  fileName String
+  /** נתיב יחסי תחת uploads/ (למשל cohort-docs/abc-file.xlsx) */
+  fileUrl  String
+  driveUrl String?
+  fileSize Int?
+
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cohortName])
+  @@index([sessionDate])
+  @@index([leadId])
 }

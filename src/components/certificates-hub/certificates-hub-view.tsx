@@ -5,6 +5,7 @@ import { Award, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { CertificatesBulkBar } from "@/components/certificates-hub/certificates-bulk-bar"
+import { CohortDocumentationModalTrigger } from "@/components/certificates-hub/cohort-documentation-modal"
 import { CertificatesHubSection } from "@/components/certificates-hub/certificates-hub-section"
 import { Button } from "@/components/ui/button"
 import {
@@ -186,6 +187,7 @@ export function CertificatesHubView() {
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
               ניסיוני
             </span>
+            <CohortDocumentationModalTrigger />
             <Button
               type="button"
               variant="outline"
