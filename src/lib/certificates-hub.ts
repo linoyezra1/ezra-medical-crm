@@ -209,8 +209,9 @@ export function resolveHubRoutingBody(opts: {
     }
     return { body: own, unassigned: false }
   }
+  const own = normalizeCertifyingBody(opts.participantBody)
   return {
-    body: resolveLeadCertifyingBody(opts.leadDeliveryMethod),
+    body: own ?? resolveLeadCertifyingBody(opts.leadDeliveryMethod),
     unassigned: false,
   }
 }

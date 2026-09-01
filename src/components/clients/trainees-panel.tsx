@@ -859,19 +859,23 @@ export function TraineesPanel() {
                           <td className="max-w-0 px-2 py-2 font-medium">
                             <button
                               type="button"
-                              className="inline-flex max-w-full items-center gap-1.5 text-right hover:text-primary"
+                              className="block w-full min-w-0 text-right hover:text-primary"
                               onClick={() =>
                                 setExpandedId(open ? null : t.id)
                               }
                               aria-expanded={open}
                             >
-                              {open ? (
-                                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                              ) : (
-                                <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
-                              )}
-                              <span className="truncate">{t.fullName}</span>
-                              {t.isExternal ? <ExternalTag /> : null}
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                {open ? (
+                                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                                ) : (
+                                  <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
+                                )}
+                                <span className="min-w-0 flex-1 truncate font-semibold">
+                                  {t.fullName}
+                                </span>
+                                {t.isExternal ? <ExternalTag /> : null}
+                              </span>
                             </button>
                           </td>
                           <td className="max-w-0 truncate px-2 py-2">
@@ -1026,16 +1030,14 @@ export function TraineesPanel() {
                       className="min-w-0 flex-1 text-right"
                       onClick={() => setExpandedId(open ? null : t.id)}
                     >
-                      <p className="inline-flex max-w-full items-center gap-1.5 text-sm font-semibold">
-                        <span className="truncate">{t.fullName}</span>
-                        {t.isExternal ? <ExternalTag /> : null}
+                      <p className="truncate text-base font-semibold text-foreground">
+                        {t.fullName}
                       </p>
-                      <p
-                        className="text-[11px] text-muted-foreground"
-                        dir="ltr"
-                      >
-                        {t.idNumber}
-                        {t.phone ? ` · ${t.phone}` : ""}
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                        <span dir="ltr" className="tabular-nums">
+                          {t.idNumber}
+                        </span>
+                        {t.isExternal ? <ExternalTag /> : null}
                       </p>
                       <p className="mt-1 text-[11px] text-primary">
                         הדרכה דרך: {via}

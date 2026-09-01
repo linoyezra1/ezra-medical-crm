@@ -586,6 +586,39 @@ export async function createLead(formData: FormData): Promise<
   return { ok: true, data: { id: lead.id } };
 }
 
+/** עדכון certifyingBody למשתתפים פנימיים כשמשתנה «תעודות דרך מי» ברמת ההדרכה */
+async function cascadeLeadCertifyingBodyToInternalParticipants(
+  leadId: string,
+  deliveryMethod: string | null | undefined,
+): Promise<void> {
+  const body = deliveryMethod
+    ? normalizeCertifyingBody(deliveryMethod) || deliveryMethod
+    : null
+
+  await prisma.participant.updateMany({
+    where: { leadId, isExternal: false },
+    data: { certifyingBody: body },
+  })
+
+  const linked = await prisma.participant.findMany({
+    where: { leadId, isExternal: false, traineeId: { not: null } },
+    select: { traineeId: true },
+  })
+  const traineeIds = [
+    ...new Set(
+      linked
+        .map((p) => p.traineeId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
+  if (traineeIds.length) {
+    await prisma.trainee.updateMany({
+      where: { id: { in: traineeIds } },
+      data: { certifyingBody: body },
+    })
+  }
+}
+
 export async function updateLead(
   leadId: string,
   raw: Record<string, unknown>,
@@ -944,6 +977,17 @@ export async function updateLead(
     },
   });
 
+  if (
+    raw.deliveryMethod !== undefined &&
+    String(merged.deliveryMethod ?? "") !==
+      String(existing.deliveryMethod ?? "")
+  ) {
+    await cascadeLeadCertifyingBodyToInternalParticipants(
+      leadId,
+      merged.deliveryMethod,
+    );
+  }
+
   if (raw.sessionsJson !== undefined) {
     await replaceTrainingSessions(
       leadId,
@@ -1036,6 +1080,8 @@ export async function updateLead(
   revalidatePath(`/leads/${leadId}`);
   revalidatePath(`/p/${leadId}`);
   revalidatePath("/dashboard");
+  revalidatePath("/certificates");
+  revalidatePath("/clients");
   return { ok: true, data: { id: leadId } };
 }
 

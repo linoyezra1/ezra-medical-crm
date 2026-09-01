@@ -107,6 +107,7 @@ import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { displayCertifyingBody } from "@/lib/certifying-body"
 import { buildParticipantSessionNumbers } from "@/lib/participant-session"
+import type { ParticipantSessionInfo } from "@/lib/participant-session"
 import { isParticipantPaid } from "@/lib/training-profit"
 import type { Lead, Participant, Trainee } from "@/lib/types"
 import { CERTIFYING_BODY_OPTIONS } from "@/lib/types"
@@ -125,6 +126,60 @@ function WixTag() {
     <span className="shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-indigo-700">
       Wix
     </span>
+  )
+}
+
+function LeadTag() {
+  return (
+    <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+      ליד
+    </span>
+  )
+}
+
+/** תגיות משניות — לא בשורת השם הראשית */
+function ParticipantSecondaryTags({ p }: { p: Participant }) {
+  if (!p.isLead && p.source !== "Wix") return null
+  return (
+    <span className="mt-0.5 flex flex-wrap items-center gap-1 ps-6 text-[10px] text-muted-foreground md:ps-7">
+      {p.isLead ? <LeadTag /> : null}
+      {p.source === "Wix" ? <WixTag /> : null}
+    </span>
+  )
+}
+
+/** שורת מטא-דאטה (מובייל) מתחת לשם */
+function ParticipantMobileMeta({
+  p,
+  session,
+}: {
+  p: Participant
+  session?: ParticipantSessionInfo
+}) {
+  return (
+    <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+      {p.idNumber ? (
+        <span dir="ltr" className="tabular-nums">
+          {p.idNumber}
+        </span>
+      ) : null}
+      {p.attended ? (
+        <span
+          className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+          title="נוכח"
+        />
+      ) : null}
+      {p.hasLmsAccess ? (
+        <BadgeCheck
+          className="size-3.5 shrink-0 text-emerald-600"
+          aria-label="יש גישת LMS"
+        />
+      ) : null}
+      <SessionMeetingBadge session={session} />
+      {p.isExternal ? <ExternalTag /> : null}
+      {p.isLead ? <LeadTag /> : null}
+      {p.source === "Wix" ? <WixTag /> : null}
+    </p>
   )
 }
 
@@ -1102,34 +1157,33 @@ export function ParticipantsSection({
                           <td className="max-w-0 px-3 py-2 font-medium">
                             <button
                               type="button"
-                              className="inline-flex max-w-full items-center gap-1.5 text-right hover:text-primary"
+                              className="block w-full min-w-0 text-right hover:text-primary"
                               onClick={() =>
                                 setExpandedId(open ? null : p.id)
                               }
                               aria-expanded={open}
                             >
-                              {open ? (
-                                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                              ) : (
-                                <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
-                              )}
-                              {p.attended && (
-                                <span
-                                  className="size-1.5 shrink-0 rounded-full bg-emerald-500"
-                                  title="נוכח"
-                                />
-                              )}
-                              <span className="truncate">{p.name}</span>
-                              <SessionMeetingBadge
-                                session={sessionByParticipantId.get(p.id)}
-                              />
-                              {p.isLead ? (
-                                <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
-                                  ליד
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                {open ? (
+                                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                                ) : (
+                                  <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
+                                )}
+                                {p.attended ? (
+                                  <span
+                                    className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+                                    title="נוכח"
+                                  />
+                                ) : null}
+                                <span className="min-w-0 flex-1 truncate font-semibold">
+                                  {p.name}
                                 </span>
-                              ) : null}
-                              {p.isExternal ? <ExternalTag /> : null}
-                              {p.source === "Wix" ? <WixTag /> : null}
+                                <SessionMeetingBadge
+                                  session={sessionByParticipantId.get(p.id)}
+                                />
+                                {p.isExternal ? <ExternalTag /> : null}
+                              </span>
+                              <ParticipantSecondaryTags p={p} />
                             </button>
                           </td>
                           <td className="max-w-0 truncate px-3 py-2">
@@ -1389,33 +1443,13 @@ export function ParticipantsSection({
                       className="min-w-0 flex-1 text-right"
                       onClick={() => setExpandedId(open ? null : p.id)}
                     >
-                      <p className="flex items-center gap-1.5 truncate text-sm font-medium">
-                        {p.attended && (
-                          <span
-                            className="size-1.5 shrink-0 rounded-full bg-emerald-500"
-                            title="נוכח"
-                          />
-                        )}
-                        {p.hasLmsAccess && (
-                          <BadgeCheck
-                            className="size-3.5 shrink-0 text-emerald-600"
-                            aria-label="יש גישת LMS"
-                          />
-                        )}
-                        <span className="truncate text-foreground">
-                          {p.name} – {p.idNumber}
-                        </span>
-                        <SessionMeetingBadge
-                          session={sessionByParticipantId.get(p.id)}
-                        />
-                        {p.isLead ? (
-                          <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
-                            ליד
-                          </span>
-                        ) : null}
-                        {p.isExternal ? <ExternalTag /> : null}
-                        {p.source === "Wix" ? <WixTag /> : null}
+                      <p className="truncate text-base font-semibold text-foreground">
+                        {p.name}
                       </p>
+                      <ParticipantMobileMeta
+                        p={p}
+                        session={sessionByParticipantId.get(p.id)}
+                      />
                     </button>
 
                     <ParticipantMobileKebab
