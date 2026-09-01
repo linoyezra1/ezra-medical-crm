@@ -8,6 +8,7 @@ import {
 } from "@/components/leads/lead-item-actions"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Card } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   findCourseCatalog,
   formatLeadCourseType,
@@ -26,7 +27,15 @@ import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-export function LeadCard({ lead }: { lead: Lead }) {
+export function LeadCard({
+  lead,
+  selected = false,
+  onSelectedChange,
+}: {
+  lead: Lead
+  selected?: boolean
+  onSelectedChange?: (next: boolean) => void
+}) {
   const router = useRouter()
   const { settings } = useApp()
   const actions = useLeadItemActions(lead)
@@ -65,7 +74,21 @@ export function LeadCard({ lead }: { lead: Lead }) {
         )}
       >
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-start gap-2">
+            {onSelectedChange ? (
+              <div
+                className="shrink-0 pt-0.5"
+                onClick={stop}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={(v) => onSelectedChange(Boolean(v))}
+                  aria-label={`בחר ${lead.name}`}
+                />
+              </div>
+            ) : null}
+            <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="truncate font-bold text-foreground">{lead.name}</h3>
               {lead.isPrivateCourse ? (
@@ -80,6 +103,7 @@ export function LeadCard({ lead }: { lead: Lead }) {
                 <span className="mr-1 text-primary"> · לקוח קיים</span>
               )}
             </p>
+          </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
             <div className="flex items-start gap-1">

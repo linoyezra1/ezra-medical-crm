@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { LayoutGrid, LayoutList, Plus, Search } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import { ExternalParticipantDialog } from "@/components/leads/external-participant-dialog"
@@ -11,8 +11,10 @@ import {
   LeadItemActionsUi,
   useLeadItemActions,
 } from "@/components/leads/lead-item-actions"
+import { LeadsBulkBar } from "@/components/leads/leads-bulk-bar"
 import { LeadStatusBadge } from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { formatLeadCourseType } from "@/lib/course-type"
 import { formatCurrency, formatDateWithWeekday } from "@/lib/helpers"
@@ -39,6 +41,7 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
   const [query, setQuery] = useState("")
   const [browseMode, setBrowseMode] = useState<DesktopBrowseMode>("table")
   const [externalOpen, setExternalOpen] = useState(false)
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([])
 
   // Deep-link: /leads?status=new
   useEffect(() => {
@@ -77,6 +80,39 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       )
   }, [leads, filter, query])
+
+  const toggleLeadSelected = useCallback((id: string, next: boolean) => {
+    setSelectedLeadIds((prev) => {
+      if (next) return prev.includes(id) ? prev : [...prev, id]
+      return prev.filter((x) => x !== id)
+    })
+  }, [])
+
+  const toggleSelectAllFiltered = useCallback(
+    (next: boolean) => {
+      setSelectedLeadIds((prev) => {
+        const filteredIds = filtered.map((l) => l.id)
+        if (!next) {
+          const filteredSet = new Set(filteredIds)
+          return prev.filter((id) => !filteredSet.has(id))
+        }
+        const merged = new Set(prev)
+        for (const id of filteredIds) merged.add(id)
+        return [...merged]
+      })
+    },
+    [filtered],
+  )
+
+  const allFilteredSelected =
+    filtered.length > 0 &&
+    filtered.every((l) => selectedLeadIds.includes(l.id))
+
+  const someFilteredSelected =
+    filtered.some((l) => selectedLeadIds.includes(l.id)) &&
+    !allFilteredSelected
+
+  const hasSelection = selectedLeadIds.length > 0
 
   const filtersBar = (
     <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
@@ -142,14 +178,21 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
         }
       />
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4">
+      <div className={cn("min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4", hasSelection && "pb-24")}>
         {searchBox}
         {filtersBar}
         <div className="space-y-3">
           {filtered.length === 0 ? (
             <EmptyList />
           ) : (
-            filtered.map((lead) => <LeadCard key={lead.id} lead={lead} />)
+            filtered.map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                selected={selectedLeadIds.includes(lead.id)}
+                onSelectedChange={(next) => toggleLeadSelected(lead.id, next)}
+              />
+            ))
           )}
         </div>
       </div>
@@ -219,7 +262,12 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
             }
           />
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4 lg:p-5">
+          <div
+            className={cn(
+              "min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4 lg:p-5",
+              hasSelection && "pb-24",
+            )}
+          >
             {searchBox}
             {filtersBar}
 
@@ -229,12 +277,26 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
               ) : (
                 <div className="grid w-full max-w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {filtered.map((lead) => (
-                    <LeadCard key={lead.id} lead={lead} />
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      selected={selectedLeadIds.includes(lead.id)}
+                      onSelectedChange={(next) =>
+                        toggleLeadSelected(lead.id, next)
+                      }
+                    />
                   ))}
                 </div>
               )
             ) : (
-              <DesktopLeadsTable leads={filtered} />
+              <DesktopLeadsTable
+                leads={filtered}
+                selectedLeadIds={selectedLeadIds}
+                allFilteredSelected={allFilteredSelected}
+                someFilteredSelected={someFilteredSelected}
+                onToggleSelectAll={toggleSelectAllFiltered}
+                onToggleSelected={toggleLeadSelected}
+              />
             )}
           </div>
         </div>
@@ -265,6 +327,13 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
         open={externalOpen}
         onOpenChange={setExternalOpen}
       />
+      {!selectedId ? (
+        <LeadsBulkBar
+          selectedLeadIds={selectedLeadIds}
+          onClear={() => setSelectedLeadIds([])}
+          onDone={() => setSelectedLeadIds([])}
+        />
+      ) : null}
     </div>
   )
 }
@@ -277,7 +346,21 @@ function EmptyList() {
   )
 }
 
-function DesktopLeadsTable({ leads }: { leads: Lead[] }) {
+function DesktopLeadsTable({
+  leads,
+  selectedLeadIds,
+  allFilteredSelected,
+  someFilteredSelected,
+  onToggleSelectAll,
+  onToggleSelected,
+}: {
+  leads: Lead[]
+  selectedLeadIds: string[]
+  allFilteredSelected: boolean
+  someFilteredSelected: boolean
+  onToggleSelectAll: (next: boolean) => void
+  onToggleSelected: (id: string, next: boolean) => void
+}) {
   if (leads.length === 0) {
     return <EmptyList />
   }
@@ -287,12 +370,20 @@ function DesktopLeadsTable({ leads }: { leads: Lead[] }) {
       <table className="w-full table-fixed text-right text-xs">
         <thead className="bg-secondary/50 text-[11px] text-muted-foreground">
           <tr>
+            <th className="w-[4%] px-1 py-2">
+              <Checkbox
+                checked={allFilteredSelected}
+                indeterminate={someFilteredSelected}
+                onCheckedChange={(v) => onToggleSelectAll(Boolean(v))}
+                aria-label="בחר את כל הלידים המוצגים"
+              />
+            </th>
             <th className="w-[5%] px-1 py-2" />
-            <th className="w-[15%] px-2 py-2 font-semibold">שם</th>
-            <th className="w-[13%] px-2 py-2 font-semibold">סטטוס</th>
-            <th className="w-[16%] px-2 py-2 font-semibold">קורס</th>
+            <th className="w-[14%] px-2 py-2 font-semibold">שם</th>
+            <th className="w-[12%] px-2 py-2 font-semibold">סטטוס</th>
+            <th className="w-[15%] px-2 py-2 font-semibold">קורס</th>
             <th className="w-[9%] px-2 py-2 font-semibold">עיר</th>
-            <th className="w-[13%] px-2 py-2 font-semibold">תאריך</th>
+            <th className="w-[12%] px-2 py-2 font-semibold">תאריך</th>
             <th className="w-[10%] px-2 py-2 font-semibold">מדריך</th>
             <th className="w-[10%] px-2 py-2 font-semibold">טלפון</th>
             <th className="w-[9%] px-2 py-2 font-semibold">מחיר</th>
@@ -300,7 +391,12 @@ function DesktopLeadsTable({ leads }: { leads: Lead[] }) {
         </thead>
         <tbody>
           {leads.map((lead) => (
-            <DesktopLeadRow key={lead.id} lead={lead} />
+            <DesktopLeadRow
+              key={lead.id}
+              lead={lead}
+              selected={selectedLeadIds.includes(lead.id)}
+              onSelectedChange={(next) => onToggleSelected(lead.id, next)}
+            />
           ))}
         </tbody>
       </table>
@@ -308,12 +404,27 @@ function DesktopLeadsTable({ leads }: { leads: Lead[] }) {
   )
 }
 
-function DesktopLeadRow({ lead }: { lead: Lead }) {
+function DesktopLeadRow({
+  lead,
+  selected,
+  onSelectedChange,
+}: {
+  lead: Lead
+  selected: boolean
+  onSelectedChange: (next: boolean) => void
+}) {
   const { settings } = useApp()
   const actions = useLeadItemActions(lead)
 
   return (
     <tr className="border-t border-border transition-colors hover:bg-secondary/30">
+      <td className="px-1 py-2">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(v) => onSelectedChange(Boolean(v))}
+          aria-label={`בחר ${lead.name}`}
+        />
+      </td>
       <td className="px-1 py-2">
         <LeadItemActionsUi lead={lead} state={actions} kebabDesktopOnly={false} />
       </td>

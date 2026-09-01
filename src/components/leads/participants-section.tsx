@@ -595,7 +595,7 @@ export function ParticipantsSection({
     })
   }
 
-  const toggleAttended = async (p: Participant, next: boolean) => {
+  const toggleAttended = async (p: Participant, next: boolean, silent = false) => {
     setLeadParticipants(
       lead.id,
       participants.map((x) => (x.id === p.id ? { ...x, attended: next } : x)),
@@ -609,24 +609,48 @@ export function ParticipantsSection({
       )
       return
     }
-    if (next) toast.success("אושרה נוכחות — נוסף למאגר מודרכים")
+    if (next && !silent) toast.success("אושרה נוכחות — נוסף למאגר מודרכים")
     refresh()
   }
 
   const markAllAttended = async () => {
-    for (const p of participants) {
-      if (!p.attended) await toggleAttended(p, true)
-    }
-  }
-
-  const unmarkAllAttended = async () => {
-    const targets = filtered.filter((p) => selectedIds.has(p.id) && p.attended)
+    const targets =
+      selectedIds.size > 0
+        ? participants.filter((p) => selectedIds.has(p.id) && !p.attended)
+        : participants.filter((p) => !p.attended)
     if (!targets.length) {
-      toast.error("אין משתתפים עם נוכחות לביטול")
+      toast.error(
+        selectedIds.size > 0
+          ? "לכל הנבחרים כבר אושרה נוכחות"
+          : "לכולם כבר אושרה נוכחות",
+      )
       return
     }
     for (const p of targets) {
-      await toggleAttended(p, false)
+      await toggleAttended(p, true, true)
+    }
+    toast.success(
+      targets.length === 1
+        ? "אושרה נוכחות"
+        : `אושרה נוכחות ל־${targets.length} משתתפים`,
+    )
+  }
+
+  const unmarkAllAttended = async () => {
+    const targets =
+      selectedIds.size > 0
+        ? participants.filter((p) => selectedIds.has(p.id) && p.attended)
+        : participants.filter((p) => p.attended)
+    if (!targets.length) {
+      toast.error(
+        selectedIds.size > 0
+          ? "אין בין הנבחרים משתתפים עם נוכחות לביטול"
+          : "אין משתתפים עם נוכחות לביטול",
+      )
+      return
+    }
+    for (const p of targets) {
+      await toggleAttended(p, false, true)
     }
     toast.success(
       targets.length === 1
@@ -971,12 +995,13 @@ export function ParticipantsSection({
           variant="outline"
           size="sm"
           className="gap-2 rounded-xl md:w-auto"
-          onClick={markAllAttended}
+          onClick={() => void markAllAttended()}
         >
           <CheckCheck className="size-4" />
           אישור נוכחות לכולם
+          {selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
         </Button>
-        {allFilteredSelected ? (
+        {attendedCount > 0 ? (
           <Button
             type="button"
             variant="outline"
@@ -986,6 +1011,7 @@ export function ParticipantsSection({
           >
             <XCircle className="size-4" />
             בטל נוכחות לכולם
+            {selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
           </Button>
         ) : null}
         <Button
