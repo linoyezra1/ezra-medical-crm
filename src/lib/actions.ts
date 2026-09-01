@@ -1226,55 +1226,6 @@ export async function rollbackLeadStatus(
   return { ok: true, data: { id: leadId, status: nextDb } };
 }
 
-/** עדכון רלוונטיות לידים בבulk — רלוונטי (new) / לא רלוונטי (lost) */
-export async function bulkUpdateLeadRelevanceAction(input: {
-  leadIds: string[];
-  relevant: boolean;
-}): Promise<ActionResult<{ updated: number }>> {
-  const leadIds = [...new Set(input.leadIds.filter(Boolean))];
-  if (!leadIds.length) {
-    return { ok: false, error: "לא נבחרו לידים" };
-  }
-
-  const nextDb = input.relevant ? uiStatusToDb("new") : uiStatusToDb("lost");
-  const actor = await getActiveCrmUser();
-
-  const existing = await prisma.lead.findMany({
-    where: { id: { in: leadIds } },
-    select: { id: true, courseStatus: true },
-  });
-  if (!existing.length) {
-    return { ok: false, error: "לא נמצאו לידים" };
-  }
-
-  const toUpdate = existing.filter((l) => l.courseStatus !== nextDb);
-  if (!toUpdate.length) {
-    return { ok: true, data: { updated: 0 } };
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.lead.updateMany({
-      where: { id: { in: toUpdate.map((l) => l.id) } },
-      data: { courseStatus: nextDb, lastUpdatedBy: actor },
-    });
-    await tx.activityLog.createMany({
-      data: toUpdate.map((l) => ({
-        leadId: l.id,
-        performedBy: actor,
-        previousStatus: l.courseStatus,
-        newStatus: nextDb,
-      })),
-    });
-  });
-
-  revalidatePath("/");
-  revalidatePath("/leads");
-  revalidatePath("/dashboard");
-  revalidatePath("/calendar");
-
-  return { ok: true, data: { updated: toUpdate.length } };
-}
-
 /** רישום תשלום מהיר להדרכה */
 export async function recordLeadPayment(
   leadId: string,

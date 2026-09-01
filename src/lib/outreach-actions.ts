@@ -205,6 +205,33 @@ export async function markOutreachLeadIrrelevantAction(
   }
 }
 
+/** עדכון רלוונטיות לידי שיווק בבulk */
+export async function bulkUpdateOutreachLeadRelevanceAction(input: {
+  leadIds: string[]
+  relevant: boolean
+}): Promise<ActionResult<{ updated: number }>> {
+  const leadIds = [...new Set(input.leadIds.filter(Boolean))]
+  if (!leadIds.length) {
+    return { ok: false, error: "לא נבחרו לידים" }
+  }
+
+  try {
+    const irrelevant = !input.relevant
+    const result = await prisma.outreachLead.updateMany({
+      where: {
+        id: { in: leadIds },
+        irrelevant: !irrelevant,
+      },
+      data: { irrelevant },
+    })
+    revalidatePath("/outreach-leads")
+    return { ok: true, data: { updated: result.count } }
+  } catch (err) {
+    console.error("[bulkUpdateOutreachLeadRelevanceAction]", err)
+    return { ok: false, error: "שגיאה בעדכון רלוונטיות הלידים" }
+  }
+}
+
 /** מחיקה לצמיתות — בדרך כלל ללידים שכבר סומנו לא רלוונטיים */
 export async function deleteOutreachLeadAction(
   id: string,

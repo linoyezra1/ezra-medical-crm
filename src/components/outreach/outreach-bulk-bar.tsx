@@ -4,10 +4,9 @@ import { useState } from "react"
 import { Archive, CheckCircle2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { bulkUpdateLeadRelevanceAction } from "@/lib/actions"
-import { useApp } from "@/lib/store"
+import { bulkUpdateOutreachLeadRelevanceAction } from "@/lib/outreach-actions"
 
-export function LeadsBulkBar({
+export function OutreachBulkBar({
   selectedLeadIds,
   onClear,
   onDone,
@@ -16,7 +15,6 @@ export function LeadsBulkBar({
   onClear: () => void
   onDone: () => void
 }) {
-  const { refresh } = useApp()
   const count = selectedLeadIds.length
   const [busy, setBusy] = useState(false)
 
@@ -24,7 +22,7 @@ export function LeadsBulkBar({
 
   const apply = async (relevant: boolean) => {
     setBusy(true)
-    const res = await bulkUpdateLeadRelevanceAction({
+    const res = await bulkUpdateOutreachLeadRelevanceAction({
       leadIds: selectedLeadIds,
       relevant,
     })
@@ -35,7 +33,6 @@ export function LeadsBulkBar({
     }
     toast.success("סטטוס הלידים עודכן בהצלחה")
     onDone()
-    refresh()
   }
 
   return (

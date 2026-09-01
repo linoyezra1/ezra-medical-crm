@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
+import { OutreachBulkBar } from "@/components/outreach/outreach-bulk-bar"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
@@ -119,6 +120,7 @@ export function OutreachLeadsView() {
     null,
   )
   const [importing, setImporting] = useState(false)
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -162,6 +164,39 @@ export function OutreachLeadsView() {
       return hay.includes(q)
     })
   }, [leads, filter, categoryFilter, relevanceFilter])
+
+  const toggleLeadSelected = useCallback((id: string, next: boolean) => {
+    setSelectedLeadIds((prev) => {
+      if (next) return prev.includes(id) ? prev : [...prev, id]
+      return prev.filter((x) => x !== id)
+    })
+  }, [])
+
+  const toggleSelectAllFiltered = useCallback(
+    (next: boolean) => {
+      setSelectedLeadIds((prev) => {
+        const filteredIds = filteredLeads.map((l) => l.id)
+        if (!next) {
+          const filteredSet = new Set(filteredIds)
+          return prev.filter((id) => !filteredSet.has(id))
+        }
+        const merged = new Set(prev)
+        for (const id of filteredIds) merged.add(id)
+        return [...merged]
+      })
+    },
+    [filteredLeads],
+  )
+
+  const allFilteredSelected =
+    filteredLeads.length > 0 &&
+    filteredLeads.every((l) => selectedLeadIds.includes(l.id))
+
+  const someFilteredSelected =
+    filteredLeads.some((l) => selectedLeadIds.includes(l.id)) &&
+    !allFilteredSelected
+
+  const hasSelection = selectedLeadIds.length > 0
 
   const relevanceCounts = useMemo(() => {
     let relevant = 0
@@ -397,7 +432,7 @@ export function OutreachLeadsView() {
   }
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <div className={cn("space-y-4 p-4 md:p-6", hasSelection && "pb-24")}>
       <PageHeader
         title="לידים"
         subtitle="ייבוא לידים, תבניות וואטסאפ לפי קטגוריה ויצירת קשר מהירה"
@@ -560,6 +595,16 @@ export function OutreachLeadsView() {
               <table className="hidden w-full min-w-[720px] text-right text-sm md:table">
                 <thead>
                   <tr className="border-b border-border text-xs text-muted-foreground">
+                    <th className="w-10 px-2 py-2">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        indeterminate={someFilteredSelected}
+                        onCheckedChange={(v) =>
+                          toggleSelectAllFiltered(Boolean(v))
+                        }
+                        aria-label="בחר את כל הלידים המוצגים"
+                      />
+                    </th>
                     <th className="px-3 py-2 font-semibold">שם</th>
                     <th className="px-3 py-2 font-semibold">טלפון</th>
                     <th className="px-3 py-2 font-semibold">ארגון</th>
@@ -574,6 +619,15 @@ export function OutreachLeadsView() {
                       key={lead.id}
                       className="border-t border-border hover:bg-secondary/30"
                     >
+                      <td className="px-2 py-2.5">
+                        <Checkbox
+                          checked={selectedLeadIds.includes(lead.id)}
+                          onCheckedChange={(v) =>
+                            toggleLeadSelected(lead.id, Boolean(v))
+                          }
+                          aria-label={`בחר ${lead.name}`}
+                        />
+                      </td>
                       <td className="px-3 py-2.5 font-medium">{lead.name}</td>
                       <td
                         className="px-3 py-2.5 tabular-nums"
@@ -630,7 +684,17 @@ export function OutreachLeadsView() {
                     className="rounded-xl border border-border bg-secondary/20 p-3"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <div className="shrink-0 pt-0.5">
+                          <Checkbox
+                            checked={selectedLeadIds.includes(lead.id)}
+                            onCheckedChange={(v) =>
+                              toggleLeadSelected(lead.id, Boolean(v))
+                            }
+                            aria-label={`בחר ${lead.name}`}
+                          />
+                        </div>
+                        <div className="min-w-0">
                         <p className="font-semibold text-foreground">
                           {lead.name}
                         </p>
@@ -645,6 +709,7 @@ export function OutreachLeadsView() {
                             {lead.notes}
                           </p>
                         ) : null}
+                      </div>
                       </div>
                       <LeadActions
                         lead={lead}
@@ -858,6 +923,15 @@ export function OutreachLeadsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <OutreachBulkBar
+        selectedLeadIds={selectedLeadIds}
+        onClear={() => setSelectedLeadIds([])}
+        onDone={() => {
+          setSelectedLeadIds([])
+          void refresh()
+        }}
+      />
     </div>
   )
 }

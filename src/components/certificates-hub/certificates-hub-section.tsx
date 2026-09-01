@@ -19,6 +19,8 @@ import {
 } from "@/lib/certificates-hub"
 
 const ALL_TRAININGS = "__all__"
+const ALL_BATCHES = "__all__"
+const NO_BATCH = "__none__"
 
 export function CertificatesHubSection({
   section,
@@ -44,6 +46,7 @@ export function CertificatesHubSection({
   onRegistryChange: () => void
 }) {
   const [trainingFilter, setTrainingFilter] = useState(ALL_TRAININGS)
+  const [batchFilter, setBatchFilter] = useState(ALL_BATCHES)
 
   const trainingOptions = useMemo(() => {
     const set = new Set<string>()
@@ -54,17 +57,43 @@ export function CertificatesHubSection({
     return [...set].sort((a, b) => a.localeCompare(b, "he"))
   }, [rows])
 
+  const batchOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const r of rows) {
+      if (r.batchId && r.batchName) map.set(r.batchId, r.batchName)
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "he"))
+  }, [rows])
+
+  const unbatchedCount = useMemo(
+    () => rows.filter((r) => !r.batchId).length,
+    [rows],
+  )
+
+  const showTrainingFilter = trainingOptions.length > 1
+  const showBatchFilter =
+    batchOptions.length > 1 ||
+    (batchOptions.length > 0 && unbatchedCount > 0)
+
   const filteredRows = useMemo(() => {
-    if (trainingFilter === ALL_TRAININGS) return rows
-    return rows.filter((r) => r.trainingTitle === trainingFilter)
-  }, [rows, trainingFilter])
+    let list = rows
+    if (trainingFilter !== ALL_TRAININGS) {
+      list = list.filter((r) => r.trainingTitle === trainingFilter)
+    }
+    if (batchFilter === NO_BATCH) {
+      list = list.filter((r) => !r.batchId)
+    } else if (batchFilter !== ALL_BATCHES) {
+      list = list.filter((r) => r.batchId === batchFilter)
+    }
+    return list
+  }, [rows, trainingFilter, batchFilter])
 
   const allSelected =
     filteredRows.length > 0 &&
     filteredRows.every((r) => selectedIds.has(r.participantId))
 
   const subtitle =
-    trainingFilter === ALL_TRAININGS
+    trainingFilter === ALL_TRAININGS && batchFilter === ALL_BATCHES
       ? `${rows.length} מודרכים`
       : `${filteredRows.length} מתוך ${rows.length} מודרכים`
 
@@ -74,43 +103,88 @@ export function CertificatesHubSection({
       subtitle={subtitle}
       defaultOpen={false}
     >
-      {trainingOptions.length > 1 ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-          <Label className="shrink-0 text-xs text-muted-foreground">
-            סינון הדרכת מקור
-          </Label>
-          <Select
-            value={trainingFilter}
-            onValueChange={(v) => setTrainingFilter(v || ALL_TRAININGS)}
-          >
-            <SelectTrigger className="h-8 min-w-[200px] max-w-md flex-1 text-xs">
-              <SelectValue placeholder="כל ההדרכות" />
-            </SelectTrigger>
-            <SelectContent className="min-w-[280px] max-w-md">
-              <SelectItem value={ALL_TRAININGS} className="text-right text-xs">
-                כל ההדרכות ({rows.length})
-              </SelectItem>
-              {trainingOptions.map((t) => {
-                const count = rows.filter((r) => r.trainingTitle === t).length
-                return (
+      {showTrainingFilter || showBatchFilter ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-3 py-2">
+          {showTrainingFilter ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="shrink-0 text-xs text-muted-foreground">
+                סינון הדרכת מקור
+              </Label>
+              <Select
+                value={trainingFilter}
+                onValueChange={(v) => setTrainingFilter(v || ALL_TRAININGS)}
+              >
+                <SelectTrigger className="h-8 min-w-[200px] max-w-md flex-1 text-xs">
+                  <SelectValue placeholder="כל ההדרכות" />
+                </SelectTrigger>
+                <SelectContent className="min-w-[280px] max-w-md">
                   <SelectItem
-                    key={t}
-                    value={t}
-                    className="break-words whitespace-normal text-right text-xs leading-snug"
+                    value={ALL_TRAININGS}
+                    className="text-right text-xs"
                   >
-                    {t} ({count})
+                    כל ההדרכות ({rows.length})
                   </SelectItem>
-                )
-              })}
-            </SelectContent>
-          </Select>
+                  {trainingOptions.map((t) => {
+                    const count = rows.filter((r) => r.trainingTitle === t)
+                      .length
+                    return (
+                      <SelectItem
+                        key={t}
+                        value={t}
+                        className="break-words whitespace-normal text-right text-xs leading-snug"
+                      >
+                        {t} ({count})
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          {showBatchFilter ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="shrink-0 text-xs text-muted-foreground">
+                סינון מחזור
+              </Label>
+              <Select
+                value={batchFilter}
+                onValueChange={(v) => setBatchFilter(v || ALL_BATCHES)}
+              >
+                <SelectTrigger className="h-8 min-w-[180px] max-w-md flex-1 text-xs">
+                  <SelectValue placeholder="כל המחזורים" />
+                </SelectTrigger>
+                <SelectContent className="min-w-[240px] max-w-md">
+                  <SelectItem value={ALL_BATCHES} className="text-right text-xs">
+                    כל המחזורים ({rows.length})
+                  </SelectItem>
+                  {unbatchedCount > 0 ? (
+                    <SelectItem value={NO_BATCH} className="text-right text-xs">
+                      ללא מחזור ({unbatchedCount})
+                    </SelectItem>
+                  ) : null}
+                  {batchOptions.map(([id, name]) => {
+                    const count = rows.filter((r) => r.batchId === id).length
+                    return (
+                      <SelectItem
+                        key={id}
+                        value={id}
+                        className="break-words whitespace-normal text-right text-xs leading-snug"
+                      >
+                        {name} ({count})
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       <div className="overflow-x-auto p-2">
         {filteredRows.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            אין מודרכים להדרכת מקור שנבחרה
+            אין מודרכים התואמים את הסינון שנבחר
           </p>
         ) : (
           <table className="w-full min-w-[880px] table-fixed text-right text-sm">
