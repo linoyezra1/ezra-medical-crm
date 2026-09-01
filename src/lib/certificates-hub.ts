@@ -21,6 +21,11 @@ export const ISSUED_PHYSICAL_CERT_STATUS = "הודפס פיזית"
 /** חיצוניים ללא גוף מסמיך אישי */
 export const UNASSIGNED_CERTIFYING_BODY = "ללא גוף מסמיך"
 
+/** שם מחזור מנורמל לסינון / איחוד כפילויות */
+export function normalizeBatchName(name: string | null | undefined): string {
+  return String(name ?? "").trim()
+}
+
 export type CertificatesHubTab = "ezra" | "nitai" | "yossi" | "unassigned"
 
 export const CERTIFICATES_HUB_TABS: {

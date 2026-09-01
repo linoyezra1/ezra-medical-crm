@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select"
 import {
   formatCertDateDisplay,
+  normalizeBatchName,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
 
@@ -58,11 +59,13 @@ export function CertificatesHubSection({
   }, [rows])
 
   const batchOptions = useMemo(() => {
-    const map = new Map<string, string>()
+    const map = new Map<string, number>()
     for (const r of rows) {
-      if (r.batchId && r.batchName) map.set(r.batchId, r.batchName)
+      const name = normalizeBatchName(r.batchName)
+      if (!name) continue
+      map.set(name, (map.get(name) ?? 0) + 1)
     }
-    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "he"))
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], "he"))
   }, [rows])
 
   const unbatchedCount = useMemo(
@@ -83,7 +86,9 @@ export function CertificatesHubSection({
     if (batchFilter === NO_BATCH) {
       list = list.filter((r) => !r.batchId)
     } else if (batchFilter !== ALL_BATCHES) {
-      list = list.filter((r) => r.batchId === batchFilter)
+      list = list.filter(
+        (r) => normalizeBatchName(r.batchName) === batchFilter,
+      )
     }
     return list
   }, [rows, trainingFilter, batchFilter])
@@ -162,18 +167,15 @@ export function CertificatesHubSection({
                       ללא מחזור ({unbatchedCount})
                     </SelectItem>
                   ) : null}
-                  {batchOptions.map(([id, name]) => {
-                    const count = rows.filter((r) => r.batchId === id).length
-                    return (
-                      <SelectItem
-                        key={id}
-                        value={id}
-                        className="break-words whitespace-normal text-right text-xs leading-snug"
-                      >
-                        {name} ({count})
-                      </SelectItem>
-                    )
-                  })}
+                  {batchOptions.map(([name, count]) => (
+                    <SelectItem
+                      key={name}
+                      value={name}
+                      className="break-words whitespace-normal text-right text-xs leading-snug"
+                    >
+                      {name} ({count})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -21,6 +21,7 @@ import {
   resolvePhysicalCertStatus,
   resolveTrainingTitle,
   sortCertificatesHubRows,
+  normalizeBatchName,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
 import {
@@ -366,6 +367,62 @@ export async function updateCertificateStatusOptionAction(input: {
 }
 
 /**
+ * מאחד מחזורים עם אותו שם — שומר את המחזור עם הכי הרבה משתתפים (שוויון: הישן ביותר).
+ */
+async function mergeDuplicateCertificateBatches(): Promise<number> {
+  const batches = await prisma.certificateBatch.findMany({
+    include: { _count: { select: { participants: true } } },
+    orderBy: { createdAt: "asc" },
+  })
+
+  const groups = new Map<string, typeof batches>()
+  for (const batch of batches) {
+    const key = normalizeBatchName(batch.name)
+    if (!key) continue
+    const list = groups.get(key) ?? []
+    list.push(batch)
+    groups.set(key, list)
+  }
+
+  let merged = 0
+  for (const group of groups.values()) {
+    if (group.length <= 1) continue
+
+    group.sort(
+      (a, b) =>
+        b._count.participants - a._count.participants ||
+        a.createdAt.getTime() - b.createdAt.getTime(),
+    )
+    const keeper = group[0]!
+    for (const dupe of group.slice(1)) {
+      await prisma.participant.updateMany({
+        where: { certificateBatchId: dupe.id },
+        data: { certificateBatchId: keeper.id },
+      })
+      await prisma.certificateBatch.delete({ where: { id: dupe.id } })
+      merged++
+    }
+  }
+
+  if (merged > 0) {
+    revalidatePath("/certificates")
+  }
+  return merged
+}
+
+export async function mergeDuplicateCertificateBatchesAction(): Promise<
+  ActionResult<{ merged: number }>
+> {
+  try {
+    const merged = await mergeDuplicateCertificateBatches()
+    return { ok: true, data: { merged } }
+  } catch (err) {
+    console.error("[mergeDuplicateCertificateBatchesAction]", err)
+    return { ok: false, error: "שגיאה באיחוד מחזורים כפולים" }
+  }
+}
+
+/**
  * זכאים לתעודה:
  * 1. נוכחות
  * 2. הדרכת המשתתף ב־«ממתין לתעודות» / «הסתיים»
@@ -376,6 +433,7 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
 > {
   try {
     await ensureDefaultStatusOptions()
+    await mergeDuplicateCertificateBatches()
 
     const candidates = await prisma.participant.findMany({
       where: { attended: true },
@@ -734,6 +792,8 @@ export async function listCertificateBatchesAction(): Promise<
   >
 > {
   try {
+    await mergeDuplicateCertificateBatches()
+
     const rows = await prisma.certificateBatch.findMany({
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { participants: true } } },
@@ -776,17 +836,28 @@ export async function assignParticipantsToBatchAction(input: {
       if (!existing) return { ok: false, error: "המחזור לא נמצא" }
       batchName = existing.name
     } else {
-      const name = (input.newBatchName || "").trim()
+      const name = normalizeBatchName(input.newBatchName)
       if (!name) return { ok: false, error: "יש להזין שם מחזור" }
-      const created = await prisma.certificateBatch.create({
-        data: {
-          name,
-          certifyingBody: (input.certifyingBody || "").trim() || "כללי",
-          courseSubtype: input.courseSubtype?.trim() || null,
-        },
+
+      const existingByName = await prisma.certificateBatch.findFirst({
+        where: { name },
+        orderBy: { createdAt: "asc" },
       })
-      batchId = created.id
-      batchName = created.name
+
+      if (existingByName) {
+        batchId = existingByName.id
+        batchName = existingByName.name
+      } else {
+        const created = await prisma.certificateBatch.create({
+          data: {
+            name,
+            certifyingBody: (input.certifyingBody || "").trim() || "כללי",
+            courseSubtype: input.courseSubtype?.trim() || null,
+          },
+        })
+        batchId = created.id
+        batchName = created.name
+      }
     }
 
     await prisma.participant.updateMany({
