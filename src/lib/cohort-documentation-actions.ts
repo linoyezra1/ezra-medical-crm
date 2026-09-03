@@ -8,6 +8,7 @@ import { normalizeBatchName } from "@/lib/certificates-hub"
 import {
   buildStoredFileKey,
   COHORT_DOCS_REL_DIR,
+  COHORT_FILE_ONLY_SESSION_NUMBER,
   cohortDocStoredPath,
   cohortDocsUploadDir,
   formatCohortSessionDuration,
@@ -248,6 +249,7 @@ export async function uploadCohortDocumentationAction(
 
     revalidatePath("/certificates")
     revalidatePath("/certificates/cohort-docs")
+    revalidatePath("/certificates/cohort-docs", "layout")
     return {
       ok: true,
       data: { ids: created.map((r) => r.id), count: created.length },
@@ -265,6 +267,75 @@ export async function uploadCohortDocumentationAction(
     }
     console.error("[uploadCohortDocumentationAction]", err)
     return { ok: false, error: "שגיאה בהעלאת התיעוד" }
+  }
+}
+
+export async function addCohortExcelFilesAction(
+  formData: FormData,
+): Promise<ActionResult<{ ids: string[]; count: number }>> {
+  try {
+    const cohortName = normalizeBatchName(
+      String(formData.get("cohortName") ?? ""),
+    )
+    if (!cohortName) {
+      return { ok: false, error: "שם מחזור חסר" }
+    }
+
+    const files = formData
+      .getAll("files")
+      .concat(formData.getAll("file"))
+      .filter((f): f is File => f instanceof File && f.size > 0)
+
+    if (!files.length) {
+      return { ok: false, error: "יש לבחור לפחות קובץ Excel/CSV אחד" }
+    }
+
+    for (const file of files) {
+      if (!isAllowedCohortDocFile(file.name)) {
+        return {
+          ok: false,
+          error: `סוג קובץ לא נתמך (${file.name}) — רק .xlsx, .xls, .csv`,
+        }
+      }
+    }
+
+    const notes = String(formData.get("notes") ?? "").trim() || null
+    const driveUrl = String(formData.get("driveUrl") ?? "").trim() || null
+    const sessionDate = new Date()
+
+    await mkdir(cohortDocsUploadDir(), { recursive: true })
+
+    const createdIds: string[] = []
+    for (const file of files) {
+      const storedKey = buildStoredFileKey(file.name)
+      const relativeUrl = path.posix.join(COHORT_DOCS_REL_DIR, storedKey)
+      const absolutePath = cohortDocStoredPath(relativeUrl)
+      const buffer = Buffer.from(await file.arrayBuffer())
+      await writeFile(absolutePath, buffer)
+
+      const created = await prisma.cohortDocumentation.create({
+        data: {
+          cohortName,
+          sessionDate,
+          notes,
+          driveUrl,
+          fileName: file.name,
+          fileUrl: relativeUrl,
+          fileSize: file.size,
+          sessionNumber: COHORT_FILE_ONLY_SESSION_NUMBER,
+        },
+        select: { id: true },
+      })
+      createdIds.push(created.id)
+    }
+
+    revalidatePath("/certificates")
+    revalidatePath("/certificates/cohort-docs")
+    revalidatePath("/certificates/cohort-docs", "layout")
+    return { ok: true, data: { ids: createdIds, count: createdIds.length } }
+  } catch (err) {
+    console.error("[addCohortExcelFilesAction]", err)
+    return { ok: false, error: "שגיאה בהעלאת קבצי האקסל" }
   }
 }
 
@@ -389,6 +460,7 @@ export async function updateCohortDocumentationAction(
 
     revalidatePath("/certificates")
     revalidatePath("/certificates/cohort-docs")
+    revalidatePath("/certificates/cohort-docs", "layout")
     return { ok: true, data: mapRow(updated) }
   } catch (err) {
     console.error("[updateCohortDocumentationAction]", err)
@@ -420,6 +492,7 @@ export async function deleteCohortDocumentationAction(
 
     revalidatePath("/certificates")
     revalidatePath("/certificates/cohort-docs")
+    revalidatePath("/certificates/cohort-docs", "layout")
     return { ok: true, data: { id } }
   } catch (err) {
     console.error("[deleteCohortDocumentationAction]", err)

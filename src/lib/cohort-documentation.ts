@@ -62,6 +62,108 @@ export type CohortDocumentationRow = {
   createdAt: string
 }
 
+/** sessionNumber=0 מסמן קובץ אקסל נוסף בלי מפגש */
+export const COHORT_FILE_ONLY_SESSION_NUMBER = 0
+
+export function isCohortFileOnlyRow(row: {
+  sessionNumber: number | null
+}): boolean {
+  return row.sessionNumber === COHORT_FILE_ONLY_SESSION_NUMBER
+}
+
+export type CohortDocSummary = {
+  cohortName: string
+  fileCount: number
+  sessionCount: number
+  lastSessionDate: string | null
+  isPaid: boolean
+  paidAmount: number | null
+}
+
+export type CohortExcelFile = {
+  downloadId: string
+  fileUrl: string
+  fileName: string
+  fileSize: number | null
+  driveUrl: string | null
+  createdAt: string
+  fileOnly: boolean
+}
+
+export function cohortDocsDetailHref(cohortName: string): string {
+  return `/certificates/cohort-docs/${encodeURIComponent(cohortName)}`
+}
+
+export function decodeCohortParam(raw: string): string {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
+export function formatCohortFileSize(bytes: number | null): string {
+  if (!bytes) return "—"
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+export function uniqueCohortExcelFiles(
+  rows: CohortDocumentationRow[],
+): CohortExcelFile[] {
+  const byUrl = new Map<string, CohortExcelFile>()
+  const sorted = [...rows].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  )
+  for (const row of sorted) {
+    if (!row.fileUrl || byUrl.has(row.fileUrl)) continue
+    byUrl.set(row.fileUrl, {
+      downloadId: row.id,
+      fileUrl: row.fileUrl,
+      fileName: row.fileName,
+      fileSize: row.fileSize,
+      driveUrl: row.driveUrl,
+      createdAt: row.createdAt,
+      fileOnly: isCohortFileOnlyRow(row),
+    })
+  }
+  return [...byUrl.values()]
+}
+
+export function summarizeCohortDocs(
+  rows: CohortDocumentationRow[],
+): CohortDocSummary[] {
+  const grouped = new Map<string, CohortDocumentationRow[]>()
+  for (const row of rows) {
+    const list = grouped.get(row.cohortName) ?? []
+    list.push(row)
+    grouped.set(row.cohortName, list)
+  }
+
+  return [...grouped.entries()]
+    .map(([cohortName, list]) => {
+      const paid = list.find((r) => r.isPaid)
+      const sessions = list.filter((r) => !isCohortFileOnlyRow(r))
+      const last = [...sessions].sort((a, b) =>
+        b.sessionDate.localeCompare(a.sessionDate),
+      )[0]
+      return {
+        cohortName,
+        fileCount: uniqueCohortExcelFiles(list).length,
+        sessionCount: sessions.length,
+        lastSessionDate: last?.sessionDate ?? null,
+        isPaid: Boolean(paid),
+        paidAmount: paid?.paidAmount ?? null,
+      }
+    })
+    .sort(
+      (a, b) =>
+        (b.lastSessionDate ?? "").localeCompare(a.lastSessionDate ?? "", "he") ||
+        a.cohortName.localeCompare(b.cohortName, "he"),
+    )
+}
+
 export type CohortSessionDraft = {
   date: string
   timeFrom: string
