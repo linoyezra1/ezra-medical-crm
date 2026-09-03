@@ -37,6 +37,23 @@ export const PAYMENT_LEDGER_STATUS_LABELS: Record<PaymentLedgerStatus, string> =
     cancelled: "בוטל",
   }
 
+/** סטטוסי DB שבהם ההדרכה נסגרה ביומן — רק אז מותר «ממתין לתשלום» ביומן */
+export const PAYMENT_LEDGER_ELIGIBLE_COURSE_STATUSES = [
+  "closed",
+  "certificates_pending",
+  "completed",
+  "closed_won",
+] as const
+
+export function isLeadEligibleForPaymentLedger(
+  courseStatus: string | null | undefined,
+): boolean {
+  const s = (courseStatus || "").trim()
+  return (PAYMENT_LEDGER_ELIGIBLE_COURSE_STATUSES as readonly string[]).includes(
+    s,
+  )
+}
+
 export type PaymentTransaction = {
   id: string
   date: string

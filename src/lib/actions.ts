@@ -38,6 +38,8 @@ import {
   buildParticipantTransaction,
   buildSaleTransaction,
   buildTrainingBaseTransaction,
+  isLeadEligibleForPaymentLedger,
+  PAYMENT_LEDGER_ELIGIBLE_COURSE_STATUSES,
   sortPaymentTransactions,
   type PaymentTransaction,
 } from "@/lib/payment-transactions";
@@ -1611,7 +1613,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
         prisma.lead.findMany({
           where: {
             activityType: { not: "equipment" },
-            courseStatus: { not: "canceled" },
+            courseStatus: { in: [...PAYMENT_LEDGER_ELIGIBLE_COURSE_STATUSES] },
             OR: [
               { agreedPrice: { gt: 0 } },
               { paymentStatus: PAID_PAYMENT_STATUS },
@@ -1686,25 +1688,39 @@ export async function getAllPaymentTransactionsAction(): Promise<
         leadId: p.leadId,
         leadName: p.lead?.fullName ?? null,
       })
-      if (row) rows.push(row)
+      if (!row) continue
+      if (
+        row.paymentStatus === "pending" &&
+        p.lead &&
+        !isLeadEligibleForPaymentLedger(p.lead.courseStatus)
+      ) {
+        continue
+      }
+      rows.push(row)
     }
 
     for (const s of sales) {
-      rows.push(
-        buildSaleTransaction({
-          id: s.id,
-          leadId: s.leadId,
-          leadName: s.lead?.fullName ?? null,
-          itemName: s.inventoryItem?.name || "פריט",
-          quantity: s.quantity,
-          unitSellingPrice: s.unitSellingPrice,
-          paymentStatus: s.paymentStatus,
-          paymentMethod: s.paymentMethod,
-          participantName: s.participant?.fullName,
-          reportedByName: s.reportedByInstructor?.name,
-          createdAt: s.createdAt,
-        }),
-      )
+      const row = buildSaleTransaction({
+        id: s.id,
+        leadId: s.leadId,
+        leadName: s.lead?.fullName ?? null,
+        itemName: s.inventoryItem?.name || "פריט",
+        quantity: s.quantity,
+        unitSellingPrice: s.unitSellingPrice,
+        paymentStatus: s.paymentStatus,
+        paymentMethod: s.paymentMethod,
+        participantName: s.participant?.fullName,
+        reportedByName: s.reportedByInstructor?.name,
+        createdAt: s.createdAt,
+      })
+      if (
+        row.paymentStatus === "pending" &&
+        s.lead &&
+        !isLeadEligibleForPaymentLedger(s.lead.courseStatus)
+      ) {
+        continue
+      }
+      rows.push(row)
     }
 
     for (const lead of trainingLeads) {

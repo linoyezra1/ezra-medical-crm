@@ -61,3 +61,56 @@ export type CohortDocumentationRow = {
   leadId: string | null
   createdAt: string
 }
+
+export type CohortSessionDraft = {
+  date: string
+  timeFrom: string
+  timeTo: string
+  hours: string
+}
+
+export function emptyCohortSessionDraft(): CohortSessionDraft {
+  return { date: "", timeFrom: "", timeTo: "", hours: "" }
+}
+
+export function formatCohortSessionDuration(input: {
+  timeFrom?: string
+  timeTo?: string
+  hours?: string
+}): string | null {
+  const from = String(input.timeFrom ?? "").trim()
+  const to = String(input.timeTo ?? "").trim()
+  const hours = String(input.hours ?? "").trim()
+  const parts: string[] = []
+  if (from && to) parts.push(`${from}-${to}`)
+  else if (from) parts.push(`מ-${from}`)
+  else if (to) parts.push(`עד ${to}`)
+  if (hours) parts.push(hours)
+  return parts.length ? parts.join(" · ") : null
+}
+
+/** מפענח durationHours שנשמר ב-DB חזרה לשדות הטופס */
+export function parseCohortSessionDuration(
+  durationHours: string | null | undefined,
+): Pick<CohortSessionDraft, "timeFrom" | "timeTo" | "hours"> {
+  const raw = String(durationHours ?? "").trim()
+  if (!raw) return { timeFrom: "", timeTo: "", hours: "" }
+
+  const parts = raw.split(" · ")
+  const timePart = parts[0] ?? ""
+  const hoursPart = parts.slice(1).join(" · ")
+
+  const rangeMatch = timePart.match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/)
+  if (rangeMatch) {
+    return { timeFrom: rangeMatch[1], timeTo: rangeMatch[2], hours: hoursPart }
+  }
+  const fromMatch = timePart.match(/^מ-(\d{1,2}:\d{2})$/)
+  if (fromMatch) {
+    return { timeFrom: fromMatch[1], timeTo: "", hours: hoursPart }
+  }
+  const toMatch = timePart.match(/^עד (\d{1,2}:\d{2})$/)
+  if (toMatch) {
+    return { timeFrom: "", timeTo: toMatch[1], hours: hoursPart }
+  }
+  return { timeFrom: "", timeTo: "", hours: raw }
+}
