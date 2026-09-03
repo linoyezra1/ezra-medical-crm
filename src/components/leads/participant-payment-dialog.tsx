@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { recordParticipantPayment } from "@/lib/actions"
 import { formatCurrency } from "@/lib/helpers"
+import { ReceiptExpensePreview } from "@/components/leads/receipt-expense-preview"
 import { PAYMENT_METHODS, PAYMENT_RECEIVERS } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import type { Participant } from "@/lib/types"
@@ -167,6 +168,10 @@ export function ParticipantPaymentDialog({
             />
             הופקה קבלה
           </label>
+          <ReceiptExpensePreview
+            visible={form.paymentReceiptIssued}
+            paymentAmount={form.amount}
+          />
           <DialogFooter className="flex-row gap-2">
             <Button
               type="button"

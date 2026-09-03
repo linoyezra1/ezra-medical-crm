@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { recordLeadPayment } from "@/lib/actions"
 import { formatCurrency } from "@/lib/helpers"
+import { ReceiptExpensePreview } from "@/components/leads/receipt-expense-preview"
 import {
   PAYMENT_METHODS,
   PAYMENT_RECEIVERS,
@@ -62,7 +63,17 @@ export function LeadPaymentDialog({ lead, open, onOpenChange }: Props) {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    const res = await recordLeadPayment(lead.id, form)
+    const amountRaw = amount.trim()
+    const parsedAmount = amountRaw === "" ? undefined : Number(amountRaw)
+    if (parsedAmount != null && !Number.isFinite(parsedAmount)) {
+      toast.error("סכום תשלום לא תקין")
+      setSaving(false)
+      return
+    }
+    const res = await recordLeadPayment(lead.id, {
+      ...form,
+      amount: parsedAmount,
+    })
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
@@ -178,6 +189,11 @@ export function LeadPaymentDialog({ lead, open, onOpenChange }: Props) {
             />
             האם יצאה קבלה
           </label>
+
+          <ReceiptExpensePreview
+            visible={form.paymentReceiptIssued}
+            paymentAmount={amount}
+          />
 
           <DialogFooter className="-mx-0 -mb-0 border-0 bg-transparent p-0 pt-2">
             <Button

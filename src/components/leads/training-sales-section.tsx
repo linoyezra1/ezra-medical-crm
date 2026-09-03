@@ -30,6 +30,7 @@ import {
   updateTrainingSale,
 } from "@/lib/actions"
 import { formatCurrency } from "@/lib/helpers"
+import { ReceiptExpensePreview } from "@/components/leads/receipt-expense-preview"
 import {
   PAYMENT_METHODS,
   TRAINING_SALE_PENDING_PAYMENT,
@@ -513,6 +514,10 @@ export function TrainingSalesSection({
               />
               <span className="text-sm font-semibold">הופקה קבלה</span>
             </label>
+            <ReceiptExpensePreview
+              visible={receiptIssued && !unpaid}
+              paymentAmount={lineTotal}
+            />
 
             <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
               <Checkbox
@@ -616,6 +621,10 @@ export function TrainingSalesSection({
                 />
                 הופקה קבלה
               </label>
+              <ReceiptExpensePreview
+                visible={payReceipt}
+                paymentAmount={payAmount}
+              />
               <DialogFooter className="flex-row gap-2">
                 <Button
                   type="button"

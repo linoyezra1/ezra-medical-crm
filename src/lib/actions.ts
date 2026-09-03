@@ -33,6 +33,7 @@ import {
   type TrainingSessionSlot,
 } from "@/lib/payment";
 import { isTrainingFullySettled } from "@/lib/training-profit";
+import { syncReceiptExpenseForLead } from "@/lib/receipt-expense-sync";
 import {
   buildEquipmentDealTransaction,
   buildParticipantTransaction,
@@ -1069,6 +1070,22 @@ export async function updateLead(
   // בדיקת השלמה אוטומטית (תשלום + תעודות)
   await tryAutoCompleteTrainingIfReady(leadId);
 
+  if (
+    raw.paymentReceiptIssued !== undefined ||
+    raw.paymentStatus !== undefined ||
+    raw.agreedPrice !== undefined ||
+    raw.totalPrice !== undefined ||
+    raw.paymentDate !== undefined
+  ) {
+    const paymentDateRaw =
+      raw.paymentDate !== undefined && raw.paymentDate
+        ? String(raw.paymentDate).slice(0, 10)
+        : undefined
+    await syncReceiptExpenseForLead(leadId, {
+      paymentDate: paymentDateRaw,
+    })
+  }
+
   // Returning account classification when closing won
   if (nextStatus === "closed_won" && existing.accountId) {
     await prisma.account.update({
@@ -1236,6 +1253,7 @@ export async function recordLeadPayment(
     paymentMethod: string;
     paymentReceivedBy: string;
     paymentReceiptIssued: boolean;
+    amount?: number;
   },
 ): Promise<ActionResult<{ id: string }>> {
   const existing = await prisma.lead.findUnique({ where: { id: leadId } });
@@ -1249,6 +1267,13 @@ export async function recordLeadPayment(
   if (!data.paymentReceivedBy?.trim()) {
     return { ok: false, error: "יש לבחור מי קיבל את הכסף" };
   }
+  const amount =
+    data.amount != null && Number.isFinite(Number(data.amount))
+      ? Number(data.amount)
+      : undefined
+  if (amount != null && amount < 0) {
+    return { ok: false, error: "סכום תשלום לא תקין" };
+  }
 
   const actor = await getActiveCrmUser();
   await prisma.lead.update({
@@ -1261,6 +1286,11 @@ export async function recordLeadPayment(
       paymentReceiptIssued: Boolean(data.paymentReceiptIssued),
       lastUpdatedBy: actor,
     },
+  });
+
+  await syncReceiptExpenseForLead(leadId, {
+    leadAmountOverride: amount,
+    paymentDate: data.paymentDate.trim(),
   });
 
   const after = await prisma.lead.findUnique({
@@ -1525,6 +1555,8 @@ export async function recordParticipantPayment(
       ...(amount != null ? { agreedPrice: amount } : {}),
     },
   })
+
+  await syncReceiptExpenseForLead(leadId, { paymentDate: date })
 
   const after = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -3177,6 +3209,10 @@ export async function addTrainingSale(
     },
   });
 
+  if (leadId) {
+    await syncReceiptExpenseForLead(leadId)
+  }
+
   // ניכוי מלאי: פריט בודד → +totalSold; תיק → +totalSold לרכיבים
   await applyInventorySaleDelta(inventoryItemId, qty, 1);
 
@@ -3234,6 +3270,8 @@ export async function deleteTrainingSale(
     -1,
   );
   await prisma.trainingSale.delete({ where: { id } });
+
+  if (leadId) await syncReceiptExpenseForLead(leadId)
 
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/dashboard");
@@ -3365,6 +3403,8 @@ export async function updateTrainingSale(
     revalidatePath("/calendar")
   }
 
+  await syncReceiptExpenseForLead(leadId)
+
   revalidatePath(`/leads/${leadId}`)
   revalidatePath("/dashboard")
   revalidatePath("/equipment")
@@ -3427,6 +3467,8 @@ export async function recordTrainingSalePayment(
     revalidatePath("/calendar")
   }
 
+  await syncReceiptExpenseForLead(leadId)
+
   revalidatePath(`/leads/${leadId}`)
   revalidatePath("/dashboard")
   revalidatePath("/payment-history")
@@ -3437,6 +3479,7 @@ export async function recordTrainingSalePayment(
 export async function removeParticipant(id: string, leadId: string) {
   try {
     await prisma.participant.delete({ where: { id } });
+    await syncReceiptExpenseForLead(leadId);
     revalidatePath(`/leads/${leadId}`);
     revalidatePath("/clients");
     revalidatePath("/leads");
