@@ -388,18 +388,6 @@ export async function updateCohortDocumentationAction(
       String(formData.get("instructorName") ?? "").trim() || null
     const notes = String(formData.get("notes") ?? "").trim() || null
     const driveUrl = String(formData.get("driveUrl") ?? "").trim() || null
-    const isPaid = formData.get("isPaid") === "true"
-    const paidAmountRaw = String(formData.get("paidAmount") ?? "").trim()
-    const paidAmount = paidAmountRaw ? Number(paidAmountRaw) : null
-
-    if (isPaid) {
-      if (paidAmount == null || Number.isNaN(paidAmount) || paidAmount <= 0) {
-        return {
-          ok: false,
-          error: "יש להזין סכום תשלום תקין כשהמחזור מסומן כשולם",
-        }
-      }
-    }
 
     let fileName = existing.fileName
     let fileUrl = existing.fileUrl
@@ -436,8 +424,6 @@ export async function updateCohortDocumentationAction(
         instructorName,
         durationHours,
         notes,
-        isPaid,
-        paidAmount: isPaid ? paidAmount : null,
         driveUrl,
         fileName,
         fileUrl,
@@ -465,6 +451,66 @@ export async function updateCohortDocumentationAction(
   } catch (err) {
     console.error("[updateCohortDocumentationAction]", err)
     return { ok: false, error: "שגיאה בעדכון התיעוד" }
+  }
+}
+
+/** תשלום אחד לכל תיעוד המחזור — לא פר מפגש */
+export async function updateCohortPaymentAction(input: {
+  cohortName: string
+  isPaid: boolean
+  paidAmount?: number | null
+}): Promise<ActionResult<{ cohortName: string }>> {
+  try {
+    const cohortName = normalizeBatchName(input.cohortName)
+    if (!cohortName) return { ok: false, error: "שם מחזור חסר" }
+
+    const isPaid = Boolean(input.isPaid)
+    const paidAmount =
+      input.paidAmount != null && Number.isFinite(Number(input.paidAmount))
+        ? Number(input.paidAmount)
+        : null
+
+    if (isPaid) {
+      if (paidAmount == null || Number.isNaN(paidAmount) || paidAmount <= 0) {
+        return {
+          ok: false,
+          error: "יש להזין סכום תשלום תקין כשהמחזור מסומן כשולם",
+        }
+      }
+    }
+
+    const rows = await prisma.cohortDocumentation.findMany({
+      where: { cohortName },
+      orderBy: [{ sessionDate: "asc" }, { createdAt: "asc" }],
+      select: { id: true, sessionNumber: true },
+    })
+    if (!rows.length) return { ok: false, error: "לא נמצאו רשומות למחזור" }
+
+    const primary =
+      rows.find((r) => r.sessionNumber !== COHORT_FILE_ONLY_SESSION_NUMBER) ??
+      rows[0]!
+
+    await prisma.$transaction([
+      prisma.cohortDocumentation.updateMany({
+        where: { cohortName, id: { not: primary.id } },
+        data: { isPaid: false, paidAmount: null },
+      }),
+      prisma.cohortDocumentation.update({
+        where: { id: primary.id },
+        data: {
+          isPaid,
+          paidAmount: isPaid ? paidAmount : null,
+        },
+      }),
+    ])
+
+    revalidatePath("/certificates")
+    revalidatePath("/certificates/cohort-docs")
+    revalidatePath("/certificates/cohort-docs", "layout")
+    return { ok: true, data: { cohortName } }
+  } catch (err) {
+    console.error("[updateCohortPaymentAction]", err)
+    return { ok: false, error: "שגיאה בעדכון תשלום המחזור" }
   }
 }
 

@@ -456,6 +456,7 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
             id: true,
             certificateEmailSent: true,
             certificateCardPrinted: true,
+            certificateUrl: true,
           },
         },
         certificateBatch: {
@@ -629,6 +630,10 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
         batchName: p.certificateBatch?.name || undefined,
         isExternal: Boolean(p.isExternal),
         unassignedBody: routing.unassigned,
+        certificateUrl:
+          p.certificateUrl?.trim() ||
+          p.trainee?.certificateUrl?.trim() ||
+          undefined,
       })
     }
 
@@ -636,6 +641,55 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
   } catch (err) {
     console.error("[listEligibleCertificateParticipantsAction]", err)
     return { ok: false, error: "שגיאה בטעינת זכאים לתעודות" }
+  }
+}
+
+/** עדכון קישור תעודה (Drive / PDF) — נשמר ב־participant.certificateUrl (+ trainee) */
+export async function updateParticipantCertificateUrlAction(input: {
+  participantId: string
+  certificateUrl: string | null
+}): Promise<ActionResult<{ participantId: string; certificateUrl: string | null }>> {
+  try {
+    const participantId = String(input.participantId || "").trim()
+    if (!participantId) return { ok: false, error: "מזהה משתתף חסר" }
+
+    const url = String(input.certificateUrl ?? "").trim() || null
+    if (url) {
+      try {
+        // eslint-disable-next-line no-new
+        new URL(url)
+      } catch {
+        return { ok: false, error: "קישור תעודה לא תקין" }
+      }
+    }
+
+    const existing = await prisma.participant.findUnique({
+      where: { id: participantId },
+      select: { id: true, traineeId: true, leadId: true },
+    })
+    if (!existing) return { ok: false, error: "המשתתף לא נמצא" }
+
+    await prisma.participant.update({
+      where: { id: participantId },
+      data: { certificateUrl: url },
+    })
+    if (existing.traineeId) {
+      await prisma.trainee.update({
+        where: { id: existing.traineeId },
+        data: { certificateUrl: url },
+      })
+    }
+
+    revalidatePath("/certificates")
+    revalidatePath("/clients")
+    revalidatePath(`/leads/${existing.leadId}`)
+    return {
+      ok: true,
+      data: { participantId, certificateUrl: url },
+    }
+  } catch (err) {
+    console.error("[updateParticipantCertificateUrlAction]", err)
+    return { ok: false, error: "שגיאה בעדכון קישור התעודה" }
   }
 }
 

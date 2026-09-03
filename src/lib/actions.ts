@@ -2086,6 +2086,8 @@ export async function updateTrainee(
     certificateCardPrinted?: boolean;
     notes?: string;
     certifyingBody?: string | null;
+    /** קישור תעודה קיים (Drive / PDF) */
+    certificateUrl?: string | null;
   },
 ): Promise<ActionResult<{ id: string }>> {
   const existing = await prisma.trainee.findUnique({ where: { id } });
@@ -2121,6 +2123,10 @@ export async function updateTrainee(
     data.certifyingBody === undefined
       ? undefined
       : normalizeCertifyingBody(data.certifyingBody) || null;
+  const nextCertificateUrl =
+    data.certificateUrl === undefined
+      ? undefined
+      : data.certificateUrl?.trim() || null;
 
   // עדכון מקור המודרך + סנכרון לכל רשומות המשתתף המשויכות
   await prisma.$transaction([
@@ -2142,6 +2148,9 @@ export async function updateTrainee(
         ...(nextCertifyingBody !== undefined
           ? { certifyingBody: nextCertifyingBody }
           : {}),
+        ...(nextCertificateUrl !== undefined
+          ? { certificateUrl: nextCertificateUrl }
+          : {}),
       },
     }),
     prisma.participant.updateMany({
@@ -2153,6 +2162,9 @@ export async function updateTrainee(
         email: nextEmail,
         ...(nextCertifyingBody !== undefined
           ? { certifyingBody: nextCertifyingBody }
+          : {}),
+        ...(nextCertificateUrl !== undefined
+          ? { certificateUrl: nextCertificateUrl }
           : {}),
       },
     }),
@@ -2167,6 +2179,7 @@ export async function updateTrainee(
   }
   revalidatePath("/clients");
   revalidatePath("/leads");
+  revalidatePath("/certificates");
   return { ok: true, data: { id } };
 }
 
@@ -2276,6 +2289,10 @@ export async function triggerRemoteCertificates(input: {
       isExternal: true,
       courseType: true,
       courseCategory: true,
+      certificateUrl: true,
+      trainee: {
+        select: { certificateUrl: true },
+      },
       lead: {
         select: {
           fullName: true,
@@ -2294,7 +2311,7 @@ export async function triggerRemoteCertificates(input: {
     remainingIds.length && !leadIdFilter
       ? await prisma.trainee.findMany({
           where: { id: { in: remainingIds } },
-          select: { id: true },
+          select: { id: true, certificateUrl: true },
         })
       : [];
 
@@ -2320,6 +2337,10 @@ export async function triggerRemoteCertificates(input: {
             isExternal: true,
             courseType: true,
             courseCategory: true,
+            certificateUrl: true,
+            trainee: {
+              select: { certificateUrl: true },
+            },
             lead: {
               select: {
                 fullName: true,
@@ -2376,6 +2397,12 @@ export async function triggerRemoteCertificates(input: {
     const zip = sheetText(p.shippingZip);
     const inviter = sheetText(p.organizerName) || sheetText(p.lead?.fullName);
     const attendanceStatus = p.attended ? "TRUE" : "לא נכח";
+    const certificatePdfUrl =
+      sheetText(p.certificateUrl) ||
+      sheetText(
+        (p as { trainee?: { certificateUrl?: string | null } }).trainee
+          ?.certificateUrl,
+      );
     return {
       id: p.id,
       crmId: p.id,
@@ -2409,6 +2436,10 @@ export async function triggerRemoteCertificates(input: {
         p.isExternal && p.courseCategory?.trim()
           ? p.courseCategory.trim()
           : p.lead?.courseCategoryOther || p.lead?.courseCategory || "",
+      // קישור תעודה קיים — מאפשר ל-Apps Script לדלג על יצירת PDF
+      certificateUrl: certificatePdfUrl,
+      certificatePdfUrl,
+      pdfUrl: certificatePdfUrl,
     };
   });
 

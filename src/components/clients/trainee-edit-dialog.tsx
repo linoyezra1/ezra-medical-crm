@@ -39,6 +39,7 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
     email: "",
     notes: "",
     certifyingBody: "",
+    certificateUrl: "",
   })
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
       email: trainee.email || "",
       notes: trainee.notes || "",
       certifyingBody: trainee.certifyingBody || "",
+      certificateUrl: trainee.certificateUrl || "",
     })
   }, [trainee, open])
 
@@ -64,6 +66,7 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
       email: form.email,
       notes: form.notes,
       certifyingBody: form.certifyingBody.trim() || null,
+      certificateUrl: form.certificateUrl.trim() || null,
     })
     setSaving(false)
     if (!res.ok) {
@@ -77,6 +80,7 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
       email: form.email.trim() || undefined,
       notes: form.notes.trim() || undefined,
       certifyingBody: form.certifyingBody.trim() || undefined,
+      certificateUrl: form.certificateUrl.trim() || undefined,
     })
     toast.success("פרטי המודרך עודכנו")
     refresh()
@@ -154,6 +158,17 @@ export function TraineeEditDialog({ trainee, open, onOpenChange }: Props) {
                 ))}
               </SelectContent>
             </Select>
+          </Field>
+          <Field label="קישור תעודה (דרייב / PDF)">
+            <Input
+              value={form.certificateUrl}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, certificateUrl: e.target.value }))
+              }
+              placeholder="https://drive.google.com/..."
+              dir="ltr"
+              className="text-left"
+            />
           </Field>
           <Field label="הערות">
             <Textarea

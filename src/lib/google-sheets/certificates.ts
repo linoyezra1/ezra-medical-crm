@@ -47,7 +47,7 @@ export const CERTIFICATE_SHEET_HEADERS = [
   "שם מזמין", // K
   "תאריך ייצוא", // L
   "מזהה משתתף (ID)", // M — CRM_PARTICIPANT_ID
-  "קישור PDF לתעודה", // N — certificateUrl
+  "קישור PDF לתעודה", // N — certificateUrl / certificatePdfUrl (Drive)
   "נוכחות", // O — attended
   "עיר", // P
   "כתובת / רחוב", // Q
@@ -250,6 +250,7 @@ function participantRow(p: {
   email: string | null
   organizerName: string | null
   courseDate: string | null
+  certificateUrl?: string | null
   attended?: boolean | null
   isExternal?: boolean | null
   courseType?: string | null
@@ -263,6 +264,7 @@ function participantRow(p: {
   trainee?: {
     certificateEmailSent: boolean
     certificateCardPrinted: boolean
+    certificateUrl?: string | null
   } | null
   lead?: {
     fullName: string
@@ -281,6 +283,8 @@ function participantRow(p: {
   )
   const exportTimestamp = formatSheetDateTimeDdMmYyyy(new Date())
   const [physicalStatus, digitalStatus] = sheetCertStatusCells(p)
+  const pdfUrl =
+    p.certificateUrl?.trim() || p.trainee?.certificateUrl?.trim() || ""
 
   return [
     p.fullName || "", // A
@@ -296,7 +300,7 @@ function participantRow(p: {
     p.organizerName || p.lead?.fullName || "", // K
     exportTimestamp, // L — DD/MM/YYYY HH:mm
     p.id, // M — CRM_PARTICIPANT_ID
-    "", // N — קישור PDF (מילוי בגיליון / Apps Script)
+    pdfUrl, // N — קישור PDF / Drive (certificateUrl)
     attendanceCell(Boolean(p.attended)), // O — נוכחות
     ...addressAndCategoryCells(p), // P–T עיר / רחוב / בית / מיקוד / קטגוריה
   ]
@@ -347,6 +351,7 @@ export async function exportLeadParticipantsToSheets(
           select: {
             certificateEmailSent: true,
             certificateCardPrinted: true,
+            certificateUrl: true,
           },
         },
         lead: {
@@ -379,6 +384,7 @@ export async function exportLeadParticipantsToSheets(
     const attendanceUpdates: { range: string; values: string[][] }[] = []
     const addressUpdates: { range: string; values: string[][] }[] = []
     const certStatusUpdates: { range: string; values: string[][] }[] = []
+    const pdfUrlUpdates: { range: string; values: string[][] }[] = []
     for (const p of participants) {
       const rowIndex = rowIndexFor(p)
       if (!rowIndex) continue
@@ -395,11 +401,20 @@ export async function exportLeadParticipantsToSheets(
         range: sheetA1(tab, `I${rowIndex}:J${rowIndex}`),
         values: [[physicalStatus, digitalStatus]],
       })
+      const pdfUrl =
+        p.certificateUrl?.trim() || p.trainee?.certificateUrl?.trim() || ""
+      if (pdfUrl) {
+        pdfUrlUpdates.push({
+          range: sheetA1(tab, `N${rowIndex}`),
+          values: [[pdfUrl]],
+        })
+      }
     }
     const sheetUpdates = [
       ...attendanceUpdates,
       ...addressUpdates,
       ...certStatusUpdates,
+      ...pdfUrlUpdates,
     ]
     if (sheetUpdates.length) {
       await sheets.spreadsheets.values.batchUpdate({
@@ -687,7 +702,7 @@ export async function exportTraineesToCertificateSheet(
         p?.organizerName || lead?.fullName || "",
         formatSheetDateTimeDdMmYyyy(new Date()),
         p?.id || t.id, // M — מזהה משתתף אם יש, אחרת מודרך
-        "", // N — קישור PDF
+        t.certificateUrl?.trim() || "", // N — קישור PDF / Drive
         "TRUE", // O — נוכחות
         ...addressAndCategoryCells(p || {}), // P–T
       ]

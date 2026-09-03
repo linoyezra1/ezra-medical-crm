@@ -461,7 +461,7 @@ export function CohortDocumentationView() {
                 }}
                 className="mt-0.5"
               />
-              <span className="font-medium">המחזור שולם</span>
+              <span className="font-medium">התיעוד שולם (תשלום אחד לכל המפגשים)</span>
             </label>
             {isPaid ? (
               <div>

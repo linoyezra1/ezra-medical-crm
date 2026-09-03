@@ -2,9 +2,20 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import { ExternalLink, Link2 } from "lucide-react"
+import { toast } from "sonner"
 import { CertStatusPicker } from "@/components/certificates-hub/cert-status-picker"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -13,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { updateParticipantCertificateUrlAction } from "@/lib/certificates-hub-actions"
 import {
   formatCertDateDisplay,
   normalizeBatchName,
@@ -32,6 +44,7 @@ export function CertificatesHubSection({
   onToggleSection,
   onStatusChange,
   onRegistryChange,
+  onCertificateUrlChange,
 }: {
   section: string
   rows: CertificatesHubRow[]
@@ -45,9 +58,16 @@ export function CertificatesHubSection({
     payload: { status: string; isCompleted: boolean },
   ) => void
   onRegistryChange: () => void
+  onCertificateUrlChange?: (
+    participantId: string,
+    certificateUrl: string | null,
+  ) => void
 }) {
   const [trainingFilter, setTrainingFilter] = useState(ALL_TRAININGS)
   const [batchFilter, setBatchFilter] = useState(ALL_BATCHES)
+  const [urlEditRow, setUrlEditRow] = useState<CertificatesHubRow | null>(null)
+  const [urlDraft, setUrlDraft] = useState("")
+  const [urlSaving, setUrlSaving] = useState(false)
 
   const trainingOptions = useMemo(() => {
     const set = new Set<string>()
@@ -96,6 +116,31 @@ export function CertificatesHubSection({
   const allSelected =
     filteredRows.length > 0 &&
     filteredRows.every((r) => selectedIds.has(r.participantId))
+
+  const openUrlEdit = (row: CertificatesHubRow) => {
+    setUrlEditRow(row)
+    setUrlDraft(row.certificateUrl?.trim() || "")
+  }
+
+  const saveUrl = async () => {
+    if (!urlEditRow) return
+    setUrlSaving(true)
+    const res = await updateParticipantCertificateUrlAction({
+      participantId: urlEditRow.participantId,
+      certificateUrl: urlDraft.trim() || null,
+    })
+    setUrlSaving(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    onCertificateUrlChange?.(
+      urlEditRow.participantId,
+      res.data.certificateUrl,
+    )
+    toast.success("קישור התעודה נשמר")
+    setUrlEditRow(null)
+  }
 
   const subtitle =
     trainingFilter === ALL_TRAININGS && batchFilter === ALL_BATCHES
@@ -247,6 +292,28 @@ export function CertificatesHubSection({
                       >
                         {r.fullName}
                       </Link>
+                      {r.certificateUrl?.trim() ? (
+                        <a
+                          href={r.certificateUrl.trim()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex size-7 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
+                          title="פתח תעודה"
+                          aria-label={`פתח תעודה של ${r.fullName}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="size-3.5" />
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="inline-flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        title="קישור תעודה"
+                        aria-label={`עריכת קישור תעודה של ${r.fullName}`}
+                        onClick={() => openUrlEdit(r)}
+                      >
+                        <Link2 className="size-3.5" />
+                      </button>
                       {r.unassignedBody ? (
                         <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                           חסר גוף מסמיך
@@ -315,6 +382,51 @@ export function CertificatesHubSection({
           </table>
         )}
       </div>
+
+      <Dialog
+        open={Boolean(urlEditRow)}
+        onOpenChange={(open) => !open && setUrlEditRow(null)}
+      >
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader className="text-right">
+            <DialogTitle>קישור תעודה</DialogTitle>
+            {urlEditRow ? (
+              <p className="text-xs text-muted-foreground">
+                {urlEditRow.fullName}
+              </p>
+            ) : null}
+          </DialogHeader>
+          <div>
+            <Label className="mb-1.5 block text-sm">
+              קישור תעודה (דרייב / PDF)
+            </Label>
+            <Input
+              value={urlDraft}
+              onChange={(e) => setUrlDraft(e.target.value)}
+              placeholder="https://drive.google.com/..."
+              dir="ltr"
+              className="text-left"
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button
+              type="button"
+              disabled={urlSaving}
+              onClick={() => void saveUrl()}
+            >
+              {urlSaving ? "שומר…" : "שמירה"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={urlSaving}
+              onClick={() => setUrlEditRow(null)}
+            >
+              ביטול
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </CollapsibleSection>
   )
 }

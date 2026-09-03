@@ -69,6 +69,8 @@ export type CertificatesHubRow = {
   batchName?: string
   isExternal?: boolean
   unassignedBody?: boolean
+  /** קישור תעודה קיים (Drive / PDF) — Column N / certificateUrl */
+  certificateUrl?: string
 }
 
 /** סטטוסי הדרכה שמאפשרים כניסה למודול תעודות */

@@ -279,6 +279,18 @@ export function CertificatesHubView() {
                 void onStatusChange(row, kind, payload)
               }
               onRegistryChange={() => void load()}
+              onCertificateUrlChange={(participantId, certificateUrl) => {
+                setRows((prev) =>
+                  prev.map((r) =>
+                    r.participantId === participantId
+                      ? {
+                          ...r,
+                          certificateUrl: certificateUrl || undefined,
+                        }
+                      : r,
+                  ),
+                )
+              }}
             />
           ))
         )}

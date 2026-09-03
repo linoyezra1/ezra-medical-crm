@@ -47,8 +47,9 @@ import {
   listCohortDocumentationAction,
   listCohortNameOptionsAction,
   updateCohortDocumentationAction,
+  updateCohortPaymentAction,
 } from "@/lib/cohort-documentation-actions"
-import { formatCurrency, formatDate } from "@/lib/helpers"
+import { formatDate } from "@/lib/helpers"
 import { cn } from "@/lib/utils"
 
 const NEW_COHORT = "__new__"
@@ -83,11 +84,13 @@ export function CohortDocumentationDetailView({
   const [editInstructorName, setEditInstructorName] = useState("")
   const [editDriveUrl, setEditDriveUrl] = useState("")
   const [editNotes, setEditNotes] = useState("")
-  const [editIsPaid, setEditIsPaid] = useState(false)
-  const [editPaidAmount, setEditPaidAmount] = useState("")
   const [editSelectedFile, setEditSelectedFile] = useState<File | null>(null)
   const [editDragOver, setEditDragOver] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
+
+  const [cohortIsPaid, setCohortIsPaid] = useState(false)
+  const [cohortPaidAmount, setCohortPaidAmount] = useState("")
+  const [savingPayment, setSavingPayment] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -97,7 +100,14 @@ export function CohortDocumentationDetailView({
     ])
     setLoading(false)
     if (!docsRes.ok) toast.error(docsRes.error)
-    else setRows(docsRes.data)
+    else {
+      setRows(docsRes.data)
+      const paidRow = docsRes.data.find((r) => r.isPaid)
+      setCohortIsPaid(Boolean(paidRow))
+      setCohortPaidAmount(
+        paidRow?.paidAmount != null ? String(paidRow.paidAmount) : "",
+      )
+    }
     if (namesRes.ok) setCohortOptions(namesRes.data)
   }, [cohortName])
 
@@ -198,8 +208,6 @@ export function CohortDocumentationDetailView({
     setEditInstructorName(row.instructorName ?? "")
     setEditDriveUrl(row.driveUrl ?? "")
     setEditNotes(row.notes ?? "")
-    setEditIsPaid(row.isPaid)
-    setEditPaidAmount(row.paidAmount != null ? String(row.paidAmount) : "")
     setEditSelectedFile(null)
     setEditDragOver(false)
     if (editFileRef.current) editFileRef.current.value = ""
@@ -226,13 +234,6 @@ export function CohortDocumentationDetailView({
       toast.error("יש לבחור תאריך מפגש")
       return
     }
-    if (editIsPaid) {
-      const amount = Number(editPaidAmount)
-      if (!editPaidAmount.trim() || Number.isNaN(amount) || amount <= 0) {
-        toast.error("יש להזין סכום תשלום תקין")
-        return
-      }
-    }
 
     const fd = new FormData()
     fd.set("id", editRow.id)
@@ -249,10 +250,6 @@ export function CohortDocumentationDetailView({
     }
     if (editDriveUrl.trim()) fd.set("driveUrl", editDriveUrl.trim())
     if (editNotes.trim()) fd.set("notes", editNotes.trim())
-    fd.set("isPaid", editIsPaid ? "true" : "false")
-    if (editIsPaid && editPaidAmount.trim()) {
-      fd.set("paidAmount", editPaidAmount.trim())
-    }
     if (editSelectedFile) fd.set("file", editSelectedFile)
 
     setSavingEdit(true)
@@ -264,6 +261,33 @@ export function CohortDocumentationDetailView({
     }
     toast.success("התיעוד עודכן")
     closeEdit()
+    void refresh()
+  }
+
+  const saveCohortPayment = async () => {
+    if (cohortIsPaid) {
+      const amount = Number(cohortPaidAmount)
+      if (
+        !cohortPaidAmount.trim() ||
+        Number.isNaN(amount) ||
+        amount <= 0
+      ) {
+        toast.error("יש להזין סכום תשלום תקין")
+        return
+      }
+    }
+    setSavingPayment(true)
+    const res = await updateCohortPaymentAction({
+      cohortName,
+      isPaid: cohortIsPaid,
+      paidAmount: cohortIsPaid ? Number(cohortPaidAmount) : null,
+    })
+    setSavingPayment(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success("תשלום המחזור עודכן")
     void refresh()
   }
 
@@ -312,6 +336,49 @@ export function CohortDocumentationDetailView({
       />
 
       <div className="space-y-6 p-4 md:p-6">
+        <section className="space-y-3 rounded-xl border border-border bg-card p-3">
+          <h2 className="text-sm font-semibold">תשלום לתיעוד המחזור</h2>
+          <p className="text-xs text-muted-foreground">
+            תשלום אחד לכל התיעוד — לא לפי מפגש
+          </p>
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border bg-secondary/30 px-3 py-2.5 text-sm">
+            <Checkbox
+              checked={cohortIsPaid}
+              onCheckedChange={(v) => {
+                const next = Boolean(v)
+                setCohortIsPaid(next)
+                if (!next) setCohortPaidAmount("")
+              }}
+              className="mt-0.5"
+            />
+            <span className="font-medium">המחזור שולם</span>
+          </label>
+          {cohortIsPaid ? (
+            <div>
+              <Label className="mb-1.5 block text-sm">סכום ששולם (₪)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={cohortPaidAmount}
+                onChange={(e) => setCohortPaidAmount(e.target.value)}
+                placeholder="0"
+                dir="ltr"
+                className="text-left"
+              />
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            className="rounded-xl"
+            disabled={savingPayment || loading}
+            onClick={() => void saveCohortPayment()}
+          >
+            {savingPayment ? "שומר…" : "שמירת תשלום"}
+          </Button>
+        </section>
+
         <section className="overflow-x-auto rounded-xl border border-border bg-card">
           <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
             <FileSpreadsheet className="size-4 text-primary" />
@@ -412,14 +479,13 @@ export function CohortDocumentationDetailView({
               אין מפגשים מתועדים למחזור זה
             </p>
           ) : (
-            <table className="w-full min-w-[720px] text-right text-sm">
+            <table className="w-full min-w-[640px] text-right text-sm">
               <thead className="bg-secondary/50 text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2.5 font-semibold">מס&apos; מפגש</th>
                   <th className="px-3 py-2.5 font-semibold">תאריך</th>
                   <th className="px-3 py-2.5 font-semibold">שם</th>
                   <th className="px-3 py-2.5 font-semibold">שעות</th>
-                  <th className="px-3 py-2.5 font-semibold">תשלום</th>
                   <th className="px-3 py-2.5 font-semibold">פעולות</th>
                 </tr>
               </thead>
@@ -437,20 +503,6 @@ export function CohortDocumentationDetailView({
                     </td>
                     <td className="px-3 py-2.5">{row.instructorName || "—"}</td>
                     <td className="px-3 py-2.5">{row.durationHours || "—"}</td>
-                    <td className="px-3 py-2.5">
-                      {row.isPaid ? (
-                        <span className="inline-block rounded-lg bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
-                          שולם
-                          {row.paidAmount != null
-                            ? ` · ${formatCurrency(row.paidAmount)}`
-                            : null}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          לא שולם
-                        </span>
-                      )}
-                    </td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center justify-end gap-1">
                         <button
@@ -708,33 +760,6 @@ export function CohortDocumentationDetailView({
                   placeholder="שם המדריך או המדווח"
                 />
               </div>
-              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border bg-secondary/30 px-3 py-2.5 text-sm">
-                <Checkbox
-                  checked={editIsPaid}
-                  onCheckedChange={(v) => {
-                    const next = Boolean(v)
-                    setEditIsPaid(next)
-                    if (!next) setEditPaidAmount("")
-                  }}
-                  className="mt-0.5"
-                />
-                <span className="font-medium">המחזור שולם</span>
-              </label>
-              {editIsPaid ? (
-                <div>
-                  <Label className="mb-1.5 block text-sm">סכום ששולם (₪)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={editPaidAmount}
-                    onChange={(e) => setEditPaidAmount(e.target.value)}
-                    placeholder="0"
-                    dir="ltr"
-                    className="text-left"
-                  />
-                </div>
-              ) : null}
               <div>
                 <Label className="mb-1.5 block text-sm">
                   קובץ Excel / CSV (החלפה אופציונלית)
