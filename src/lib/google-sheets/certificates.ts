@@ -871,6 +871,83 @@ export async function syncCertificateHoursForParticipantIds(
   }
 }
 
+/**
+ * CRM → Sheets: עדכון קישור PDF לתעודה (עמודה N) לשורות קיימות
+ * לפי מזהה משתתף / מודרך.
+ */
+export async function syncCertificateUrlsForParticipantIds(
+  participantIds: string[],
+): Promise<{ ok: true; updated: number } | { ok: false; error: string }> {
+  if (!isGoogleSheetsConfigured()) {
+    return { ok: true, updated: 0 }
+  }
+  const ids = [
+    ...new Set(participantIds.map((id) => id.trim()).filter(Boolean)),
+  ]
+  if (!ids.length) return { ok: true, updated: 0 }
+
+  try {
+    const rows = await prisma.participant.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        traineeId: true,
+        certificateUrl: true,
+        trainee: { select: { certificateUrl: true } },
+      },
+    })
+
+    /** מפתח שורה בגיליון (participantId או traineeId) → קישור לעמודה N */
+    const urlByCrmId = new Map<string, string>()
+    for (const p of rows) {
+      const url =
+        p.certificateUrl?.trim() || p.trainee?.certificateUrl?.trim() || ""
+      urlByCrmId.set(p.id, url)
+      if (p.traineeId) urlByCrmId.set(p.traineeId, url)
+    }
+    if (!urlByCrmId.size) return { ok: true, updated: 0 }
+
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+    const existing = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: sheetA1(tab, SHEET_RANGE_CRM_IDS),
+    })
+    const rowById = crmIdRowMap(existing.data.values)
+    const updates: { range: string; values: string[][] }[] = []
+    const seenRows = new Set<number>()
+    for (const [crmId, url] of urlByCrmId) {
+      const rowIndex = rowById.get(crmId)
+      if (!rowIndex || seenRows.has(rowIndex)) continue
+      seenRows.add(rowIndex)
+      updates.push({
+        range: sheetA1(tab, `N${rowIndex}`),
+        values: [[url]],
+      })
+    }
+    if (!updates.length) return { ok: true, updated: 0 }
+
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "USER_ENTERED",
+        data: updates,
+      },
+    })
+    return { ok: true, updated: updates.length }
+  } catch (err) {
+    console.error("[syncCertificateUrlsForParticipantIds]", err)
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "שגיאה בעדכון קישור תעודה בגיליון",
+    }
+  }
+}
+
 /** CRM → Sheets: כתיבת טקסט סטטוס תעודה (I/J) לשורות קיימות */
 export async function syncCertificateStatusesToSheets(): Promise<
   { ok: true; updated: number } | { ok: false; error: string }

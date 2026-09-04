@@ -32,6 +32,8 @@ import {
 import { normalizeCertifyingBody } from "@/lib/certifying-body"
 import { formatInJerusalem } from "@/lib/timezone"
 import { dbStatusToUi } from "@/lib/types"
+import { syncCertificateUrlsForParticipantIds, exportLeadParticipantsToSheets } from "@/lib/google-sheets/certificates"
+import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client"
 
 type ActionResult<T = unknown> =
   | { ok: true; data: T }
@@ -678,6 +680,26 @@ export async function updateParticipantCertificateUrlAction(input: {
         where: { id: existing.traineeId },
         data: { certificateUrl: url },
       })
+    }
+
+    if (isGoogleSheetsConfigured()) {
+      const sheetsSync = await syncCertificateUrlsForParticipantIds([
+        participantId,
+      ])
+      if (!sheetsSync.ok) {
+        console.error(
+          "[updateParticipantCertificateUrlAction] sheets sync",
+          sheetsSync.error,
+        )
+      } else if (sheetsSync.updated === 0 && url) {
+        const exportRes = await exportLeadParticipantsToSheets(existing.leadId)
+        if (!exportRes.ok) {
+          console.error(
+            "[updateParticipantCertificateUrlAction] sheets export",
+            exportRes.error,
+          )
+        }
+      }
     }
 
     revalidatePath("/certificates")

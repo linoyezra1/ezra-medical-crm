@@ -54,6 +54,7 @@ import {
   syncCertificateFlagsFromSheets,
   syncCertificateStatusesToSheets,
   syncCertificateHoursForParticipantIds,
+  syncCertificateUrlsForParticipantIds,
   tryAutoCompleteTrainingIfReady,
   exportTraineesToCertificateSheet,
 } from "@/lib/google-sheets/certificates";
@@ -1432,10 +1433,11 @@ export async function addExternalParticipant(input: {
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } })
   if (!lead) return { ok: false, error: "הדרכה לא נמצאה" }
   const ui = dbStatusToUi(lead.courseStatus)
-  if (ui !== "new" && ui !== "closed") {
+  if (ui !== "new" && ui !== "closed" && ui !== "pending_certificates") {
     return {
       ok: false,
-      error: "ניתן לשייך מצטרף נוסף רק להדרכה בסטטוס ליד חדש או נרשם ביומן",
+      error:
+        "ניתן לשייך מצטרף נוסף רק להדרכה בסטטוס ליד חדש, נרשם ביומן או ממתין לתעודות",
     }
   }
   const name = (input.fullName || "").trim()
@@ -1494,6 +1496,13 @@ export async function addExternalParticipant(input: {
         source: "manual",
       },
     })
+    if (
+      result.created &&
+      lead.courseStatus === "certificates_pending" &&
+      isGoogleSheetsConfigured()
+    ) {
+      await exportLeadParticipantsToSheets(input.leadId)
+    }
     revalidatePath("/")
     revalidatePath("/leads")
     revalidatePath(`/leads/${input.leadId}`)
@@ -1515,6 +1524,12 @@ export async function addExternalParticipant(input: {
     },
   })
   await syncParticipantContactToTrainee(created)
+  if (
+    lead.courseStatus === "certificates_pending" &&
+    isGoogleSheetsConfigured()
+  ) {
+    await exportLeadParticipantsToSheets(input.leadId)
+  }
   revalidatePath("/")
   revalidatePath("/leads")
   revalidatePath(`/leads/${input.leadId}`)
@@ -2172,8 +2187,20 @@ export async function updateTrainee(
 
   const linked = await prisma.participant.findMany({
     where: { traineeId: id },
-    select: { leadId: true },
+    select: { leadId: true, id: true },
   });
+  if (
+    nextCertificateUrl !== undefined &&
+    isGoogleSheetsConfigured() &&
+    linked.length
+  ) {
+    const sheetsSync = await syncCertificateUrlsForParticipantIds(
+      linked.map((p) => p.id),
+    );
+    if (!sheetsSync.ok) {
+      console.error("[updateTrainee] sheets cert url sync", sheetsSync.error);
+    }
+  }
   for (const p of linked) {
     revalidatePath(`/leads/${p.leadId}`);
   }

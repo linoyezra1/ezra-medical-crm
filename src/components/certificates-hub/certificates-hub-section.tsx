@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { ExternalLink, Link2 } from "lucide-react"
 import { toast } from "sonner"
@@ -78,20 +78,38 @@ export function CertificatesHubSection({
     return [...set].sort((a, b) => a.localeCompare(b, "he"))
   }, [rows])
 
+  /** שורות לסינון מחזור — רק מהדרכת המקור שנבחרה (AND) */
+  const rowsForBatchScope = useMemo(() => {
+    if (trainingFilter === ALL_TRAININGS) return rows
+    return rows.filter((r) => r.trainingTitle === trainingFilter)
+  }, [rows, trainingFilter])
+
   const batchOptions = useMemo(() => {
     const map = new Map<string, number>()
-    for (const r of rows) {
+    for (const r of rowsForBatchScope) {
       const name = normalizeBatchName(r.batchName)
       if (!name) continue
       map.set(name, (map.get(name) ?? 0) + 1)
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], "he"))
-  }, [rows])
+  }, [rowsForBatchScope])
 
   const unbatchedCount = useMemo(
-    () => rows.filter((r) => !r.batchId).length,
-    [rows],
+    () => rowsForBatchScope.filter((r) => !r.batchId).length,
+    [rowsForBatchScope],
   )
+
+  // מחזור שנבחר ולא קיים תחת הדרכת המקור הנוכחית — איפוס
+  useEffect(() => {
+    if (batchFilter === ALL_BATCHES) return
+    if (batchFilter === NO_BATCH) {
+      if (unbatchedCount === 0) setBatchFilter(ALL_BATCHES)
+      return
+    }
+    if (!batchOptions.some(([name]) => name === batchFilter)) {
+      setBatchFilter(ALL_BATCHES)
+    }
+  }, [batchFilter, batchOptions, unbatchedCount])
 
   const showTrainingFilter = trainingOptions.length > 1
   const showBatchFilter =
@@ -103,11 +121,17 @@ export function CertificatesHubSection({
     if (trainingFilter !== ALL_TRAININGS) {
       list = list.filter((r) => r.trainingTitle === trainingFilter)
     }
-    if (batchFilter === NO_BATCH) {
+    const batchStillValid =
+      batchFilter === ALL_BATCHES ||
+      (batchFilter === NO_BATCH && list.some((r) => !r.batchId)) ||
+      (batchFilter !== NO_BATCH &&
+        list.some((r) => normalizeBatchName(r.batchName) === batchFilter))
+    const activeBatch = batchStillValid ? batchFilter : ALL_BATCHES
+    if (activeBatch === NO_BATCH) {
       list = list.filter((r) => !r.batchId)
-    } else if (batchFilter !== ALL_BATCHES) {
+    } else if (activeBatch !== ALL_BATCHES) {
       list = list.filter(
-        (r) => normalizeBatchName(r.batchName) === batchFilter,
+        (r) => normalizeBatchName(r.batchName) === activeBatch,
       )
     }
     return list
@@ -162,7 +186,10 @@ export function CertificatesHubSection({
               </Label>
               <Select
                 value={trainingFilter}
-                onValueChange={(v) => setTrainingFilter(v || ALL_TRAININGS)}
+                onValueChange={(v) => {
+                  setTrainingFilter(v || ALL_TRAININGS)
+                  setBatchFilter(ALL_BATCHES)
+                }}
               >
                 <SelectTrigger className="h-8 min-w-[200px] max-w-md flex-1 text-xs">
                   <SelectValue placeholder="כל ההדרכות" />
@@ -205,7 +232,7 @@ export function CertificatesHubSection({
                 </SelectTrigger>
                 <SelectContent className="min-w-[240px] max-w-md">
                   <SelectItem value={ALL_BATCHES} className="text-right text-xs">
-                    כל המחזורים ({rows.length})
+                    כל המחזורים ({rowsForBatchScope.length})
                   </SelectItem>
                   {unbatchedCount > 0 ? (
                     <SelectItem value={NO_BATCH} className="text-right text-xs">

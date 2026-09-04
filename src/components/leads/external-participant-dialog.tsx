@@ -100,7 +100,12 @@ export function ExternalParticipantDialog({
   const assignable = useMemo(
     () =>
       leads
-        .filter((l) => l.status === "new" || l.status === "closed")
+        .filter(
+          (l) =>
+            l.status === "new" ||
+            l.status === "closed" ||
+            l.status === "pending_certificates",
+        )
         .sort((a, b) => (b.date || "").localeCompare(a.date || "")),
     [leads],
   )

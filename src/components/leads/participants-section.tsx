@@ -8,9 +8,11 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronLeft,
+  ExternalLink,
   FileCheck,
   FileSpreadsheet,
   GraduationCap,
+  Link2,
   Loader2,
   MessageCircle,
   MoreVertical,
@@ -85,6 +87,7 @@ import {
   transferParticipantToLead,
   updateParticipantDetails,
 } from "@/lib/actions"
+import { updateParticipantCertificateUrlAction } from "@/lib/certificates-hub-actions"
 import {
   COURSE_TYPE_FORMAT_ERROR,
   COURSE_TYPE_OTHER,
@@ -117,6 +120,67 @@ function ExternalTag() {
   return (
     <span className="shrink-0 rounded bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-pink-700">
       חיצוני
+    </span>
+  )
+}
+
+/** קישור תעודה אפקטיבי — ממשתתף או ממודרך מקושר */
+function effectiveCertificateUrl(
+  p: Participant,
+  trainee?: Trainee | null,
+): string {
+  return (
+    p.certificateUrl?.trim() || trainee?.certificateUrl?.trim() || ""
+  )
+}
+
+/** אייקון תעודה ליד שם המודרך — פתיחה / הוספת קישור */
+function ParticipantCertificateLinkControls({
+  url,
+  name,
+  onEdit,
+}: {
+  url: string
+  name: string
+  onEdit: () => void
+}) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-0.5">
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex size-7 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
+          title="פתח תעודה"
+          aria-label={`פתח תעודה של ${name}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink className="size-3.5" />
+        </a>
+      ) : null}
+      <button
+        type="button"
+        className={cn(
+          "inline-flex size-7 items-center justify-center rounded-lg hover:bg-secondary",
+          url
+            ? "text-amber-600 hover:text-amber-700"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+        title={url ? "עריכת קישור תעודה" : "הוספת קישור תעודה"}
+        aria-label={
+          url
+            ? `עריכת קישור תעודה של ${name}`
+            : `הוספת קישור תעודה ל־${name}`
+        }
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onEdit()
+        }}
+      >
+        {url ? <Award className="size-3.5" /> : <Link2 className="size-3.5" />}
+      </button>
     </span>
   )
 }
@@ -197,10 +261,12 @@ type LmsCredentialMeta = {
 function ParticipantMobileKebab({
   p,
   lmsBusy,
+  certificateUrl,
   onWhatsApp,
   onSendZoom,
   onToggleAttended,
   onCreateLms,
+  onEditCertificateUrl,
   onEdit,
   onPayment,
   onTransfer,
@@ -208,10 +274,12 @@ function ParticipantMobileKebab({
 }: {
   p: Participant
   lmsBusy: string | null
+  certificateUrl: string
   onWhatsApp: () => void
   onSendZoom?: () => void
   onToggleAttended: () => void
   onCreateLms: () => void
+  onEditCertificateUrl: () => void
   onEdit: () => void
   onPayment: () => void
   onTransfer: () => void
@@ -285,18 +353,30 @@ function ParticipantMobileKebab({
                 שלח קישור לזום
               </button>
             ) : null}
-            {p.certificateUrl?.trim() ? (
+            {certificateUrl ? (
               <a
-                href={p.certificateUrl.trim()}
+                href={certificateUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-base hover:bg-secondary"
                 onClick={() => setOpen(false)}
               >
                 <FileCheck className="size-5 shrink-0 text-amber-500" />
-                תעודה
+                פתח תעודה
               </a>
             ) : null}
+            <button
+              type="button"
+              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary"
+              onClick={() => run(onEditCertificateUrl)}
+            >
+              {certificateUrl ? (
+                <Award className="size-5 shrink-0 text-amber-600" />
+              ) : (
+                <Link2 className="size-5 shrink-0 text-muted-foreground" />
+              )}
+              {certificateUrl ? "עריכת קישור תעודה" : "הוספת קישור תעודה"}
+            </button>
             <button
               type="button"
               className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-right text-base hover:bg-secondary"
@@ -371,7 +451,7 @@ export function ParticipantsSection({
   /** @deprecated רענון אוטומטי בוטל — רק כפתור רענון ידני */
   active?: boolean
 }) {
-  const { setLeadParticipants, refresh, settings, leads, trainees } =
+  const { setLeadParticipants, refresh, settings, leads, trainees, updateTraineeLocal } =
     useApp()
   const [polling, setPolling] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -385,6 +465,9 @@ export function ParticipantsSection({
   >({})
   const [editP, setEditP] = useState<Participant | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+  const [certUrlP, setCertUrlP] = useState<Participant | null>(null)
+  const [certUrlDraft, setCertUrlDraft] = useState("")
+  const [certUrlSaving, setCertUrlSaving] = useState(false)
   const [payParticipant, setPayParticipant] = useState<Participant | null>(null)
   const [transferP, setTransferP] = useState<Participant | null>(null)
   const [transferLeadId, setTransferLeadId] = useState("")
@@ -435,6 +518,43 @@ export function ParticipantsSection({
     const id = p.idNumber?.trim()
     if (!id) return undefined
     return trainees.find((t) => t.idNumber === id)
+  }
+
+  const certificateUrlFor = (p: Participant) =>
+    effectiveCertificateUrl(p, traineeForParticipant(p))
+
+  const openCertUrlEdit = (p: Participant) => {
+    setCertUrlP(p)
+    setCertUrlDraft(certificateUrlFor(p))
+  }
+
+  const saveCertUrl = async () => {
+    if (!certUrlP || certUrlSaving) return
+    setCertUrlSaving(true)
+    const res = await updateParticipantCertificateUrlAction({
+      participantId: certUrlP.id,
+      certificateUrl: certUrlDraft.trim() || null,
+    })
+    setCertUrlSaving(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    const nextUrl = res.data.certificateUrl || undefined
+    setLeadParticipants(
+      lead.id,
+      participants.map((row) =>
+        row.id === certUrlP.id
+          ? { ...row, certificateUrl: nextUrl }
+          : row,
+      ),
+    )
+    const trainee = traineeForParticipant(certUrlP)
+    if (trainee?.id) {
+      updateTraineeLocal(trainee.id, { certificateUrl: nextUrl })
+    }
+    toast.success("קישור התעודה נשמר")
+    setCertUrlP(null)
   }
 
   const participantNotes = (p: Participant) => {
@@ -1181,36 +1301,43 @@ export function ParticipantsSection({
                             />
                           </td>
                           <td className="max-w-0 px-3 py-2 font-medium">
-                            <button
-                              type="button"
-                              className="block w-full min-w-0 text-right hover:text-primary"
-                              onClick={() =>
-                                setExpandedId(open ? null : p.id)
-                              }
-                              aria-expanded={open}
-                            >
-                              <span className="flex min-w-0 items-center gap-1.5">
-                                {open ? (
-                                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                                ) : (
-                                  <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
-                                )}
-                                {p.attended ? (
-                                  <span
-                                    className="size-1.5 shrink-0 rounded-full bg-emerald-500"
-                                    title="נוכח"
+                            <div className="flex min-w-0 items-start gap-1">
+                              <button
+                                type="button"
+                                className="min-w-0 flex-1 text-right hover:text-primary"
+                                onClick={() =>
+                                  setExpandedId(open ? null : p.id)
+                                }
+                                aria-expanded={open}
+                              >
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  {open ? (
+                                    <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
+                                  )}
+                                  {p.attended ? (
+                                    <span
+                                      className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+                                      title="נוכח"
+                                    />
+                                  ) : null}
+                                  <span className="min-w-0 flex-1 truncate font-semibold">
+                                    {p.name}
+                                  </span>
+                                  <SessionMeetingBadge
+                                    session={sessionByParticipantId.get(p.id)}
                                   />
-                                ) : null}
-                                <span className="min-w-0 flex-1 truncate font-semibold">
-                                  {p.name}
+                                  {p.isExternal ? <ExternalTag /> : null}
                                 </span>
-                                <SessionMeetingBadge
-                                  session={sessionByParticipantId.get(p.id)}
-                                />
-                                {p.isExternal ? <ExternalTag /> : null}
-                              </span>
-                              <ParticipantSecondaryTags p={p} />
-                            </button>
+                                <ParticipantSecondaryTags p={p} />
+                              </button>
+                              <ParticipantCertificateLinkControls
+                                url={certificateUrlFor(p)}
+                                name={p.name}
+                                onEdit={() => openCertUrlEdit(p)}
+                              />
+                            </div>
                           </td>
                           <td className="max-w-0 truncate px-3 py-2">
                             <CertifyingBodyBadge
@@ -1316,11 +1443,11 @@ export function ParticipantsSection({
                                     <Award className="text-amber-600" />
                                     הנפקת תעודה דיגיטלית
                                   </DropdownMenuItem>
-                                  {p.certificateUrl?.trim() ? (
+                                  {certificateUrlFor(p) ? (
                                     <DropdownMenuItem
                                       onClick={() =>
                                         window.open(
-                                          p.certificateUrl!.trim(),
+                                          certificateUrlFor(p),
                                           "_blank",
                                           "noopener,noreferrer",
                                         )
@@ -1330,6 +1457,20 @@ export function ParticipantsSection({
                                       פתח תעודת PDF
                                     </DropdownMenuItem>
                                   ) : null}
+                                  <DropdownMenuItem
+                                    onClick={() => openCertUrlEdit(p)}
+                                  >
+                                    <Link2
+                                      className={
+                                        certificateUrlFor(p)
+                                          ? "text-amber-600"
+                                          : "text-muted-foreground"
+                                      }
+                                    />
+                                    {certificateUrlFor(p)
+                                      ? "עריכת קישור תעודה"
+                                      : "הוספת קישור תעודה"}
+                                  </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   {p.phone?.trim() ? (
                                     <DropdownMenuItem
@@ -1477,10 +1618,16 @@ export function ParticipantsSection({
                         session={sessionByParticipantId.get(p.id)}
                       />
                     </button>
+                    <ParticipantCertificateLinkControls
+                      url={certificateUrlFor(p)}
+                      name={p.name}
+                      onEdit={() => openCertUrlEdit(p)}
+                    />
 
                     <ParticipantMobileKebab
                       p={p}
                       lmsBusy={lmsBusy}
+                      certificateUrl={certificateUrlFor(p)}
                       onWhatsApp={() => openWhatsApp(p)}
                       onSendZoom={
                         canSendZoom ? () => openZoomSend(p) : undefined
@@ -1489,6 +1636,7 @@ export function ParticipantsSection({
                         void toggleAttended(p, !p.attended)
                       }
                       onCreateLms={() => void createLmsUsers([p.id])}
+                      onEditCertificateUrl={() => openCertUrlEdit(p)}
                       onEdit={() => openEdit(p)}
                       onPayment={() => setPayParticipant(p)}
                       onTransfer={() => openTransfer(p)}
@@ -1839,6 +1987,55 @@ export function ParticipantsSection({
               ) : (
                 "שמירה"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(certUrlP)}
+        onOpenChange={(open) => {
+          if (!open) setCertUrlP(null)
+        }}
+      >
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader className="text-right">
+            <DialogTitle>קישור תעודה</DialogTitle>
+            {certUrlP ? (
+              <p className="text-xs text-muted-foreground">{certUrlP.name}</p>
+            ) : null}
+          </DialogHeader>
+          <div>
+            <Label className="mb-1.5 block text-sm">
+              קישור תעודה (דרייב / PDF)
+            </Label>
+            <Input
+              value={certUrlDraft}
+              onChange={(e) => setCertUrlDraft(e.target.value)}
+              placeholder="https://drive.google.com/..."
+              dir="ltr"
+              className="text-left"
+              disabled={certUrlSaving}
+            />
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              בהנפקת תעודה יישלח הקובץ מהקישור הזה, כמו בניהול התעודות
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button
+              type="button"
+              disabled={certUrlSaving}
+              onClick={() => void saveCertUrl()}
+            >
+              {certUrlSaving ? "שומר…" : "שמירה"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={certUrlSaving}
+              onClick={() => setCertUrlP(null)}
+            >
+              ביטול
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -33,7 +33,10 @@ export function TrainingPickerDialog({
 
   const options = useMemo(() => {
     const list = leads.filter(
-      (l) => l.status === "new" || l.status === "closed",
+      (l) =>
+        l.status === "new" ||
+        l.status === "closed" ||
+        l.status === "pending_certificates",
     )
     const term = q.trim().toLowerCase()
     const filtered = !term
