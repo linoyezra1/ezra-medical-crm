@@ -8,7 +8,6 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronLeft,
-  ExternalLink,
   FileCheck,
   FileSpreadsheet,
   GraduationCap,
@@ -131,57 +130,6 @@ function effectiveCertificateUrl(
 ): string {
   return (
     p.certificateUrl?.trim() || trainee?.certificateUrl?.trim() || ""
-  )
-}
-
-/** אייקון תעודה ליד שם המודרך — פתיחה / הוספת קישור */
-function ParticipantCertificateLinkControls({
-  url,
-  name,
-  onEdit,
-}: {
-  url: string
-  name: string
-  onEdit: () => void
-}) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-0.5">
-      {url ? (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex size-7 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
-          title="פתח תעודה"
-          aria-label={`פתח תעודה של ${name}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ExternalLink className="size-3.5" />
-        </a>
-      ) : null}
-      <button
-        type="button"
-        className={cn(
-          "inline-flex size-7 items-center justify-center rounded-lg hover:bg-secondary",
-          url
-            ? "text-amber-600 hover:text-amber-700"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-        title={url ? "עריכת קישור תעודה" : "הוספת קישור תעודה"}
-        aria-label={
-          url
-            ? `עריכת קישור תעודה של ${name}`
-            : `הוספת קישור תעודה ל־${name}`
-        }
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          onEdit()
-        }}
-      >
-        {url ? <Award className="size-3.5" /> : <Link2 className="size-3.5" />}
-      </button>
-    </span>
   )
 }
 
@@ -1301,43 +1249,36 @@ export function ParticipantsSection({
                             />
                           </td>
                           <td className="max-w-0 px-3 py-2 font-medium">
-                            <div className="flex min-w-0 items-start gap-1">
-                              <button
-                                type="button"
-                                className="min-w-0 flex-1 text-right hover:text-primary"
-                                onClick={() =>
-                                  setExpandedId(open ? null : p.id)
-                                }
-                                aria-expanded={open}
-                              >
-                                <span className="flex min-w-0 items-center gap-1.5">
-                                  {open ? (
-                                    <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                                  ) : (
-                                    <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
-                                  )}
-                                  {p.attended ? (
-                                    <span
-                                      className="size-1.5 shrink-0 rounded-full bg-emerald-500"
-                                      title="נוכח"
-                                    />
-                                  ) : null}
-                                  <span className="min-w-0 flex-1 truncate font-semibold">
-                                    {p.name}
-                                  </span>
-                                  <SessionMeetingBadge
-                                    session={sessionByParticipantId.get(p.id)}
+                            <button
+                              type="button"
+                              className="block w-full min-w-0 text-right hover:text-primary"
+                              onClick={() =>
+                                setExpandedId(open ? null : p.id)
+                              }
+                              aria-expanded={open}
+                            >
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                {open ? (
+                                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                                ) : (
+                                  <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
+                                )}
+                                {p.attended ? (
+                                  <span
+                                    className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+                                    title="נוכח"
                                   />
-                                  {p.isExternal ? <ExternalTag /> : null}
+                                ) : null}
+                                <span className="min-w-0 flex-1 truncate font-semibold">
+                                  {p.name}
                                 </span>
-                                <ParticipantSecondaryTags p={p} />
-                              </button>
-                              <ParticipantCertificateLinkControls
-                                url={certificateUrlFor(p)}
-                                name={p.name}
-                                onEdit={() => openCertUrlEdit(p)}
-                              />
-                            </div>
+                                <SessionMeetingBadge
+                                  session={sessionByParticipantId.get(p.id)}
+                                />
+                                {p.isExternal ? <ExternalTag /> : null}
+                              </span>
+                              <ParticipantSecondaryTags p={p} />
+                            </button>
                           </td>
                           <td className="max-w-0 truncate px-3 py-2">
                             <CertifyingBodyBadge
@@ -1618,11 +1559,6 @@ export function ParticipantsSection({
                         session={sessionByParticipantId.get(p.id)}
                       />
                     </button>
-                    <ParticipantCertificateLinkControls
-                      url={certificateUrlFor(p)}
-                      name={p.name}
-                      onEdit={() => openCertUrlEdit(p)}
-                    />
 
                     <ParticipantMobileKebab
                       p={p}
