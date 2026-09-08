@@ -85,6 +85,9 @@ export function InstructorTrainingParticipantsView({
       return
     }
     await loadParticipants()
+    for (const warning of res.data.warnings.slice(0, 3)) {
+      toast.warning(warning)
+    }
     toast.success(
       `Wix: נוספו ${res.data.added} · עודכנו ${res.data.updated} · דולגו ${res.data.skipped}`,
     )

@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
-import { ExternalLink, Link2 } from "lucide-react"
+import { ExternalLink, FileCheck, Link2, MoreVertical } from "lucide-react"
 import { toast } from "sonner"
 import { CertStatusPicker } from "@/components/certificates-hub/cert-status-picker"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
@@ -15,6 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -99,17 +105,16 @@ export function CertificatesHubSection({
     [rowsForBatchScope],
   )
 
-  // מחזור שנבחר ולא קיים תחת הדרכת המקור הנוכחית — איפוס
-  useEffect(() => {
-    if (batchFilter === ALL_BATCHES) return
-    if (batchFilter === NO_BATCH) {
-      if (unbatchedCount === 0) setBatchFilter(ALL_BATCHES)
-      return
-    }
-    if (!batchOptions.some(([name]) => name === batchFilter)) {
-      setBatchFilter(ALL_BATCHES)
-    }
-  }, [batchFilter, batchOptions, unbatchedCount])
+  /**
+   * מחזור שנבחר ואינו קיים תחת הדרכת המקור הנוכחית — נגזר חזרה ל״כל המחזורים״
+   * (נגזרת ולא setState, כדי לא לעורר רינדור מדורג)
+   */
+  const effectiveBatchFilter =
+    batchFilter === ALL_BATCHES ||
+    (batchFilter === NO_BATCH && unbatchedCount > 0) ||
+    batchOptions.some(([name]) => name === batchFilter)
+      ? batchFilter
+      : ALL_BATCHES
 
   const showTrainingFilter = trainingOptions.length > 1
   const showBatchFilter =
@@ -121,21 +126,15 @@ export function CertificatesHubSection({
     if (trainingFilter !== ALL_TRAININGS) {
       list = list.filter((r) => r.trainingTitle === trainingFilter)
     }
-    const batchStillValid =
-      batchFilter === ALL_BATCHES ||
-      (batchFilter === NO_BATCH && list.some((r) => !r.batchId)) ||
-      (batchFilter !== NO_BATCH &&
-        list.some((r) => normalizeBatchName(r.batchName) === batchFilter))
-    const activeBatch = batchStillValid ? batchFilter : ALL_BATCHES
-    if (activeBatch === NO_BATCH) {
+    if (effectiveBatchFilter === NO_BATCH) {
       list = list.filter((r) => !r.batchId)
-    } else if (activeBatch !== ALL_BATCHES) {
+    } else if (effectiveBatchFilter !== ALL_BATCHES) {
       list = list.filter(
-        (r) => normalizeBatchName(r.batchName) === activeBatch,
+        (r) => normalizeBatchName(r.batchName) === effectiveBatchFilter,
       )
     }
     return list
-  }, [rows, trainingFilter, batchFilter])
+  }, [rows, trainingFilter, effectiveBatchFilter])
 
   const allSelected =
     filteredRows.length > 0 &&
@@ -167,7 +166,7 @@ export function CertificatesHubSection({
   }
 
   const subtitle =
-    trainingFilter === ALL_TRAININGS && batchFilter === ALL_BATCHES
+    trainingFilter === ALL_TRAININGS && effectiveBatchFilter === ALL_BATCHES
       ? `${rows.length} מודרכים`
       : `${filteredRows.length} מתוך ${rows.length} מודרכים`
 
@@ -224,7 +223,7 @@ export function CertificatesHubSection({
                 סינון מחזור
               </Label>
               <Select
-                value={batchFilter}
+                value={effectiveBatchFilter}
                 onValueChange={(v) => setBatchFilter(v || ALL_BATCHES)}
               >
                 <SelectTrigger className="h-8 min-w-[180px] max-w-md flex-1 text-xs">
@@ -315,32 +314,10 @@ export function CertificatesHubSection({
                     <div className="flex flex-wrap items-center gap-1.5">
                       <Link
                         href={`/leads/${r.leadId}`}
-                        className="break-words text-primary hover:underline"
+                        className="min-w-0 flex-1 break-words text-primary hover:underline"
                       >
                         {r.fullName}
                       </Link>
-                      {r.certificateUrl?.trim() ? (
-                        <a
-                          href={r.certificateUrl.trim()}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex size-7 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
-                          title="פתח תעודה"
-                          aria-label={`פתח תעודה של ${r.fullName}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ExternalLink className="size-3.5" />
-                        </a>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="inline-flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
-                        title="קישור תעודה"
-                        aria-label={`עריכת קישור תעודה של ${r.fullName}`}
-                        onClick={() => openUrlEdit(r)}
-                      >
-                        <Link2 className="size-3.5" />
-                      </button>
                       {r.unassignedBody ? (
                         <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                           חסר גוף מסמיך
@@ -351,6 +328,51 @@ export function CertificatesHubSection({
                           חיצוני
                         </span>
                       ) : null}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+                          aria-label={`פעולות · ${r.fullName}`}
+                        >
+                          <MoreVertical className="size-3.5" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-52">
+                          {r.certificateUrl?.trim() ? (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                window.open(
+                                  r.certificateUrl!.trim(),
+                                  "_blank",
+                                  "noopener,noreferrer",
+                                )
+                              }
+                            >
+                              <FileCheck className="text-amber-500" />
+                              פתח תעודה
+                            </DropdownMenuItem>
+                          ) : null}
+                          <DropdownMenuItem onClick={() => openUrlEdit(r)}>
+                            <Link2
+                              className={
+                                r.certificateUrl?.trim()
+                                  ? "text-amber-600"
+                                  : "text-muted-foreground"
+                              }
+                            />
+                            {r.certificateUrl?.trim()
+                              ? "עריכת קישור תעודה"
+                              : "הוספת קישור תעודה"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="p-0">
+                            <Link
+                              href={`/leads/${r.leadId}`}
+                              className="flex w-full items-center gap-2 px-2.5 py-2"
+                            >
+                              <ExternalLink className="text-muted-foreground" />
+                              פתח הדרכה
+                            </Link>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </td>
                   <td className="px-2 py-2">

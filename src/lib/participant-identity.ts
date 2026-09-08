@@ -4,6 +4,12 @@
  */
 
 /**
+ * ת״ז שנקראה מגיליון כמספר מעוצב (5.81235E+08) — הספרות שם חלקיות,
+ * ולכן אסור לגזור מהן ת״ז. מזוהה כדי להחזיר ערך לא שמיש במקום מזהה שגוי.
+ */
+const SCIENTIFIC_NOTATION = /^[+-]?\d+(?:[.,]\d+)?[eE][+-]?\d+$/
+
+/**
  * ניקוי ת״ז: מסיר רווחים, מקפים וכל תו שאינו ספרה.
  * משלים אפסים מובילים ל־9 ספרות כשחסרים (Google Sheets לעיתים מוריד אותם).
  * דוגמאות: "123-456-789" → "123456789" | "12345678" → "012345678"
@@ -11,7 +17,9 @@
 export function normalizeParticipantIdNumber(
   raw: string | null | undefined,
 ): string {
-  const digits = (raw || "").trim().replace(/\D/g, "")
+  const trimmed = (raw || "").trim()
+  if (SCIENTIFIC_NOTATION.test(trimmed)) return ""
+  const digits = trimmed.replace(/\D/g, "")
   if (digits.length >= 5 && digits.length < 9) {
     return digits.padStart(9, "0")
   }

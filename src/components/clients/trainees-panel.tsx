@@ -110,7 +110,8 @@ function matchesPendingCertificatesSmart(
 function trainingLabel(t: Trainee) {
   if (!t.trainings.length) return "—"
   const latest = t.trainings[t.trainings.length - 1]
-  const name = latest.organizerName || latest.leadName || "—"
+  // הדרכת מקור מה־CRM — לא organizerName (מארגן / מדריך מ־Wix)
+  const name = latest.leadName?.trim() || latest.organizerName?.trim() || "—"
   if (t.trainings.length === 1) return name
   return `${t.trainings.length} הדרכות · ${name}`
 }
@@ -676,19 +677,6 @@ export function TraineesPanel() {
             </a>
           </>
         )}
-        {t.certificateUrl?.trim() ? (
-          <a
-            href={t.certificateUrl.trim()}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex size-8 items-center justify-center rounded-lg text-amber-500 hover:bg-amber-50 hover:text-amber-600"
-            aria-label="תעודת PDF"
-            title="פתח תעודה"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <FileCheck className="size-3.5" />
-          </a>
-        ) : null}
         {t.trainings.length > 0 ? (
           <Link
             href={`/leads/${t.trainings[t.trainings.length - 1]?.leadId}`}
@@ -975,9 +963,10 @@ export function TraineesPanel() {
                                                 )}
                                               />
                                               <span>
-                                                הדרכה דרך:{" "}
-                                                {tr.organizerName ||
-                                                  tr.leadName}
+                                                הדרכת מקור:{" "}
+                                                {tr.leadName?.trim() ||
+                                                  tr.organizerName ||
+                                                  "—"}
                                                 {tr.courseDate ||
                                                 leadDateById.get(tr.leadId)
                                                   ? ` · ${tr.courseDate || leadDateById.get(tr.leadId)}`
@@ -1110,7 +1099,8 @@ export function TraineesPanel() {
                             )}
                           />
                           <span>
-                            הדרכה דרך: {tr.organizerName || tr.leadName}
+                            הדרכת מקור:{" "}
+                            {tr.leadName?.trim() || tr.organizerName || "—"}
                             {tr.courseDate || leadDateById.get(tr.leadId)
                               ? ` · ${tr.courseDate || leadDateById.get(tr.leadId)}`
                               : ""}

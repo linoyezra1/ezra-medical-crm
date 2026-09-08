@@ -629,13 +629,30 @@ export function ParticipantsSection({
   )
 
   const refreshParticipants = useCallback(async () => {
+    setPolling(true)
     try {
-      setPolling(true)
-      await refreshWixParticipantsAction(lead.id).catch(() => {})
+      const res = await refreshWixParticipantsAction(lead.id)
       const rows = await fetchLeadParticipants(lead.id)
       setLeadParticipants(lead.id, rows)
-    } catch {
-      /* ignore */
+
+      if (!res.ok) {
+        toast.error(res.error || "שגיאה בסנכרון נתוני Wix")
+        return
+      }
+      const { added, updated, skipped, warnings } = res.data
+      for (const warning of warnings.slice(0, 3)) {
+        toast.warning(warning)
+      }
+      if (added || updated) {
+        toast.success(
+          `סונכרן מ-Wix: ${added} נוספו · ${updated} עודכנו${skipped ? ` · ${skipped} דולגו` : ""}`,
+        )
+      } else if (!warnings.length) {
+        toast.info("אין משתתפים חדשים לסנכרון מ-Wix")
+      }
+    } catch (err) {
+      console.error("[refreshParticipants]", err)
+      toast.error("שגיאת תקשורת בעת סנכרון מ-Wix")
     } finally {
       setPolling(false)
     }
