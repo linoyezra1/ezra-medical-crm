@@ -83,12 +83,12 @@ function cell(row: unknown[], index: number): string {
     .trim()
 }
 
-/** נרמול תאריך מגיליון ל־YYYY-MM-DD לשמירה ב-CRM */
-function normalizeCourseDateForDb(value: string | null | undefined): string | null {
+/** תאריך מגיליון → YYYY-MM-DD (null כשלא ניתן לפענוח) */
+function toIsoDate(value: string | null | undefined): string | null {
   if (!value?.trim()) return null
   const d = parseSheetDateValue(value)
-  if (!d) return value.trim()
-  return formatInJerusalem(d).date || value.trim()
+  if (!d) return null
+  return formatInJerusalem(d).date || null
 }
 
 function isHeaderRow(row: unknown[]): boolean {
@@ -149,6 +149,8 @@ export type WixSyncResult = {
   added: number
   skipped: number
   updated: number
+  /** שורות ששויכו לפי ת״ז אף שמזהה ההדרכה בגיליון חסר/שגוי */
+  matchedByIdNumber: number
   /** התראות לתצוגה למשתמש (ת״ז לא קריאה, אין שורות למזהה ההדרכה וכו׳) */
   warnings: string[]
 } | {
@@ -205,10 +207,16 @@ function toUpsertFields(row: ParsedRow): ParticipantUpsertFields {
 }
 
 /**
- * Reads Wix registration sheet rows, filters by trainingId,
- * upserts by ת״ז (unique per training) and tags with source="Wix".
- * מילוי חוזר / דיווח חוזר — מעדכן את הקיים, לא יוצר שורה חדשה.
+ * קורא את גיליון הרישום של Wix ומשייך שורות להדרכה בשתי דרכים:
+ *   1. מזהה ההדרכה בעמודה L (השיוך הישיר מהטופס) — יוצר ומעדכן.
+ *   2. ת״ז שכבר קיימת כמשתתף בהדרכה — מעדכן ומתייג Wix גם כשעמודה L
+ *      ריקה או מכילה מזהה של הדרכה אחרת (בחירה שגויה בטופס).
+ * שיוך לפי ת״ז לא יוצר משתתפים חדשים, ומוגבל כדי שרישום של אותו אדם
+ * בהדרכה אחרת לא ידרוס את הנתונים כאן: עמודה L ריקה — די בכך שתאריך
+ * הגיליון אינו סותר את מועדי ההדרכה; עמודה L של הדרכה אחרת — נדרש
+ * תאריך קורס זהה לאחד ממועדי ההדרכה.
  *
+ * מילוי חוזר / דיווח חוזר — מעדכן את הקיים, לא יוצר שורה חדשה.
  * כל העבודה מול ה-DB מקובצת (מספר קבוע של סבבים) כדי למנוע Timeout
  * וייבוא חלקי־שקט בהדרכות עם הרבה משתתפים.
  */
@@ -222,10 +230,26 @@ export async function refreshParticipantsFromWix(
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: trainingId },
-      select: { id: true, deliveryMethod: true },
+      select: {
+        id: true,
+        deliveryMethod: true,
+        scheduledStart: true,
+        trainingSessions: { select: { date: true } },
+      },
     })
     if (!lead) {
       return { ok: false, error: "ההדרכה לא נמצאה" }
+    }
+
+    // מועדי ההדרכה — הגבול לשיוך לפי ת״ז כשמזהה ההדרכה בגיליון לא תואם
+    const leadDates = new Set<string>()
+    if (lead.scheduledStart) {
+      const d = formatInJerusalem(lead.scheduledStart).date
+      if (d) leadDates.add(d)
+    }
+    for (const s of lead.trainingSessions) {
+      const d = (s.date || "").trim()
+      if (d) leadDates.add(d)
     }
 
     const sheets = await getSheetsClient()
@@ -252,7 +276,14 @@ export async function refreshParticipantsFromWix(
     const allRows = formattedRes.data.values || []
     const rawRows = unformattedRes.data.values || []
     if (!allRows.length) {
-      return { ok: true, added: 0, skipped: 0, updated: 0, warnings: [] }
+      return {
+        ok: true,
+        added: 0,
+        skipped: 0,
+        updated: 0,
+        matchedByIdNumber: 0,
+        warnings: [],
+      }
     }
 
     const headerOffset = isHeaderRow(allRows[0]) ? 1 : 0
@@ -261,80 +292,7 @@ export async function refreshParticipantsFromWix(
     const warnings: string[] = []
     const trainingKey = cleanKey(trainingId)
 
-    // ------- שלב 1: פירוק שורות הגיליון של ההדרכה הזו -------
-    const byIdNumber = new Map<string, ParsedRow>()
-    const byFallbackKey = new Map<string, ParsedRow>()
-    let skipped = 0
-    let matchedRows = 0
-
-    for (let i = 0; i < dataRows.length; i++) {
-      const row = dataRows[i]
-      if (cleanKey(row[COL.trainingId]) !== trainingKey) continue
-      matchedRows++
-
-      const sheetRow = headerOffset + i + 1
-      const rawRow = rawRows[i + headerOffset] || []
-      const { idNumber, warning } = resolveSheetIdNumber(
-        cell(row, COL.idNumber),
-        rawRow[COL.idNumber],
-      )
-      const fullName = cell(row, COL.fullName)
-      const phone = cleanParticipantPhone(cell(row, COL.phone))
-
-      if (warning) {
-        warnings.push(`שורה ${sheetRow} (${fullName || "ללא שם"}): ${warning}`)
-        skipped++
-        continue
-      }
-      if (!fullName && !idNumber && !phone) {
-        skipped++
-        continue
-      }
-
-      const parsed: ParsedRow = {
-        sheetRow,
-        fullName,
-        idNumber,
-        courseDate: normalizeCourseDateForDb(cell(row, COL.courseDate)),
-        email: cell(row, COL.email),
-        phone,
-        courseType: cell(row, COL.courseType) || null,
-        organizerName: cell(row, COL.organizer) || null,
-        satisfaction: cell(row, COL.satisfied) || null,
-        kitInterest: cell(row, COL.buyKit) || null,
-        feedback: cell(row, COL.feedback) || null,
-      }
-
-      if (isUsableParticipantIdNumber(idNumber)) {
-        const prev = byIdNumber.get(idNumber)
-        byIdNumber.set(idNumber, prev ? mergeParsedRows(prev, parsed) : parsed)
-        continue
-      }
-
-      // בלי ת״ז תקינה — מפתח חלופי כדי לא לשכפל בכל סנכרון
-      const fallbackKey = phone || fullName
-      if (!fallbackKey) {
-        skipped++
-        continue
-      }
-      const prevFallback = byFallbackKey.get(fallbackKey)
-      byFallbackKey.set(
-        fallbackKey,
-        prevFallback ? mergeParsedRows(prevFallback, parsed) : parsed,
-      )
-    }
-
-    if (!matchedRows) {
-      warnings.push(
-        `לא נמצאו שורות בגיליון עם מזהה ההדרכה הזו (${dataRows.length} שורות נסרקו)`,
-      )
-      return { ok: true, added: 0, skipped: 0, updated: 0, warnings }
-    }
-    if (!byIdNumber.size && !byFallbackKey.size) {
-      return { ok: true, added: 0, skipped, updated: 0, warnings }
-    }
-
-    // ------- שלב 2: טעינת המשתתפים הקיימים בשאילתה אחת -------
+    // ------- שלב 1: משתתפי ההדרכה הקיימים — בסיס ההתאמה לפי ת״ז -------
     const existingRows = await prisma.participant.findMany({
       where: { leadId: trainingId },
     })
@@ -351,13 +309,145 @@ export async function refreshParticipantsFromWix(
       if (nm && !existingByName.has(nm)) existingByName.set(nm, p)
     }
 
+    // ------- שלב 2: פירוק שורות הגיליון ושיוכן להדרכה -------
+    /** direct = שויכה לפי מזהה ההדרכה; אחרת שויכה לפי ת״ז קיימת */
+    const byIdNumber = new Map<string, { row: ParsedRow; direct: boolean }>()
+    const byFallbackKey = new Map<string, ParsedRow>()
+    let skipped = 0
+    let directRows = 0
+    let matchedByIdNumber = 0
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i]
+      const sheetRow = headerOffset + i + 1
+      const rawRow = rawRows[i + headerOffset] || []
+      const rowTrainingKey = cleanKey(row[COL.trainingId])
+      const direct = Boolean(trainingKey) && rowTrainingKey === trainingKey
+
+      const { idNumber, warning } = resolveSheetIdNumber(
+        cell(row, COL.idNumber),
+        rawRow[COL.idNumber],
+      )
+      const fullName = cell(row, COL.fullName)
+
+      if (warning) {
+        // ת״ז לא קריאה — לא ניתן לשייך לפי ת״ז, מתריעים רק על שורות ההדרכה
+        if (direct) {
+          warnings.push(`שורה ${sheetRow} (${fullName || "ללא שם"}): ${warning}`)
+          skipped++
+        }
+        continue
+      }
+
+      const usableId = isUsableParticipantIdNumber(idNumber)
+      const existingByIdNumber = usableId ? existingById.get(idNumber) : undefined
+
+      // לא ההדרכה הזו ולא ת״ז מוכרת כאן — שורה של הדרכה אחרת
+      if (!direct && !existingByIdNumber) continue
+
+      const courseDateIso = toIsoDate(cell(row, COL.courseDate))
+
+      if (!direct) {
+        const dateMatches = Boolean(
+          courseDateIso && leadDates.has(courseDateIso),
+        )
+        if (rowTrainingKey) {
+          // השורה משויכת בגיליון להדרכה אחרת — נדרש תאריך זהה כדי לשייך לכאן
+          if (!dateMatches) continue
+        } else if (leadDates.size && courseDateIso && !dateMatches) {
+          // בלי מזהה הדרכה בגיליון — נדחית רק כשהתאריך סותר את מועדי ההדרכה
+          warnings.push(
+            `שורה ${sheetRow} (${fullName || "ללא שם"}): ת״ז מוכרת בהדרכה אך תאריך הקורס בגיליון (${courseDateIso}) אינו ממועדי ההדרכה — לא שויכה`,
+          )
+          skipped++
+          continue
+        }
+        matchedByIdNumber++
+      } else {
+        directRows++
+      }
+
+      const phone = cleanParticipantPhone(cell(row, COL.phone))
+      if (!fullName && !idNumber && !phone) {
+        skipped++
+        continue
+      }
+
+      const parsed: ParsedRow = {
+        sheetRow,
+        fullName,
+        idNumber,
+        courseDate: courseDateIso || cell(row, COL.courseDate) || null,
+        email: cell(row, COL.email),
+        phone,
+        courseType: cell(row, COL.courseType) || null,
+        organizerName: cell(row, COL.organizer) || null,
+        satisfaction: cell(row, COL.satisfied) || null,
+        kitInterest: cell(row, COL.buyKit) || null,
+        feedback: cell(row, COL.feedback) || null,
+      }
+
+      if (usableId) {
+        const prev = byIdNumber.get(idNumber)
+        if (!prev) {
+          byIdNumber.set(idNumber, { row: parsed, direct })
+        } else if (prev.direct && !direct) {
+          // שורה עם מזהה ההדרכה גוברת על שיוך לפי ת״ז
+        } else if (!prev.direct && direct) {
+          byIdNumber.set(idNumber, { row: parsed, direct: true })
+        } else {
+          byIdNumber.set(idNumber, {
+            row: mergeParsedRows(prev.row, parsed),
+            direct,
+          })
+        }
+        continue
+      }
+
+      // בלי ת״ז תקינה — רק שורות של ההדרכה, במפתח חלופי שלא ישכפל כל סנכרון
+      const fallbackKey = phone || fullName
+      if (!fallbackKey) {
+        skipped++
+        continue
+      }
+      const prevFallback = byFallbackKey.get(fallbackKey)
+      byFallbackKey.set(
+        fallbackKey,
+        prevFallback ? mergeParsedRows(prevFallback, parsed) : parsed,
+      )
+    }
+
+    if (!directRows && !matchedByIdNumber) {
+      warnings.push(
+        `לא נמצאו בגיליון שורות של ההדרכה — לא לפי מזהה ההדרכה ולא לפי ת״ז של המשתתפים (${dataRows.length} שורות נסרקו)`,
+      )
+      return {
+        ok: true,
+        added: 0,
+        skipped: 0,
+        updated: 0,
+        matchedByIdNumber: 0,
+        warnings,
+      }
+    }
+    if (!byIdNumber.size && !byFallbackKey.size) {
+      return {
+        ok: true,
+        added: 0,
+        skipped,
+        updated: 0,
+        matchedByIdNumber: 0,
+        warnings,
+      }
+    }
+
     // ------- שלב 3: בניית פעולות עדכון / יצירה -------
     const updates: { id: string; data: Prisma.ParticipantUpdateInput }[] = []
     const creates: Prisma.ParticipantUncheckedCreateInput[] = []
 
     const queue: { row: ParsedRow; existing: ExistingRow | undefined }[] = []
-    for (const [id, row] of byIdNumber) {
-      queue.push({ row, existing: existingById.get(id) })
+    for (const [id, entry] of byIdNumber) {
+      queue.push({ row: entry.row, existing: existingById.get(id) })
     }
     for (const row of byFallbackKey.values()) {
       const existing =
@@ -426,7 +516,7 @@ export async function refreshParticipantsFromWix(
       })
     }
 
-    return { ok: true, added, skipped, updated, warnings }
+    return { ok: true, added, skipped, updated, matchedByIdNumber, warnings }
   } catch (err) {
     console.error("[refreshParticipantsFromWix]", err)
     return {

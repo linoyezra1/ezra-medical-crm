@@ -639,13 +639,15 @@ export function ParticipantsSection({
         toast.error(res.error || "שגיאה בסנכרון נתוני Wix")
         return
       }
-      const { added, updated, skipped, warnings } = res.data
+      const { added, updated, skipped, matchedByIdNumber, warnings } = res.data
       for (const warning of warnings.slice(0, 3)) {
         toast.warning(warning)
       }
       if (added || updated) {
         toast.success(
-          `סונכרן מ-Wix: ${added} נוספו · ${updated} עודכנו${skipped ? ` · ${skipped} דולגו` : ""}`,
+          `סונכרן מ-Wix: ${added} נוספו · ${updated} עודכנו${
+            matchedByIdNumber ? ` · ${matchedByIdNumber} שויכו לפי ת״ז` : ""
+          }${skipped ? ` · ${skipped} דולגו` : ""}`,
         )
       } else if (!warnings.length) {
         toast.info("אין משתתפים חדשים לסנכרון מ-Wix")

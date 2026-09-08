@@ -4084,6 +4084,7 @@ export async function refreshWixParticipantsAction(
     added: number;
     skipped: number;
     updated: number;
+    matchedByIdNumber: number;
     warnings: string[];
   }>
 > {
@@ -4097,6 +4098,7 @@ export async function refreshWixParticipantsAction(
       added: res.added,
       skipped: res.skipped,
       updated: res.updated,
+      matchedByIdNumber: res.matchedByIdNumber,
       warnings: res.warnings,
     },
   };

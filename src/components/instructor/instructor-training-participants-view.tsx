@@ -89,7 +89,11 @@ export function InstructorTrainingParticipantsView({
       toast.warning(warning)
     }
     toast.success(
-      `Wix: נוספו ${res.data.added} · עודכנו ${res.data.updated} · דולגו ${res.data.skipped}`,
+      `Wix: נוספו ${res.data.added} · עודכנו ${res.data.updated}${
+        res.data.matchedByIdNumber
+          ? ` · ${res.data.matchedByIdNumber} שויכו לפי ת״ז`
+          : ""
+      } · דולגו ${res.data.skipped}`,
     )
   }
 
