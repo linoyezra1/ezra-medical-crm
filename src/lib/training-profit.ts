@@ -25,10 +25,82 @@ export function isParticipantPaid(p: Pick<Participant, "paymentStatus">): boolea
   return p.paymentStatus === PAID_PAYMENT_STATUS
 }
 
-/** מחיר אישי של משתתפים חיצוניים פעילים (לא לידים) */
+export type ParticipantPaymentStatus = "unpaid" | "partial" | "paid"
+
+export const PARTICIPANT_PAYMENT_LABELS: Record<
+  ParticipantPaymentStatus,
+  string
+> = {
+  unpaid: "לא שולם",
+  partial: "תשלום חלקי",
+  paid: "שולם במלואו",
+}
+
+export type ParticipantPaymentState = {
+  /** מחיר היעד למשתתף */
+  expected: number
+  /** סכום ששולם בפועל */
+  paid: number
+  /** יתרה לתשלום (לא שלילית) */
+  remaining: number
+  status: ParticipantPaymentStatus
+}
+
+type PaymentFields = Pick<
+  Participant,
+  "agreedPrice" | "paidAmount" | "paymentStatus"
+>
+
+/** מחיר היעד: מחיר אישי, ובהיעדרו ירושה מתעריף למשתתף של ההדרכה */
+export function participantExpectedAmount(
+  p: PaymentFields,
+  fallbackExpected?: number,
+): number {
+  return money(p.agreedPrice) || money(fallbackExpected)
+}
+
+/**
+ * סכום ששולם בפועל.
+ * רשומות ישנות (לפני שדה paidAmount) — סטטוס ״שולם״ נחשב כתשלום מלא.
+ */
+export function participantPaidAmount(
+  p: PaymentFields,
+  expected: number,
+): number {
+  if (p.paidAmount != null) return money(p.paidAmount)
+  return isParticipantPaid(p) ? expected : 0
+}
+
+/**
+ * מצב התשלום של משתתף — הבסיס לכל תצוגת ״שולם / יתרה״ ולצבע התגית.
+ * שולם 0 → לא שולם | 0 < שולם < מחיר → תשלום חלקי | שולם ≥ מחיר → שולם במלואו
+ */
+export function participantPaymentState(
+  p: PaymentFields,
+  fallbackExpected?: number,
+): ParticipantPaymentState {
+  const expected = participantExpectedAmount(p, fallbackExpected)
+  const paid = participantPaidAmount(p, expected)
+  const remaining = Math.max(0, expected - paid)
+  const status: ParticipantPaymentStatus =
+    paid <= 0 ? "unpaid" : remaining > 0 ? "partial" : "paid"
+  return { expected, paid, remaining, status }
+}
+
+/** תעריף למשתתף שיורש כשאין מחיר אישי — רק בתמחור לפי משתתף */
+export function leadFallbackParticipantPrice(
+  lead: Pick<Lead, "pricingType" | "pricePerUnit">,
+): number {
+  return lead.pricingType === "per_participant" ? money(lead.pricePerUnit) : 0
+}
+
+/** משתתפים חיצוניים פעילים עם חיוב אישי (לא לידים) */
 export function externalParticipantsWithPrice(lead: Lead): Participant[] {
   return (lead.participants || []).filter(
-    (p) => p.isExternal && !p.isLead && money(p.agreedPrice) > 0,
+    (p) =>
+      p.isExternal &&
+      !p.isLead &&
+      (money(p.agreedPrice) > 0 || money(p.paidAmount) > 0),
   )
 }
 
@@ -38,8 +110,8 @@ export function internalParticipantsWithPayment(lead: Lead): Participant[] {
     (p) =>
       !p.isExternal &&
       !p.isLead &&
-      money(p.agreedPrice) > 0 &&
-      isParticipantPaid(p),
+      (money(p.agreedPrice) > 0 || money(p.paidAmount) > 0) &&
+      (isParticipantPaid(p) || money(p.paidAmount) > 0),
   )
 }
 
@@ -53,7 +125,13 @@ export function leadOptionParticipants(lead: Lead): Participant[] {
 export type ParticipantPaymentEntry = {
   id: string
   name: string
+  /** מחיר היעד */
   amount: number
+  /** סכום ששולם בפועל */
+  paidAmount: number
+  remaining: number
+  status: ParticipantPaymentStatus
+  /** שולם במלואו */
   paid: boolean
 }
 
@@ -142,28 +220,31 @@ export function computeTrainingPaymentSummary(
   lead: Lead,
 ): TrainingPaymentSummary {
   const basePrice = money(lead.totalPrice)
-  const externals = externalParticipantsWithPrice(lead)
-    .map((p) => ({
+  const fallbackPrice = leadFallbackParticipantPrice(lead)
+  const toEntry = (p: Participant): ParticipantPaymentEntry => {
+    const state = participantPaymentState(p, fallbackPrice)
+    return {
       id: p.id,
       name: p.name,
-      amount: money(p.agreedPrice),
-      paid: isParticipantPaid(p),
-    }))
+      amount: state.expected,
+      paidAmount: state.paid,
+      remaining: state.remaining,
+      status: state.status,
+      paid: state.status === "paid",
+    }
+  }
+
+  const externals = externalParticipantsWithPrice(lead)
+    .map(toEntry)
     .sort((a, b) => a.amount - b.amount)
   const externalExpected = externals.reduce((s, p) => s + p.amount, 0)
-  const externalCollected = externals
-    .filter((p) => p.paid)
-    .reduce((s, p) => s + p.amount, 0)
+  const externalCollected = externals.reduce((s, p) => s + p.paidAmount, 0)
 
   const internals = internalParticipantsWithPayment(lead)
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      amount: money(p.agreedPrice),
-      paid: true,
-    }))
+    .map(toEntry)
     .sort((a, b) => a.amount - b.amount)
-  const internalCollected = internals.reduce((s, p) => s + p.amount, 0)
+  // פנימיים מקזזים את מחיר הבסיס — נספר מה ששולם בפועל
+  const internalCollected = internals.reduce((s, p) => s + p.paidAmount, 0)
 
   const sales = activeTrainingSales(lead)
     .map((s) => ({

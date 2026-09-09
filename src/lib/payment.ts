@@ -3,6 +3,9 @@ import { formatInJerusalem } from "@/lib/timezone"
 /** סטטוס תשלום שולם במלואו */
 export const PAID_PAYMENT_STATUS = "paid_in_full"
 
+/** סטטוס תשלום חלקי — נרשם תשלום אך נותרה יתרה */
+export const PARTIAL_PAYMENT_STATUS = "partial"
+
 /** קידומת משימת גבייה אוטומטית */
 export const UNPAID_PAYMENT_TASK_PREFIX = "גביית תשלום להדרכה"
 

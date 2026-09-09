@@ -50,7 +50,12 @@ import {
 import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
 import { isInstructorUnassigned, isOwnerInstructor, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
-import { computeTrainingProfit, computeTrainingPaymentSummary } from "@/lib/training-profit"
+import {
+  computeTrainingProfit,
+  computeTrainingPaymentSummary,
+  PARTICIPANT_PAYMENT_LABELS,
+  type ParticipantPaymentEntry,
+} from "@/lib/training-profit"
 import type { TraineeImportRow } from "@/lib/trainee-import"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
@@ -660,6 +665,40 @@ function ParticipantsTab({
   )
 }
 
+/** שורת גבייה למשתתף: שולם / מחיר מלא + יתרה, בצבע לפי מצב התשלום */
+function ParticipantPaymentRow({
+  entry,
+  suffix,
+}: {
+  entry: ParticipantPaymentEntry
+  suffix: string
+}) {
+  const tone =
+    entry.status === "paid"
+      ? "text-emerald-700"
+      : entry.status === "partial"
+        ? "text-amber-700"
+        : "text-red-600"
+
+  return (
+    <li className="flex items-center justify-between gap-2">
+      <span className="min-w-0 truncate text-muted-foreground">
+        {entry.name} · {suffix}
+      </span>
+      <span className="shrink-0 font-semibold">
+        {formatCurrency(entry.paidAmount)} / {formatCurrency(entry.amount)}
+        <span className={`mr-1 ${tone}`}>
+          {" "}
+          · {PARTICIPANT_PAYMENT_LABELS[entry.status]}
+          {entry.remaining > 0
+            ? ` (יתרה ${formatCurrency(entry.remaining)})`
+            : ""}
+        </span>
+      </span>
+    </li>
+  )
+}
+
 function FinanceTab({ lead }: { lead: Lead }) {
   const { instructors } = useApp()
   const profit = computeTrainingProfit(lead, instructors)
@@ -722,37 +761,10 @@ function FinanceTab({ lead }: { lead: Lead }) {
             </span>
           </li>
           {payments.externals.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center justify-between gap-2"
-            >
-              <span className="min-w-0 truncate text-muted-foreground">
-                {p.name} · חיצוני
-              </span>
-              <span className="shrink-0 font-semibold">
-                {formatCurrency(p.paid ? p.amount : 0)} /{" "}
-                {formatCurrency(p.amount)}
-                {p.paid ? (
-                  <span className="mr-1 text-emerald-700"> · שולם</span>
-                ) : (
-                  <span className="mr-1 text-amber-800"> · ממתין</span>
-                )}
-              </span>
-            </li>
+            <ParticipantPaymentRow key={p.id} entry={p} suffix="חיצוני" />
           ))}
           {payments.internals.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center justify-between gap-2"
-            >
-              <span className="min-w-0 truncate text-muted-foreground">
-                {p.name} · תשלום אישי
-              </span>
-              <span className="shrink-0 font-semibold">
-                {formatCurrency(p.amount)}
-                <span className="mr-1 text-emerald-700"> · נגבה</span>
-              </span>
-            </li>
+            <ParticipantPaymentRow key={p.id} entry={p} suffix="תשלום אישי" />
           ))}
           {payments.sales.map((s) => (
             <li

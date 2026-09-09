@@ -23,6 +23,7 @@ import {
 import { formatInJerusalem, jerusalemLocalToUtcDate } from "@/lib/timezone";
 import {
   PAID_PAYMENT_STATUS,
+  PARTIAL_PAYMENT_STATUS,
   TRAINING_SALE_PAID,
   TRAINING_SALE_PENDING_PAYMENT,
   unpaidTrainingSaleTaskNotes,
@@ -1537,6 +1538,12 @@ export async function addExternalParticipant(input: {
   return { ok: true, data: { id: created.id, participantId: created.id, updated: false } }
 }
 
+/** סכום חיובי בלבד — ערכים ריקים / שליליים נחשבים 0 */
+function positiveAmount(n: number | null | undefined): number {
+  const v = Number(n);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 export async function recordParticipantPayment(
   participantId: string,
   leadId: string,
@@ -1559,15 +1566,51 @@ export async function recordParticipantPayment(
   if (amount != null && amount < 0) {
     return { ok: false, error: "סכום תשלום לא תקין" }
   }
+
+  const participant = await prisma.participant.findUnique({
+    where: { id: participantId },
+    select: {
+      agreedPrice: true,
+      paidAmount: true,
+      paymentStatus: true,
+      lead: { select: { pricingModel: true, perParticipantRate: true } },
+    },
+  });
+  if (!participant) {
+    return { ok: false, error: "המשתתף לא נמצא" };
+  }
+
+  // מחיר היעד נשמר כמו שהוא — התשלום מצטבר לשדה נפרד
+  const fallbackPrice =
+    participant.lead?.pricingModel === "per_participant"
+      ? positiveAmount(participant.lead.perParticipantRate)
+      : 0;
+  const expected =
+    positiveAmount(participant.agreedPrice) || fallbackPrice;
+  const previousPaid =
+    participant.paidAmount != null
+      ? positiveAmount(participant.paidAmount)
+      : participant.paymentStatus === PAID_PAYMENT_STATUS
+        ? expected
+        : 0;
+  // בלי סכום מפורש: שמירה על מה שנרשם, ואם אין — סימון תשלום מלא
+  const nextPaid =
+    amount != null ? previousPaid + amount : previousPaid || expected;
+  const settled = nextPaid > 0 && (expected <= 0 || nextPaid >= expected);
+
   await prisma.participant.update({
     where: { id: participantId },
     data: {
-      paymentStatus: PAID_PAYMENT_STATUS,
+      paymentStatus: settled
+        ? PAID_PAYMENT_STATUS
+        : nextPaid > 0
+          ? PARTIAL_PAYMENT_STATUS
+          : null,
       paymentDate: jerusalemLocalToUtcDate(date, "12:00"),
       paymentMethod: data.paymentMethod.trim() || null,
       paymentReceivedBy: data.paymentReceivedBy.trim() || null,
       paymentReceiptIssued: Boolean(data.paymentReceiptIssued),
-      ...(amount != null ? { agreedPrice: amount } : {}),
+      paidAmount: nextPaid,
     },
   })
 
@@ -1607,6 +1650,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
             isLead: false,
             OR: [
               { agreedPrice: { gt: 0 } },
+              { paidAmount: { gt: 0 } },
               { paymentStatus: { not: null } },
             ],
             // הדרכה אבודה/מבוטלת — בלי צפייה לגבייה
@@ -1617,6 +1661,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
             fullName: true,
             isExternal: true,
             agreedPrice: true,
+            paidAmount: true,
             paymentStatus: true,
             paymentDate: true,
             paymentMethod: true,
@@ -2010,6 +2055,24 @@ export async function updateParticipantDetails(
       ...(certifyingBody !== undefined ? { certifyingBody } : {}),
     },
   });
+  // שינוי מחיר היעד מזיז את מצב הגבייה (שולם במלואו ↔ תשלום חלקי)
+  if (agreedPrice !== undefined && updated.paidAmount != null) {
+    const paid = positiveAmount(updated.paidAmount);
+    const target = positiveAmount(agreedPrice);
+    const nextStatus =
+      paid <= 0
+        ? null
+        : target <= 0 || paid >= target
+          ? PAID_PAYMENT_STATUS
+          : PARTIAL_PAYMENT_STATUS;
+    if (nextStatus !== updated.paymentStatus) {
+      await prisma.participant.update({
+        where: { id: participantId },
+        data: { paymentStatus: nextStatus },
+      });
+    }
+  }
+
   // סנכרון דו-כיווני: פרטי משתתף → מודרך גלובלי
   await syncParticipantContactToTrainee(updated);
   if (data.notes !== undefined && updated.traineeId) {

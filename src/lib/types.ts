@@ -132,8 +132,10 @@ export interface Participant {
   courseType?: string;
   /** קטגוריה אישית לתעודה (חיצוני) */
   courseCategory?: string;
-  /** מחיר לתשלום אישי */
+  /** מחיר לתשלום אישי (סכום היעד) */
   agreedPrice?: number;
+  /** סכום ששולם בפועל במצטבר */
+  paidAmount?: number;
   paymentStatus?: string;
   paymentDate?: string;
   paymentMethod?: string;

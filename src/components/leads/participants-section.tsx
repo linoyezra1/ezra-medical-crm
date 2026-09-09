@@ -110,7 +110,11 @@ import { useApp } from "@/lib/store"
 import { displayCertifyingBody } from "@/lib/certifying-body"
 import { buildParticipantSessionNumbers } from "@/lib/participant-session"
 import type { ParticipantSessionInfo } from "@/lib/participant-session"
-import { isParticipantPaid } from "@/lib/training-profit"
+import {
+  leadFallbackParticipantPrice,
+  PARTICIPANT_PAYMENT_LABELS,
+  participantPaymentState,
+} from "@/lib/training-profit"
 import type { Lead, Participant, Trainee } from "@/lib/types"
 import { CERTIFYING_BODY_OPTIONS } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -146,6 +150,78 @@ function LeadTag() {
     <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
       ליד
     </span>
+  )
+}
+
+/**
+ * מחיר ומצב גבייה למשתתף — ״שולם / מחיר כולל״ + יתרה.
+ * אדום = לא שולם | כתום = תשלום חלקי | ירוק = שולם במלואו
+ */
+function ParticipantPriceLine({
+  p,
+  fallbackPrice,
+  variant,
+}: {
+  p: Participant
+  fallbackPrice: number
+  variant: "row" | "card"
+}) {
+  // ליד באופציה — מחיר בלבד, בלי מצב גבייה
+  if (p.isLead) {
+    if (variant === "row" && p.agreedPrice == null) return null
+    return (
+      <p
+        className={
+          variant === "row"
+            ? "text-sm font-semibold tabular-nums text-muted-foreground"
+            : "rounded-lg bg-secondary px-2 py-1.5 text-sm font-bold text-muted-foreground"
+        }
+      >
+        מחיר אופציה:{" "}
+        {p.agreedPrice != null ? formatCurrency(p.agreedPrice) : "—"}
+      </p>
+    )
+  }
+
+  const state = participantPaymentState(p, fallbackPrice)
+  if (state.expected <= 0 && state.paid <= 0) {
+    if (variant === "row") return null
+    return (
+      <p className="rounded-lg bg-secondary px-2 py-1.5 text-sm font-bold text-muted-foreground">
+        מחיר: —
+      </p>
+    )
+  }
+
+  const rowTone =
+    state.status === "paid"
+      ? "text-emerald-700"
+      : state.status === "partial"
+        ? "text-amber-700"
+        : "text-red-600"
+  const cardTone =
+    state.status === "paid"
+      ? "bg-emerald-50 text-emerald-800"
+      : state.status === "partial"
+        ? "bg-amber-50 text-amber-800"
+        : "bg-red-50 text-red-700"
+
+  const label = (
+    <>
+      מחיר: {formatCurrency(state.paid)} / {formatCurrency(state.expected)} ·{" "}
+      {PARTICIPANT_PAYMENT_LABELS[state.status]}
+      {state.remaining > 0
+        ? ` (יתרה ${formatCurrency(state.remaining)})`
+        : ""}
+    </>
+  )
+
+  return variant === "row" ? (
+    <p className={cn("text-sm font-semibold tabular-nums", rowTone)}>{label}</p>
+  ) : (
+    <p className={`rounded-lg px-2 py-1.5 text-sm font-bold ${cardTone}`}>
+      {label}
+    </p>
   )
 }
 
@@ -401,6 +477,8 @@ export function ParticipantsSection({
 }) {
   const { setLeadParticipants, refresh, settings, leads, trainees, updateTraineeLocal } =
     useApp()
+  /** מחיר היעד למשתתף כשאין מחיר אישי (תמחור לפי משתתף) */
+  const fallbackPrice = leadFallbackParticipantPrice(lead)
   const [polling, setPolling] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [lmsBusy, setLmsBusy] = useState<string | null>(null)
@@ -1517,21 +1595,12 @@ export function ParticipantsSection({
                                     }
                                     notes={notes}
                                     extra={
-                                      (p.isExternal || p.isLead) &&
-                                      p.agreedPrice != null ? (
-                                        <p
-                                          className={cn(
-                                            "text-sm font-semibold tabular-nums",
-                                            isParticipantPaid(p)
-                                              ? "text-emerald-700"
-                                              : "text-red-600",
-                                          )}
-                                        >
-                                          {p.isLead
-                                            ? "מחיר אופציה: "
-                                            : "מחיר: "}
-                                          {formatCurrency(p.agreedPrice)}
-                                        </p>
+                                      p.isExternal || p.isLead ? (
+                                        <ParticipantPriceLine
+                                          p={p}
+                                          fallbackPrice={fallbackPrice}
+                                          variant="row"
+                                        />
                                       ) : null
                                     }
                                   />
@@ -1601,20 +1670,11 @@ export function ParticipantsSection({
                   {open && (
                     <div className="space-y-2 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
                       {p.isExternal || p.isLead ? (
-                        <p
-                          className={`rounded-lg px-2 py-1.5 text-sm font-bold ${
-                            p.agreedPrice != null && isParticipantPaid(p)
-                              ? "bg-emerald-50 text-emerald-800"
-                              : p.agreedPrice != null
-                                ? "bg-red-50 text-red-700"
-                                : "bg-secondary text-muted-foreground"
-                          }`}
-                        >
-                          {p.isLead ? "מחיר אופציה: " : "מחיר: "}
-                          {p.agreedPrice != null
-                            ? formatCurrency(p.agreedPrice)
-                            : "—"}
-                        </p>
+                        <ParticipantPriceLine
+                          p={p}
+                          fallbackPrice={fallbackPrice}
+                          variant="card"
+                        />
                       ) : null}
                       <p className="flex flex-wrap items-center gap-1.5">
                         <span>תעודות דרך מי:</span>
@@ -2015,6 +2075,7 @@ export function ParticipantsSection({
         participant={payParticipant}
         open={Boolean(payParticipant)}
         onOpenChange={(o) => !o && setPayParticipant(null)}
+        fallbackPrice={leadFallbackParticipantPrice(lead)}
       />
 
       <ConfirmDeleteDialog

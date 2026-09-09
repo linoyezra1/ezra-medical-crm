@@ -31,6 +31,7 @@ export type ReceiptTaxableLead = {
     paymentStatus?: string | null
     paymentReceiptIssued?: boolean | null
     agreedPrice?: number | null
+    paidAmount?: number | null
   }>
   trainingSales?: Array<{
     paymentStatus?: string | null
@@ -55,8 +56,12 @@ export function computeReceiptTaxableAmount(
         : money(lead.agreedPrice)
   }
 
+  // בסיס המס = מה ששולם בפועל, לא מחיר היעד (תשלום חלקי ממוסה לפי הסכום שנגבה)
   for (const p of lead.participants || []) {
-    if (p.paymentReceiptIssued && p.paymentStatus === PAID_PAYMENT_STATUS) {
+    if (!p.paymentReceiptIssued) continue
+    if (p.paidAmount != null) {
+      taxable += money(p.paidAmount)
+    } else if (p.paymentStatus === PAID_PAYMENT_STATUS) {
       taxable += money(p.agreedPrice)
     }
   }

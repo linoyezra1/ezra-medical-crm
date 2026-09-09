@@ -197,6 +197,10 @@ export function mapLead(db: DbLeadFull): Lead {
         (p as { agreedPrice?: number | null }).agreedPrice != null
           ? Number((p as { agreedPrice?: number | null }).agreedPrice)
           : undefined,
+      paidAmount:
+        (p as { paidAmount?: number | null }).paidAmount != null
+          ? Number((p as { paidAmount?: number | null }).paidAmount)
+          : undefined,
       paymentStatus:
         (p as { paymentStatus?: string | null }).paymentStatus || undefined,
       paymentDate: (p as { paymentDate?: Date | null }).paymentDate

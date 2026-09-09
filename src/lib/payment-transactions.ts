@@ -259,6 +259,7 @@ export function buildParticipantTransaction(input: {
   isExternal: boolean
   fullName: string
   agreedPrice: number | null | undefined
+  paidAmount?: number | null | undefined
   paymentStatus: string | null | undefined
   paymentDate: Date | string | null | undefined
   paymentMethod: string | null | undefined
@@ -267,7 +268,9 @@ export function buildParticipantTransaction(input: {
   leadId: string | null
   leadName: string | null
 }): PaymentTransaction | null {
-  const amount = money(input.agreedPrice)
+  // סכום השורה = מה שנגבה בפועל; ללא תשלום — מחיר היעד שממתין לגבייה
+  const paid = money(input.paidAmount)
+  const amount = paid > 0 ? paid : money(input.agreedPrice)
   const hasStatus = Boolean(input.paymentStatus?.trim())
   if (amount <= 0 && !hasStatus) return null
 

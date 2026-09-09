@@ -17,6 +17,10 @@ import { formatCurrency } from "@/lib/helpers"
 import { ReceiptExpensePreview } from "@/components/leads/receipt-expense-preview"
 import { PAYMENT_METHODS, PAYMENT_RECEIVERS } from "@/lib/payment"
 import { useApp } from "@/lib/store"
+import {
+  PARTICIPANT_PAYMENT_LABELS,
+  participantPaymentState,
+} from "@/lib/training-profit"
 import type { Participant } from "@/lib/types"
 
 type Props = {
@@ -24,6 +28,8 @@ type Props = {
   participant: Participant | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** תעריף למשתתף של ההדרכה — מחיר היעד כשאין מחיר אישי */
+  fallbackPrice?: number
 }
 
 export function ParticipantPaymentDialog({
@@ -31,6 +37,7 @@ export function ParticipantPaymentDialog({
   participant,
   open,
   onOpenChange,
+  fallbackPrice = 0,
 }: Props) {
   const { refresh } = useApp()
   const [saving, setSaving] = useState(false)
@@ -42,20 +49,31 @@ export function ParticipantPaymentDialog({
     paymentReceiptIssued: false,
   })
 
+  const state = participant
+    ? participantPaymentState(participant, fallbackPrice)
+    : null
+
   useEffect(() => {
     if (!open || !participant) return
+    const current = participantPaymentState(participant, fallbackPrice)
     setForm({
-      amount:
-        participant.agreedPrice != null ? String(participant.agreedPrice) : "",
+      // ברירת מחדל — היתרה לתשלום, לא מחיר היעד
+      amount: current.remaining > 0 ? String(current.remaining) : "",
       paymentDate:
         participant.paymentDate || new Date().toISOString().slice(0, 10),
       paymentMethod: participant.paymentMethod || "bit",
       paymentReceivedBy: participant.paymentReceivedBy || "יצחק",
       paymentReceiptIssued: Boolean(participant.paymentReceiptIssued),
     })
-  }, [open, participant])
+  }, [open, participant, fallbackPrice])
 
-  if (!participant) return null
+  if (!participant || !state) return null
+
+  const entered = Number(form.amount.trim())
+  const paidAfter =
+    form.amount.trim() === "" || !Number.isFinite(entered)
+      ? state.paid || state.expected
+      : state.paid + entered
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -90,15 +108,34 @@ export function ParticipantPaymentDialog({
         <DialogHeader>
           <DialogTitle className="text-right">רישום תשלום למשתתף</DialogTitle>
           <p className="text-xs text-muted-foreground">
-            {participant.name}
-            {participant.agreedPrice != null
-              ? ` · ${formatCurrency(participant.agreedPrice)}`
-              : ""}
+            {participant.name} · {PARTICIPANT_PAYMENT_LABELS[state.status]}
           </p>
         </DialogHeader>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl bg-secondary/60 px-2 py-2">
+            <p className="text-[10px] text-muted-foreground">מחיר כולל</p>
+            <p className="text-sm font-extrabold">
+              {formatCurrency(state.expected)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-emerald-50 px-2 py-2">
+            <p className="text-[10px] text-emerald-800">שולם עד כה</p>
+            <p className="text-sm font-extrabold text-emerald-800">
+              {formatCurrency(state.paid)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-amber-50 px-2 py-2">
+            <p className="text-[10px] text-amber-900">יתרה לתשלום</p>
+            <p className="text-sm font-extrabold text-amber-900">
+              {formatCurrency(state.remaining)}
+            </p>
+          </div>
+        </div>
         <form onSubmit={onSubmit} className="space-y-3">
           <div>
-            <label className="mb-1.5 block text-sm font-medium">סכום</label>
+            <label className="mb-1.5 block text-sm font-medium">
+              סכום התשלום הנוכחי
+            </label>
             <Input
               type="number"
               min={0}
@@ -109,6 +146,11 @@ export function ParticipantPaymentDialog({
               }
               dir="ltr"
             />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {state.paid > 0
+                ? `הסכום מתווסף לתשלומים הקודמים · לאחר השמירה: ${formatCurrency(paidAfter)} מתוך ${formatCurrency(state.expected)}`
+                : `לאחר השמירה: ${formatCurrency(paidAfter)} מתוך ${formatCurrency(state.expected)}`}
+            </p>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium">תאריך</label>

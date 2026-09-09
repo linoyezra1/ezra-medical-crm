@@ -18,6 +18,7 @@ export async function syncReceiptExpenseForLead(
       participants: {
         select: {
           agreedPrice: true,
+          paidAmount: true,
           paymentStatus: true,
           paymentReceiptIssued: true,
         },

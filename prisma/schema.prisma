@@ -244,8 +244,10 @@ model Participant {
   courseType      String?
   /** קטגוריה אישית לתעודה (חיצוני) */
   courseCategory  String?
-  /** מחיר לתשלום אישי */
+  /** מחיר לתשלום אישי — סכום היעד, לא מושפע מתשלומים חלקיים */
   agreedPrice     Float?
+  /** סכום ששולם בפועל במצטבר (₪) — null = טרם נרשם תשלום עם סכום */
+  paidAmount      Float?
   paymentStatus   String?
   paymentDate     DateTime?
   paymentMethod   String?
