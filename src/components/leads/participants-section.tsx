@@ -108,8 +108,15 @@ import { lmsParticipantWhatsAppMessage } from "@/lib/lms"
 import { pickZoomSessionForInvite } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import { displayCertifyingBody } from "@/lib/certifying-body"
-import { buildParticipantSessionNumbers } from "@/lib/participant-session"
+import {
+  buildParticipantSessionAssignments,
+  buildParticipantSessionNumbers,
+} from "@/lib/participant-session"
 import type { ParticipantSessionInfo } from "@/lib/participant-session"
+import {
+  hasParticipantSessionMapping,
+  ParticipantSessionMapping,
+} from "@/components/leads/participant-session-mapping"
 import {
   leadFallbackParticipantPrice,
   PARTICIPANT_PAYMENT_LABELS,
@@ -532,11 +539,22 @@ export function ParticipantsSection({
   }, [trainees])
 
   /** מפגש 1, 2… לפי ת״ז וסדר תאריכים בכל ההדרכות */
-  const sessionByParticipantId = useMemo(() => {
+  const mergedLeads = useMemo(() => {
     const merged = leads.map((l) => (l.id === lead.id ? lead : l))
     if (!leads.some((l) => l.id === lead.id)) merged.push(lead)
-    return buildParticipantSessionNumbers(merged)
+    return merged
   }, [leads, lead])
+
+  const sessionByParticipantId = useMemo(
+    () => buildParticipantSessionNumbers(mergedLeads),
+    [mergedLeads],
+  )
+
+  /** לאיזו הדרכה משויך כל מפגש — תצוגה בלבד במגירת המודרך */
+  const sessionAssignmentsByParticipantId = useMemo(
+    () => buildParticipantSessionAssignments(mergedLeads),
+    [mergedLeads],
+  )
 
   const traineeForParticipant = (p: Participant) => {
     if (p.traineeId) return traineeById.get(p.traineeId)
@@ -1593,6 +1611,21 @@ export function ParticipantsSection({
                                       p.examDraftAnswers ??
                                       trainee?.examDraftAnswers
                                     }
+                                    sessionMapping={
+                                      hasParticipantSessionMapping(
+                                        sessionAssignmentsByParticipantId.get(
+                                          p.id,
+                                        ),
+                                        p.id,
+                                      ) ? (
+                                        <ParticipantSessionMapping
+                                          assignments={sessionAssignmentsByParticipantId.get(
+                                            p.id,
+                                          )}
+                                          currentParticipantId={p.id}
+                                        />
+                                      ) : null
+                                    }
                                     notes={notes}
                                     extra={
                                       p.isExternal || p.isLead ? (
@@ -1676,6 +1709,12 @@ export function ParticipantsSection({
                           variant="card"
                         />
                       ) : null}
+                      <ParticipantSessionMapping
+                        assignments={sessionAssignmentsByParticipantId.get(
+                          p.id,
+                        )}
+                        currentParticipantId={p.id}
+                      />
                       <p className="flex flex-wrap items-center gap-1.5">
                         <span>תעודות דרך מי:</span>
                         <CertifyingBodyBadge

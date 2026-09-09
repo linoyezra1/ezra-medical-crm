@@ -9,7 +9,8 @@ import {
 } from "@/lib/participant-identity"
 import type { Lead } from "@/lib/types"
 
-export type SessionLeadSlice = Pick<Lead, "id" | "date" | "participants">
+export type SessionLeadSlice = Pick<Lead, "id" | "date" | "participants"> &
+  Partial<Pick<Lead, "name">>
 
 export type ParticipantSessionInfo = {
   /** מספר מפגש כרונולוגי (1-based) */
@@ -18,10 +19,22 @@ export type ParticipantSessionInfo = {
   totalSessions: number
 }
 
+/** שיוך מפגש להדרכה — לתצוגה אינפורמטיבית ״מפגש X = איזו הדרכה״ */
+export type ParticipantSessionAssignment = {
+  sessionNumber: number
+  participantId: string
+  leadId: string
+  leadName: string
+  /** YYYY-MM-DD, ריק כשאין תאריך */
+  dateKey: string
+}
+
 type RankedAssignment = {
   participantId: string
   idKey: string
   dateKey: string
+  leadId: string
+  leadName: string
 }
 
 /** YYYY-MM-DD מתאריך משתתף או מתאריך ההדרכה */
@@ -48,6 +61,8 @@ function collectAssignments(leads: SessionLeadSlice[]): RankedAssignment[] {
         participantId: p.id,
         idKey,
         dateKey: resolveAssignmentDateKey(p.courseDate, lead.date),
+        leadId: lead.id,
+        leadName: (lead.name || "").trim(),
       })
     }
   }
@@ -55,12 +70,12 @@ function collectAssignments(leads: SessionLeadSlice[]): RankedAssignment[] {
 }
 
 /**
- * מפת participantId → מידע מפגש (מספר + סה״כ) לפי סדר תאריכים לאותה ת״ז.
+ * קיבוץ לפי ת״ז וסידור כרונולוגי בתוך כל קבוצה.
  * תאריכים חסרים נדחפים לסוף; שוויון תאריך — לפי מזהה משתתף ליציבות.
  */
-export function buildParticipantSessionNumbers(
+function rankAssignmentsByIdNumber(
   leads: SessionLeadSlice[],
-): Map<string, ParticipantSessionInfo> {
+): RankedAssignment[][] {
   const byId = new Map<string, RankedAssignment[]>()
   for (const a of collectAssignments(leads)) {
     const list = byId.get(a.idKey)
@@ -68,8 +83,8 @@ export function buildParticipantSessionNumbers(
     else byId.set(a.idKey, [a])
   }
 
-  const result = new Map<string, ParticipantSessionInfo>()
-  for (const list of byId.values()) {
+  const groups = [...byId.values()]
+  for (const list of groups) {
     list.sort((a, b) => {
       const aEmpty = !a.dateKey
       const bEmpty = !b.dateKey
@@ -77,6 +92,16 @@ export function buildParticipantSessionNumbers(
       if (a.dateKey !== b.dateKey) return a.dateKey.localeCompare(b.dateKey)
       return a.participantId.localeCompare(b.participantId)
     })
+  }
+  return groups
+}
+
+/** מפת participantId → מידע מפגש (מספר + סה״כ) לפי סדר תאריכים לאותה ת״ז */
+export function buildParticipantSessionNumbers(
+  leads: SessionLeadSlice[],
+): Map<string, ParticipantSessionInfo> {
+  const result = new Map<string, ParticipantSessionInfo>()
+  for (const list of rankAssignmentsByIdNumber(leads)) {
     const totalSessions = list.length
     list.forEach((a, i) => {
       result.set(a.participantId, {
@@ -84,6 +109,29 @@ export function buildParticipantSessionNumbers(
         totalSessions,
       })
     })
+  }
+  return result
+}
+
+/**
+ * מפת participantId → כל מפגשי אותה ת״ז (ההדרכה והתאריך של כל מפגש).
+ * לתצוגה בלבד — אותה חלוקה כרונולוגית שממנה נגזרות תגיות ״מפגש X״.
+ */
+export function buildParticipantSessionAssignments(
+  leads: SessionLeadSlice[],
+): Map<string, ParticipantSessionAssignment[]> {
+  const result = new Map<string, ParticipantSessionAssignment[]>()
+  for (const list of rankAssignmentsByIdNumber(leads)) {
+    const assignments: ParticipantSessionAssignment[] = list.map((a, i) => ({
+      sessionNumber: i + 1,
+      participantId: a.participantId,
+      leadId: a.leadId,
+      leadName: a.leadName,
+      dateKey: a.dateKey,
+    }))
+    for (const a of assignments) {
+      result.set(a.participantId, assignments)
+    }
   }
   return result
 }

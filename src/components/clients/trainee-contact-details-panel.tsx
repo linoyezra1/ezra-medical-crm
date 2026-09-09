@@ -21,6 +21,7 @@ export function TraineeContactDetailsPanel({
   notesEditable,
   onNotesChange,
   onNotesBlur,
+  sessionMapping,
   extra,
   className,
 }: {
@@ -36,6 +37,8 @@ export function TraineeContactDetailsPanel({
   notesEditable?: boolean
   onNotesChange?: (value: string) => void
   onNotesBlur?: (value: string) => void
+  /** בלוק אינפורמטיבי — שיוך ״מפגש 1 / מפגש 2״ להדרכות */
+  sessionMapping?: React.ReactNode
   extra?: React.ReactNode
   className?: string
 }) {
@@ -166,6 +169,10 @@ export function TraineeContactDetailsPanel({
           <span className="text-muted-foreground">—</span>
         )}
       </div>
+
+      {sessionMapping ? (
+        <div className="sm:col-span-2 lg:col-span-4">{sessionMapping}</div>
+      ) : null}
 
       <div className="sm:col-span-2 lg:col-span-4">
         <p className="mb-1 text-[11px] font-semibold text-muted-foreground">

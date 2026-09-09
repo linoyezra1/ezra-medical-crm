@@ -34,6 +34,7 @@ import {
 import {
   DEFAULT_CERT_STATUS,
   formatCertDateDisplay,
+  normalizeBatchName,
   splitFullNameForExport,
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
@@ -288,6 +289,7 @@ export function CertificatesBulkBar({
         "שם משפחה": lastName,
         "תעודת זהות": r.idNumber,
         "הדרכת מקור": r.trainingTitle,
+        "שם מחזור": normalizeBatchName(r.batchName),
         תאריך: formatCertDateDisplay(r.lastSessionDate),
         "סוג תעודה": r.courseSubtype,
       }
