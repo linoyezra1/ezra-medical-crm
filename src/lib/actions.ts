@@ -1637,6 +1637,120 @@ export async function recordParticipantPayment(
 }
 
 /**
+ * תיקון ידני של תשלום שכבר נרשם למשתתף (החלפת הסכום המצטבר, לא הוספה).
+ * דורש קוד אימות בשרת.
+ */
+export async function updateParticipantRecordedPayment(
+  participantId: string,
+  leadId: string,
+  data: {
+    pin: string
+    paidAmount: number
+    paymentDate: string
+    paymentMethod: string
+    paymentReceivedBy: string
+    paymentReceiptIssued?: boolean
+    /** אופציונלי — תיקון מחיר היעד אם טעו ברישום */
+    agreedPrice?: number | null
+  },
+): Promise<ActionResult<{ id: string }>> {
+  const pin = String(data.pin || "").trim()
+  const expectedPin = (
+    process.env.CERTIFICATE_ISSUANCE_PIN?.trim() || "214215444"
+  ).trim()
+  if (!pin || pin !== expectedPin) {
+    return { ok: false, error: "קוד אימות שגוי", code: "invalid_pin" }
+  }
+
+  const date = data.paymentDate?.trim()
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { ok: false, error: "תאריך תשלום לא תקין" }
+  }
+
+  const paidAmount = Number(data.paidAmount)
+  if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+    return { ok: false, error: "סכום תשלום לא תקין" }
+  }
+
+  const participant = await prisma.participant.findUnique({
+    where: { id: participantId },
+    select: {
+      agreedPrice: true,
+      lead: { select: { pricingModel: true, perParticipantRate: true } },
+    },
+  })
+  if (!participant) {
+    return { ok: false, error: "המשתתף לא נמצא" }
+  }
+
+  const fallbackPrice =
+    participant.lead?.pricingModel === "per_participant"
+      ? positiveAmount(participant.lead.perParticipantRate)
+      : 0
+
+  let agreedPrice = participant.agreedPrice
+  if (data.agreedPrice !== undefined) {
+    if (data.agreedPrice === null) {
+      agreedPrice = null
+    } else if (
+      Number.isFinite(Number(data.agreedPrice)) &&
+      Number(data.agreedPrice) >= 0
+    ) {
+      agreedPrice = Number(data.agreedPrice)
+    } else {
+      return { ok: false, error: "מחיר כולל לא תקין" }
+    }
+  }
+
+  const expected = positiveAmount(agreedPrice) || fallbackPrice
+  const nextPaid = paidAmount
+  const settled = nextPaid > 0 && (expected <= 0 || nextPaid >= expected)
+
+  await prisma.participant.update({
+    where: { id: participantId },
+    data: {
+      ...(data.agreedPrice !== undefined ? { agreedPrice } : {}),
+      paidAmount: nextPaid > 0 ? nextPaid : null,
+      paymentStatus:
+        nextPaid <= 0
+          ? null
+          : settled
+            ? PAID_PAYMENT_STATUS
+            : PARTIAL_PAYMENT_STATUS,
+      paymentDate:
+        nextPaid > 0 ? jerusalemLocalToUtcDate(date, "12:00") : null,
+      paymentMethod:
+        nextPaid > 0 ? data.paymentMethod.trim() || null : null,
+      paymentReceivedBy:
+        nextPaid > 0 ? data.paymentReceivedBy.trim() || null : null,
+      paymentReceiptIssued:
+        nextPaid > 0 ? Boolean(data.paymentReceiptIssued) : false,
+    },
+  })
+
+  await syncReceiptExpenseForLead(leadId, { paymentDate: date })
+
+  const after = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      fullName: true,
+      paymentStatus: true,
+      scheduledStart: true,
+      agreedPrice: true,
+    },
+  })
+  if (after) await syncUnpaidPaymentTask(after)
+
+  revalidatePath(`/leads/${leadId}`)
+  revalidatePath("/")
+  revalidatePath("/calendar")
+  revalidatePath("/dashboard")
+  revalidatePath("/payment-history")
+  return { ok: true, data: { id: participantId } }
+}
+
+/**
  * יומן תשלומים שטוח — משתתפים, מכירות הדרכה, מכירות בודדות ותשלומי בסיס.
  */
 export async function getAllPaymentTransactionsAction(): Promise<
@@ -1772,6 +1886,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
         isExternal: p.isExternal,
         fullName: p.fullName,
         agreedPrice: p.agreedPrice,
+        paidAmount: p.paidAmount,
         paymentStatus: p.paymentStatus,
         paymentDate: p.paymentDate,
         paymentMethod: p.paymentMethod,
@@ -1781,6 +1896,7 @@ export async function getAllPaymentTransactionsAction(): Promise<
         leadName: p.lead?.fullName ?? null,
       })
       if (!row) continue
+      // ממתין בלבד — רק בהדרכות שנסגרו ביומן; תשלום חלקי / שולם תמיד מוצגים
       if (
         row.paymentStatus === "pending" &&
         p.lead &&

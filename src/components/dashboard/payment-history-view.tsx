@@ -41,8 +41,20 @@ const TYPE_BADGE_CLASS: Record<PaymentTransactionType, string> = {
 
 const STATUS_CLASS: Record<PaymentLedgerStatus, string> = {
   paid: "text-success",
+  partial: "text-amber-700",
   pending: "text-amber-800",
   cancelled: "text-destructive",
+}
+
+function formatTxAmount(tx: PaymentTransaction): string {
+  if (
+    tx.paymentStatus === "partial" &&
+    tx.expectedAmount != null &&
+    tx.expectedAmount > 0
+  ) {
+    return `${formatCurrency(tx.amount)} / ${formatCurrency(tx.expectedAmount)}`
+  }
+  return formatCurrency(Number(tx.amount) || 0)
 }
 
 const selectClass =
@@ -284,6 +296,9 @@ export function PaymentHistoryView() {
               <option value="paid">
                 {PAYMENT_LEDGER_STATUS_LABELS.paid}
               </option>
+              <option value="partial">
+                {PAYMENT_LEDGER_STATUS_LABELS.partial}
+              </option>
               <option value="pending">
                 {PAYMENT_LEDGER_STATUS_LABELS.pending}
               </option>
@@ -418,7 +433,7 @@ export function PaymentHistoryView() {
                       {tx.receivedBy}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 font-semibold tabular-nums">
-                      {formatCurrency(Number(tx.amount) || 0)}
+                      {formatTxAmount(tx)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5">
                       <span
@@ -483,7 +498,7 @@ function MobileTxCard({ tx }: { tx: PaymentTransaction }) {
         </div>
         <div className="shrink-0 text-left">
           <p className="text-sm font-bold tabular-nums">
-            {formatCurrency(Number(tx.amount) || 0)}
+            {formatTxAmount(tx)}
           </p>
           <p
             className={cn(

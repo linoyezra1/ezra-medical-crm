@@ -1,5 +1,6 @@
 import {
   PAID_PAYMENT_STATUS,
+  PARTIAL_PAYMENT_STATUS,
   PAYMENT_METHODS,
   TRAINING_SALE_PAID,
   TRAINING_SALE_PENDING_PAYMENT,
@@ -28,11 +29,16 @@ export const PAYMENT_TRANSACTION_TYPE_LABELS: Record<
   training_base: "תשלום הדרכה",
 }
 
-export type PaymentLedgerStatus = "paid" | "pending" | "cancelled"
+export type PaymentLedgerStatus =
+  | "paid"
+  | "partial"
+  | "pending"
+  | "cancelled"
 
 export const PAYMENT_LEDGER_STATUS_LABELS: Record<PaymentLedgerStatus, string> =
   {
     paid: "שולם",
+    partial: "תשלום חלקי",
     pending: "ממתין",
     cancelled: "בוטל",
   }
@@ -62,7 +68,10 @@ export type PaymentTransaction = {
   receivedBy: string
   trainingName: string
   trainingId: string | null
+  /** סכום לתצוגה: שולם/נגבה, או מחיר יעד כשממתין */
   amount: number
+  /** מחיר יעד — רלוונטי לתשלום חלקי (נגבה / יעד) */
+  expectedAmount?: number
   paymentMethod: string
   paymentStatus: PaymentLedgerStatus
 }
@@ -121,6 +130,13 @@ export function normalizePaymentLedgerStatus(
     s === TRAINING_SALE_PAID
   ) {
     return "paid"
+  }
+  if (
+    s === "partial" ||
+    s === PARTIAL_PAYMENT_STATUS.toLowerCase() ||
+    s === "תשלום חלקי"
+  ) {
+    return "partial"
   }
   if (
     s === "cancelled" ||
@@ -197,8 +213,9 @@ export function filterPaymentTransactions(
 export function summarizePaymentTransactions(
   rows: PaymentTransaction[],
 ): PaymentTransactionsSummary {
-  const paid = rows.filter((r) => r.paymentStatus === "paid")
-  const pending = rows.filter((r) => r.paymentStatus === "pending")
+  const collectedRows = rows.filter(
+    (r) => r.paymentStatus === "paid" || r.paymentStatus === "partial",
+  )
   const byMethodMap = new Map<string, number>()
   let cashTotal = 0
   let bitTotal = 0
@@ -206,8 +223,9 @@ export function summarizePaymentTransactions(
   let otherCollectedTotal = 0
   let totalCollected = 0
   let pendingTotal = 0
+  let pendingCount = 0
 
-  for (const row of paid) {
+  for (const row of collectedRows) {
     totalCollected += row.amount
     const key = row.paymentMethod || "__none__"
     byMethodMap.set(key, (byMethodMap.get(key) || 0) + row.amount)
@@ -217,8 +235,19 @@ export function summarizePaymentTransactions(
     else otherCollectedTotal += row.amount
   }
 
-  for (const row of pending) {
-    pendingTotal += row.amount
+  for (const row of rows) {
+    if (row.paymentStatus === "pending") {
+      pendingTotal += row.amount
+      pendingCount++
+    } else if (row.paymentStatus === "partial") {
+      // יתרה שנותרה אחרי גבייה חלקית
+      const expected = money(row.expectedAmount) || row.amount
+      const remaining = Math.max(0, expected - row.amount)
+      if (remaining > 0) {
+        pendingTotal += remaining
+        pendingCount++
+      }
+    }
   }
 
   const byMethod = Array.from(byMethodMap.entries())
@@ -237,7 +266,7 @@ export function summarizePaymentTransactions(
     bankTransferTotal,
     otherCollectedTotal,
     pendingTotal,
-    pendingCount: pending.length,
+    pendingCount,
     count: rows.length,
   }
 }
@@ -268,11 +297,28 @@ export function buildParticipantTransaction(input: {
   leadId: string | null
   leadName: string | null
 }): PaymentTransaction | null {
-  // סכום השורה = מה שנגבה בפועל; ללא תשלום — מחיר היעד שממתין לגבייה
+  const expected = money(input.agreedPrice)
   const paid = money(input.paidAmount)
-  const amount = paid > 0 ? paid : money(input.agreedPrice)
+  let paymentStatus = normalizePaymentLedgerStatus(input.paymentStatus)
+
+  // גזירה מסכומים — מחיר 550 + נגבה 15 → תשלום חלקי (גם אם הסטטוס הישן היה ממתין)
+  if (paymentStatus !== "cancelled") {
+    if (paid > 0 && expected > 0 && paid < expected) {
+      paymentStatus = "partial"
+    } else if (paid > 0 && (expected <= 0 || paid >= expected)) {
+      paymentStatus = "paid"
+    }
+  }
+
+  // ממתין: מחיר יעד | חלקי/שולם: מה שנגבה בפועל
+  const amount =
+    paymentStatus === "pending"
+      ? expected
+      : paid > 0
+        ? paid
+        : expected
   const hasStatus = Boolean(input.paymentStatus?.trim())
-  if (amount <= 0 && !hasStatus) return null
+  if (amount <= 0 && !hasStatus && paid <= 0) return null
 
   return {
     id: `participant:${input.id}`,
@@ -283,8 +329,9 @@ export function buildParticipantTransaction(input: {
     trainingName: input.leadName?.trim() || "מכירה ללא הדרכה",
     trainingId: input.leadId,
     amount,
+    ...(expected > 0 ? { expectedAmount: expected } : {}),
     paymentMethod: input.paymentMethod?.trim() || "",
-    paymentStatus: normalizePaymentLedgerStatus(input.paymentStatus),
+    paymentStatus,
   }
 }
 
