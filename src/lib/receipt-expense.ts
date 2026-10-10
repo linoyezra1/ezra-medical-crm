@@ -39,6 +39,10 @@ export type ReceiptTaxableLead = {
     unitSellingPrice?: number | null
     quantity?: number | null
   }>
+  leadPayments?: Array<{
+    amount?: number | null
+    paymentReceiptIssued?: boolean | null
+  }>
 }
 
 /** סכום תשלומים שסומנה עליהם קבלה — הבסיס ל־20% הוצאה */
@@ -48,7 +52,14 @@ export function computeReceiptTaxableAmount(
 ): number {
   let taxable = 0
 
-  if (lead.paymentReceiptIssued && lead.paymentStatus === PAID_PAYMENT_STATUS) {
+  if (lead.leadPayments && lead.leadPayments.length) {
+    for (const payment of lead.leadPayments) {
+      if (payment.paymentReceiptIssued) taxable += money(payment.amount)
+    }
+  } else if (
+    lead.paymentReceiptIssued &&
+    lead.paymentStatus === PAID_PAYMENT_STATUS
+  ) {
     const override = opts?.leadAmountOverride
     taxable +=
       override != null && money(override) > 0

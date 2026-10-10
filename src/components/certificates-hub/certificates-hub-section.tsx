@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { ExternalLink, FileCheck, Link2, MoreVertical } from "lucide-react"
 import { toast } from "sonner"
@@ -37,15 +37,29 @@ import {
   type CertificatesHubRow,
 } from "@/lib/certificates-hub"
 
-const ALL_TRAININGS = "__all__"
-const ALL_BATCHES = "__all__"
-const NO_BATCH = "__none__"
+export const CERT_HUB_ALL_TRAININGS = "__all__"
+export const CERT_HUB_ALL_BATCHES = "__all__"
+export const CERT_HUB_NO_BATCH = "__none__"
+
+const ALL_TRAININGS = CERT_HUB_ALL_TRAININGS
+const ALL_BATCHES = CERT_HUB_ALL_BATCHES
+const NO_BATCH = CERT_HUB_NO_BATCH
+
+/** ניווט מחיפוש מודרך — סינון הדרכה/מחזור + הדגשת שורה */
+export type CertificatesHubFocus = {
+  token: number
+  section: string
+  participantId: string
+  trainingTitle: string
+  batchFilter: string
+}
 
 export function CertificatesHubSection({
   section,
   rows,
   selectedIds,
   statusBusyId,
+  focus,
   onToggle,
   onToggleSection,
   onStatusChange,
@@ -56,6 +70,7 @@ export function CertificatesHubSection({
   rows: CertificatesHubRow[]
   selectedIds: Set<string>
   statusBusyId: string | null
+  focus?: CertificatesHubFocus | null
   onToggle: (id: string, checked: boolean) => void
   onToggleSection: (rows: CertificatesHubRow[], checked: boolean) => void
   onStatusChange: (
@@ -69,11 +84,38 @@ export function CertificatesHubSection({
     certificateUrl: string | null,
   ) => void
 }) {
-  const [trainingFilter, setTrainingFilter] = useState(ALL_TRAININGS)
-  const [batchFilter, setBatchFilter] = useState(ALL_BATCHES)
+  /** focus מגיע עם remount (key מההורה) — מאתחל סינון ופתיחה בלי setState ב-effect */
+  const focusApplies = Boolean(
+    focus &&
+      focus.section === section &&
+      rows.some((r) => r.participantId === focus.participantId),
+  )
+  const [trainingFilter, setTrainingFilter] = useState(
+    () =>
+      focusApplies && focus
+        ? focus.trainingTitle || ALL_TRAININGS
+        : ALL_TRAININGS,
+  )
+  const [batchFilter, setBatchFilter] = useState(
+    () =>
+      focusApplies && focus ? focus.batchFilter || ALL_BATCHES : ALL_BATCHES,
+  )
+  const highlightedId =
+    focusApplies && focus ? focus.participantId : null
   const [urlEditRow, setUrlEditRow] = useState<CertificatesHubRow | null>(null)
   const [urlDraft, setUrlDraft] = useState("")
   const [urlSaving, setUrlSaving] = useState(false)
+
+  // גלילה לשורה המודגשת אחרי ניווט מחיפוש
+  useEffect(() => {
+    if (!highlightedId) return
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById(`cert-hub-row-${highlightedId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [highlightedId])
 
   const trainingOptions = useMemo(() => {
     const set = new Set<string>()
@@ -174,7 +216,7 @@ export function CertificatesHubSection({
     <CollapsibleSection
       title={section}
       subtitle={subtitle}
-      defaultOpen={false}
+      defaultOpen={focusApplies}
     >
       {showTrainingFilter || showBatchFilter ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-3 py-2">
@@ -299,7 +341,12 @@ export function CertificatesHubSection({
               {filteredRows.map((r) => (
                 <tr
                   key={r.participantId}
-                  className="border-t border-border hover:bg-secondary/30"
+                  id={`cert-hub-row-${r.participantId}`}
+                  className={
+                    highlightedId === r.participantId
+                      ? "border-t border-amber-300 bg-amber-50/80 ring-2 ring-inset ring-amber-400/70"
+                      : "border-t border-border hover:bg-secondary/30"
+                  }
                 >
                   <td className="px-2 py-2">
                     <Checkbox

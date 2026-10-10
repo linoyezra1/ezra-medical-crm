@@ -9,6 +9,7 @@ import {
 } from "@/lib/certifying-body"
 import { formatCourseTypeLabel } from "@/lib/course-type"
 import { formatLeadCategory } from "@/lib/helpers"
+import { normalizeParticipantIdNumber } from "@/lib/participant-identity"
 import { dbStatusToUi } from "@/lib/types"
 import type { CertifyingBody, LeadStatus } from "@/lib/types"
 
@@ -329,6 +330,58 @@ export function splitFullNameForExport(fullName: string): {
     firstName: trimmed.slice(0, spaceIdx),
     lastName: trimmed.slice(spaceIdx + 1).trim(),
   }
+}
+
+/** תוצאת חיפוש מודרך בדף ניהול תעודות */
+export type CertificatesHubSearchHit = {
+  row: CertificatesHubRow
+  tab: CertificatesHubTab
+  section: string
+}
+
+/**
+ * חיפוש מודרך לפי שם או ת״ז ברשימת הזכאים.
+ * ת״ז — התאמה מנורמלת / חלקית; שם — כולל מחרוזת (לא רגיש לאותיות).
+ */
+export function searchCertificatesHubRows(
+  rows: CertificatesHubRow[],
+  query: string,
+): CertificatesHubSearchHit[] {
+  const q = query.trim()
+  if (!q) return []
+
+  const qLower = q.toLowerCase()
+  const qDigits = normalizeParticipantIdNumber(q)
+  const hasDigits = qDigits.length >= 3
+
+  const hits: CertificatesHubSearchHit[] = []
+  for (const row of rows) {
+    let matched = false
+    if (hasDigits) {
+      const id = normalizeParticipantIdNumber(row.idNumber)
+      if (id && (id === qDigits || id.includes(qDigits) || qDigits.includes(id))) {
+        matched = true
+      }
+    }
+    if (!matched) {
+      const name = (row.fullName || "").trim().toLowerCase()
+      if (name.includes(qLower)) matched = true
+    }
+    if (!matched) continue
+
+    const tab = tabForCertifyingBody(row.certifyingBody) || "unassigned"
+    hits.push({
+      row,
+      tab,
+      section: sectionKeyForRow(row),
+    })
+  }
+
+  return hits.sort((a, b) => {
+    const byName = a.row.fullName.localeCompare(b.row.fullName, "he")
+    if (byName !== 0) return byName
+    return (a.row.batchName || "").localeCompare(b.row.batchName || "", "he")
+  })
 }
 
 export function groupRowsBySection(

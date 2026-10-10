@@ -50,11 +50,12 @@ export const DEFAULT_COURSE_TYPE_LABELS: readonly string[] = []
 
 /**
  * אימות סוג קורס — רק:
- * מספר (22 / 44 / 8), «רענון N», «התנהלות בטוחה»,
- * או «רענון עזרה ראשונה +התנהלות בטוחה» (+ פורמטי שעות/סלג קיימים).
+ * מספר (22 / 44 / 8), «רענון N», «רענון N לגננות» / «22גננות»,
+ * «התנהלות בטוחה», או «רענון עזרה ראשונה +התנהלות בטוחה»
+ * (+ פורמטי שעות/סלג קיימים).
  */
 export const COURSE_TYPE_FORMAT_ERROR =
-  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים הבאים: מספר בלבד (למשל: 22), 'רענון' + מספר (למשל: רענון 22), 'BLS', 'התנהלות בטוחה', או 'רענון עזרה ראשונה +התנהלות בטוחה'."
+  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים הבאים: מספר בלבד (למשל: 22), 'רענון' + מספר (למשל: רענון 22), 'רענון 22 לגננות' / '22גננות', 'BLS', 'התנהלות בטוחה', או 'רענון עזרה ראשונה +התנהלות בטוחה'."
 
 export function isAllowedCourseTypeValue(raw: string): boolean {
   const v = raw.trim().replace(/\s+/g, " ")
@@ -64,6 +65,10 @@ export function isAllowedCourseTypeValue(raw: string): boolean {
   if (/^\d+_hours$/i.test(v)) return true
   if (/^hours[_-]?\d+(\.\d+)?$/i.test(v)) return true
   if (/^רענון\s+\d+(\.\d+)?$/.test(v)) return true
+  // רענון 22 לגננות · 22 גננות · 22גננות
+  if (/^רענון\s+\d+(\.\d+)?\s*ל?גננות$/.test(v)) return true
+  if (/^\d+(\.\d+)?\s*ל?גננות$/.test(v)) return true
+  if (/^\d+(\.\d+)?גננות$/.test(v.replace(/\s+/g, ""))) return true
   if (/^BLS$/i.test(v)) return true
   if (v === "התנהלות בטוחה") return true
   if (/^רענון עזרה ראשונה\s*\+\s*התנהלות בטוחה$/.test(v)) return true
@@ -110,7 +115,7 @@ export function extractCourseHoursDigits(
   return anyDigits?.[1] || ""
 }
 
-/** קורסי מעון/גן שדורשים פרטי מנהלת (התנהלות בטוחה או רענון משולב) */
+/** קורסי מעון/גן שדורשים פרטי מנהלת (התנהלות בטוחה, רענון משולב, או רענון/22 לגננות) */
 export const KINDERGARTEN_REFRESH_COURSE_LABEL =
   "רענון עזרה ראשונה+התנהלות בטוחה"
 
@@ -123,11 +128,16 @@ export function yossiAmarDetailsTaskTitle(leadName: string): string {
   return `${YOSSI_AMAR_DETAILS_TASK_PREFIX} — ${name}`
 }
 
-/** התנהלות בטוחה לבד, או רענון עזרה ראשונה + התנהלות בטוחה */
+/**
+ * התנהלות בטוחה, רענון עזרה ראשונה + התנהלות בטוחה,
+ * או קורס גננות («רענון 22 לגננות» / «22גננות»).
+ */
 function isKindergartenRefreshLabel(raw: string): boolean {
   const n = raw.replace(/\s+/g, " ").replace(/\s*\+\s*/g, "+").trim()
   if (!n) return false
   if (n === "התנהלות בטוחה") return true
+  // רענון 22 לגננות · 22 גננות · 22גננות
+  if (/גננות/.test(n)) return true
   if (!n.includes("התנהלות בטוחה")) return false
   // הקורס המשולב: רענון עזרה ראשונה + התנהלות בטוחה
   return /רענון\s*עזרה\s*ראשונה/.test(n)
@@ -135,7 +145,8 @@ function isKindergartenRefreshLabel(raw: string): boolean {
 
 /**
  * האם סוג הקורס דורש סשן פרטי מעון / גן
- * («התנהלות בטוחה» או «רענון עזרה ראשונה+התנהלות בטוחה»).
+ * («התנהלות בטוחה», «רענון עזרה ראשונה+התנהלות בטוחה»,
+ * או «רענון 22 לגננות» / «22גננות»).
  */
 export function isKindergartenRefreshCourseType(
   courseType?: string | null,

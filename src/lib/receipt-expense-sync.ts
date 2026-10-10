@@ -31,6 +31,12 @@ export async function syncReceiptExpenseForLead(
           receiptIssued: true,
         },
       },
+      leadPayments: {
+        select: {
+          amount: true,
+          paymentReceiptIssued: true,
+        },
+      },
       expenses: {
         select: { id: true, type: true, notes: true },
       },

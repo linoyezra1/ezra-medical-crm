@@ -304,6 +304,10 @@ export function mapLead(db: DbLeadFull): Lead {
     paymentMethod: db.paymentMethod || undefined,
     paymentReceivedBy: db.paymentReceivedBy || undefined,
     paymentReceiptIssued: Boolean(db.paymentReceiptIssued),
+    paidAmount:
+      (db as { paidAmount?: number | null }).paidAmount != null
+        ? Number((db as { paidAmount?: number | null }).paidAmount)
+        : undefined,
     isPrivateCourse: Boolean(db.isPrivateCourse),
     sessionsCount: db.sessionsCount ?? (sessions.length || null),
     sessions,

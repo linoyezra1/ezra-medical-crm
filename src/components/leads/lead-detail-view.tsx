@@ -48,6 +48,7 @@ import {
   whatsappLink,
 } from "@/lib/helpers"
 import { leadCalendarSessions, sessionLocationLabel } from "@/lib/payment"
+import { paymentMethodLabel } from "@/lib/payment-transactions"
 import { isInstructorUnassigned, isOwnerInstructor, shouldShowUnassignedInstructorWarning } from "@/lib/instructor"
 import { useApp } from "@/lib/store"
 import {
@@ -751,10 +752,24 @@ function FinanceTab({ lead }: { lead: Lead }) {
           <li className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground">תשלום הדרכה (בסיס)</span>
             <span className="font-semibold">
-              {formatCurrency(payments.baseCoveredAmount)} /{" "}
+              {formatCurrency(payments.baseCollected)} /{" "}
               {formatCurrency(payments.basePrice)}
               {payments.baseSettled ? (
-                <span className="mr-1 text-emerald-700"> · כוסה</span>
+                <span className="mr-1 text-emerald-700">
+                  {" "}
+                  · כוסה
+                  {lead.paymentMethod
+                    ? ` (${paymentMethodLabel(lead.paymentMethod)})`
+                    : ""}
+                </span>
+              ) : payments.baseCollected > 0 ? (
+                <span className="mr-1 text-amber-700">
+                  {" "}
+                  · תשלום חלקי
+                  {lead.paymentMethod
+                    ? ` (${paymentMethodLabel(lead.paymentMethod)})`
+                    : ""}
+                </span>
               ) : (
                 <span className="mr-1 text-amber-800"> · ממתין</span>
               )}

@@ -2,12 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Award, FolderArchive, RefreshCw } from "lucide-react"
+import { Award, FolderArchive, RefreshCw, Search, X } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { CertificatesBulkBar } from "@/components/certificates-hub/certificates-bulk-bar"
-import { CertificatesHubSection } from "@/components/certificates-hub/certificates-hub-section"
+import {
+  CERT_HUB_ALL_TRAININGS,
+  CERT_HUB_NO_BATCH,
+  CertificatesHubSection,
+  type CertificatesHubFocus,
+} from "@/components/certificates-hub/certificates-hub-section"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   listEligibleCertificateParticipantsAction,
   updateParticipantCertStatusesAction,
@@ -17,8 +23,11 @@ import {
   CERTIFICATES_HUB_TABS,
   groupRowsBySection,
   hasPendingCertificateWork,
+  normalizeBatchName,
+  searchCertificatesHubRows,
   tabForCertifyingBody,
   type CertificatesHubRow,
+  type CertificatesHubSearchHit,
   type CertificatesHubTab,
 } from "@/lib/certificates-hub"
 import { cn } from "@/lib/utils"
@@ -30,6 +39,12 @@ export function CertificatesHubView() {
   const [syncingSheets, setSyncingSheets] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchHits, setSearchHits] = useState<CertificatesHubSearchHit[] | null>(
+    null,
+  )
+  const [focus, setFocus] = useState<CertificatesHubFocus | null>(null)
+  const [focusToken, setFocusToken] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -87,6 +102,50 @@ export function CertificatesHubView() {
     }
     return counts
   }, [rows])
+
+  const navigateToHit = useCallback((hit: CertificatesHubSearchHit) => {
+    const token = focusToken + 1
+    setFocusToken(token)
+    setTab(hit.tab)
+    setSelectedIds(new Set())
+    setSearchHits(null)
+    setSearchQuery(hit.row.fullName)
+    const batchName = normalizeBatchName(hit.row.batchName)
+    setFocus({
+      token,
+      section: hit.section,
+      participantId: hit.row.participantId,
+      trainingTitle: (hit.row.trainingTitle || "").trim() || CERT_HUB_ALL_TRAININGS,
+      batchFilter: batchName || CERT_HUB_NO_BATCH,
+    })
+    const tabLabel =
+      CERTIFICATES_HUB_TABS.find((t) => t.id === hit.tab)?.label || hit.tab
+    toast.success(
+      batchName
+        ? `עבר ל־${tabLabel} · מחזור «${batchName}»`
+        : `עבר ל־${tabLabel} · ללא מחזור`,
+    )
+  }, [focusToken])
+
+  const runSearch = useCallback(() => {
+    const q = searchQuery.trim()
+    if (!q) {
+      setSearchHits(null)
+      toast.error("הזן שם מודרך או תעודת זהות")
+      return
+    }
+    const hits = searchCertificatesHubRows(rows, q)
+    if (!hits.length) {
+      setSearchHits([])
+      toast.error("לא נמצא מודרך תואם בזכאים לתעודות")
+      return
+    }
+    if (hits.length === 1) {
+      navigateToHit(hits[0])
+      return
+    }
+    setSearchHits(hits)
+  }, [searchQuery, rows, navigateToHit])
 
   const toggle = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -233,6 +292,94 @@ export function CertificatesHubView() {
       />
 
       <div className="space-y-4 p-4">
+        <div className="relative space-y-2">
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              runSearch()
+            }}
+          >
+            <div className="relative min-w-[220px] flex-1">
+              <Search className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  if (searchHits) setSearchHits(null)
+                }}
+                placeholder="חיפוש מודרך לפי שם או ת״ז…"
+                className="h-10 rounded-xl pr-9"
+                dir="rtl"
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  className="absolute top-1/2 left-2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  onClick={() => {
+                    setSearchQuery("")
+                    setSearchHits(null)
+                    setFocus(null)
+                  }}
+                  aria-label="ניקוי חיפוש"
+                >
+                  <X className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+            <Button
+              type="submit"
+              variant="outline"
+              className="h-10 gap-2 rounded-xl"
+              disabled={loading}
+            >
+              <Search className="size-4" />
+              חיפוש
+            </Button>
+          </form>
+
+          {searchHits && searchHits.length > 1 ? (
+            <div className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-border bg-card shadow-lg">
+              <p className="border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
+                נמצאו {searchHits.length} תוצאות — בחרו מודרך
+              </p>
+              <ul>
+                {searchHits.map((hit) => {
+                  const tabLabel =
+                    CERTIFICATES_HUB_TABS.find((t) => t.id === hit.tab)?.label ||
+                    hit.tab
+                  const batch = normalizeBatchName(hit.row.batchName) || "ללא מחזור"
+                  return (
+                    <li key={hit.row.participantId}>
+                      <button
+                        type="button"
+                        className="flex w-full flex-col gap-0.5 border-b border-border/60 px-3 py-2.5 text-right last:border-0 hover:bg-secondary/50"
+                        onClick={() => navigateToHit(hit)}
+                      >
+                        <span className="text-sm font-semibold">
+                          {hit.row.fullName}
+                          <span
+                            className="ms-2 font-normal text-muted-foreground tabular-nums"
+                            dir="ltr"
+                          >
+                            {hit.row.idNumber}
+                          </span>
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {tabLabel} · {batch}
+                          {hit.row.trainingTitle
+                            ? ` · ${hit.row.trainingTitle}`
+                            : ""}
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+
         <div className="flex flex-wrap gap-2">
           {CERTIFICATES_HUB_TABS.map((t) => (
             <button
@@ -241,6 +388,7 @@ export function CertificatesHubView() {
               onClick={() => {
                 setTab(t.id)
                 setSelectedIds(new Set())
+                setFocus(null)
               }}
               className={cn(
                 "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
@@ -268,11 +416,16 @@ export function CertificatesHubView() {
         ) : (
           sections.map(({ section, rows: sectionRows }) => (
             <CertificatesHubSection
-              key={`${tab}-${section}`}
+              key={`${tab}-${section}-${
+                focus?.section === section ? `f${focus.token}` : "x"
+              }`}
               section={section}
               rows={sectionRows}
               selectedIds={selectedIds}
               statusBusyId={statusBusyId}
+              focus={
+                focus && focus.section === section ? focus : null
+              }
               onToggle={toggle}
               onToggleSection={toggleSection}
               onStatusChange={(row, kind, payload) =>

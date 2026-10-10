@@ -1247,7 +1247,77 @@ export async function rollbackLeadStatus(
   return { ok: true, data: { id: leadId, status: nextDb } };
 }
 
-/** רישום תשלום מהיר להדרכה */
+function paymentPinError(pin: string): string | null {
+  const expected = (
+    process.env.CERTIFICATE_ISSUANCE_PIN?.trim() || "214215444"
+  ).trim()
+  if (!String(pin || "").trim() || String(pin).trim() !== expected) {
+    return "קוד אימות שגוי"
+  }
+  return null
+}
+
+type LeadPaymentRow = {
+  id: string
+  amount: number
+  paymentDate: string
+  paymentMethod: string
+  paymentReceivedBy: string
+  paymentReceiptIssued: boolean
+}
+
+function mapLeadPaymentRow(row: {
+  id: string
+  amount: number
+  paymentDate: Date
+  paymentMethod: string
+  paymentReceivedBy: string | null
+  paymentReceiptIssued: boolean
+}): LeadPaymentRow {
+  return {
+    id: row.id,
+    amount: Number(row.amount) || 0,
+    paymentDate: formatInJerusalem(row.paymentDate).date || "",
+    paymentMethod: row.paymentMethod,
+    paymentReceivedBy: row.paymentReceivedBy?.trim() || "",
+    paymentReceiptIssued: Boolean(row.paymentReceiptIssued),
+  }
+}
+
+/** מסנכרן את שדות התשלום על ההדרכה לפי שורות התשלום */
+async function refreshLeadPaymentHeader(leadId: string) {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { agreedPrice: true },
+  })
+  const payments = await prisma.leadPayment.findMany({
+    where: { leadId },
+    orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
+  })
+  const total = payments.reduce((s, p) => s + positiveAmount(p.amount), 0)
+  const expected = positiveAmount(lead?.agreedPrice)
+  const latest = payments[0]
+  const paymentStatus =
+    total <= 0
+      ? "pending_official_order"
+      : expected <= 0 || total >= expected
+        ? PAID_PAYMENT_STATUS
+        : PARTIAL_PAYMENT_STATUS
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      paidAmount: total,
+      paymentStatus,
+      paymentDate: latest?.paymentDate ?? null,
+      paymentMethod: latest?.paymentMethod ?? null,
+      paymentReceivedBy: latest?.paymentReceivedBy ?? null,
+      paymentReceiptIssued: payments.some((p) => p.paymentReceiptIssued),
+    },
+  })
+}
+
+/** רישום תשלום מהיר להדרכה — שורה נפרדת עם סכום ואופן תשלום */
 export async function recordLeadPayment(
   leadId: string,
   data: {
@@ -1260,7 +1330,8 @@ export async function recordLeadPayment(
 ): Promise<ActionResult<{ id: string }>> {
   const existing = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!existing) return { ok: false, error: "ההדרכה לא נמצאה" };
-  if (!data.paymentDate?.trim()) {
+  const date = data.paymentDate?.trim()
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return { ok: false, error: "יש לבחור תאריך תשלום" };
   }
   if (!data.paymentMethod?.trim()) {
@@ -1273,27 +1344,28 @@ export async function recordLeadPayment(
     data.amount != null && Number.isFinite(Number(data.amount))
       ? Number(data.amount)
       : undefined
-  if (amount != null && amount < 0) {
-    return { ok: false, error: "סכום תשלום לא תקין" };
+  if (amount == null || amount <= 0) {
+    return { ok: false, error: "יש להזין סכום תשלום" };
   }
 
   const actor = await getActiveCrmUser();
-  await prisma.lead.update({
-    where: { id: leadId },
+  await prisma.leadPayment.create({
     data: {
-      paymentStatus: PAID_PAYMENT_STATUS,
-      paymentDate: jerusalemLocalToUtcDate(data.paymentDate.trim(), "12:00"),
+      leadId,
+      amount,
+      paymentDate: jerusalemLocalToUtcDate(date, "12:00"),
       paymentMethod: data.paymentMethod.trim(),
       paymentReceivedBy: data.paymentReceivedBy.trim(),
       paymentReceiptIssued: Boolean(data.paymentReceiptIssued),
-      lastUpdatedBy: actor,
     },
-  });
+  })
+  await refreshLeadPaymentHeader(leadId)
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { lastUpdatedBy: actor },
+  })
 
-  await syncReceiptExpenseForLead(leadId, {
-    leadAmountOverride: amount,
-    paymentDate: data.paymentDate.trim(),
-  });
+  await syncReceiptExpenseForLead(leadId, { paymentDate: date });
 
   const after = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -1315,6 +1387,134 @@ export async function recordLeadPayment(
   revalidatePath("/calendar");
   revalidatePath("/payment-history");
   return { ok: true, data: { id: leadId } };
+}
+
+/** רשימת תשלומים שנרשמו על ההדרכה עצמה */
+export async function listLeadPaymentsAction(
+  leadId: string,
+): Promise<ActionResult<LeadPaymentRow[]>> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      agreedPrice: true,
+      paymentStatus: true,
+      paymentDate: true,
+      paymentMethod: true,
+      paymentReceivedBy: true,
+      paymentReceiptIssued: true,
+    },
+  })
+  if (!lead) return { ok: false, error: "ההדרכה לא נמצאה" }
+
+  let rows = await prisma.leadPayment.findMany({
+    where: { leadId },
+    orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
+  })
+
+  // תשלום ישן שנשמר רק על ההדרכה — הופך לשורה כדי שאפשר לערוך/למחוק
+  if (
+    !rows.length &&
+    (lead.paymentStatus === PAID_PAYMENT_STATUS || lead.paymentDate) &&
+    positiveAmount(lead.agreedPrice) > 0
+  ) {
+    await prisma.leadPayment.create({
+      data: {
+        leadId,
+        amount: positiveAmount(lead.agreedPrice),
+        paymentDate: lead.paymentDate ?? new Date(),
+        paymentMethod: lead.paymentMethod?.trim() || "other",
+        paymentReceivedBy: lead.paymentReceivedBy,
+        paymentReceiptIssued: Boolean(lead.paymentReceiptIssued),
+      },
+    })
+    await refreshLeadPaymentHeader(leadId)
+    rows = await prisma.leadPayment.findMany({
+      where: { leadId },
+      orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
+    })
+  }
+
+  return { ok: true, data: rows.map(mapLeadPaymentRow) }
+}
+
+/** תיקון תשלום שכבר נרשם על ההדרכה */
+export async function updateLeadPaymentAction(
+  leadId: string,
+  paymentId: string,
+  data: {
+    pin: string
+    amount: number
+    paymentDate: string
+    paymentMethod: string
+    paymentReceivedBy: string
+    paymentReceiptIssued?: boolean
+  },
+): Promise<ActionResult<{ id: string }>> {
+  const pinError = paymentPinError(data.pin)
+  if (pinError) return { ok: false, error: pinError, code: "invalid_pin" }
+
+  const date = data.paymentDate?.trim()
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { ok: false, error: "תאריך תשלום לא תקין" }
+  }
+  const amount = Number(data.amount)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, error: "סכום תשלום לא תקין" }
+  }
+  if (!data.paymentMethod?.trim()) {
+    return { ok: false, error: "יש לבחור אופן תשלום" }
+  }
+
+  const existing = await prisma.leadPayment.findFirst({
+    where: { id: paymentId, leadId },
+  })
+  if (!existing) return { ok: false, error: "התשלום לא נמצא" }
+
+  await prisma.leadPayment.update({
+    where: { id: paymentId },
+    data: {
+      amount,
+      paymentDate: jerusalemLocalToUtcDate(date, "12:00"),
+      paymentMethod: data.paymentMethod.trim(),
+      paymentReceivedBy: data.paymentReceivedBy.trim() || null,
+      paymentReceiptIssued: Boolean(data.paymentReceiptIssued),
+    },
+  })
+  await refreshLeadPaymentHeader(leadId)
+  await syncReceiptExpenseForLead(leadId, { paymentDate: date })
+
+  revalidatePath(`/leads/${leadId}`)
+  revalidatePath("/leads")
+  revalidatePath("/dashboard")
+  revalidatePath("/calendar")
+  revalidatePath("/payment-history")
+  return { ok: true, data: { id: paymentId } }
+}
+
+/** מחיקת תשלום שנרשם על ההדרכה */
+export async function deleteLeadPaymentAction(
+  leadId: string,
+  paymentId: string,
+  pin: string,
+): Promise<ActionResult<{ id: string }>> {
+  const pinError = paymentPinError(pin)
+  if (pinError) return { ok: false, error: pinError, code: "invalid_pin" }
+
+  const existing = await prisma.leadPayment.findFirst({
+    where: { id: paymentId, leadId },
+  })
+  if (!existing) return { ok: false, error: "התשלום לא נמצא" }
+
+  await prisma.leadPayment.delete({ where: { id: paymentId } })
+  await refreshLeadPaymentHeader(leadId)
+  await syncReceiptExpenseForLead(leadId)
+
+  revalidatePath(`/leads/${leadId}`)
+  revalidatePath("/leads")
+  revalidatePath("/dashboard")
+  revalidatePath("/calendar")
+  revalidatePath("/payment-history")
+  return { ok: true, data: { id: paymentId } }
 }
 
 /** משלים מודרכים גלובליים למשתתפים חיצוניים שטרם נכנסו למאגר */
@@ -1830,12 +2030,24 @@ export async function getAllPaymentTransactionsAction(): Promise<
             id: true,
             fullName: true,
             agreedPrice: true,
+            paidAmount: true,
             paymentStatus: true,
             paymentDate: true,
             paymentMethod: true,
             paymentReceivedBy: true,
             createdAt: true,
             scheduledStart: true,
+            leadPayments: {
+              select: {
+                id: true,
+                amount: true,
+                paymentDate: true,
+                paymentMethod: true,
+                paymentReceivedBy: true,
+                createdAt: true,
+              },
+              orderBy: { paymentDate: "desc" },
+            },
           },
         }),
         prisma.lead.findMany({
@@ -1932,10 +2144,27 @@ export async function getAllPaymentTransactionsAction(): Promise<
     }
 
     for (const lead of trainingLeads) {
+      if (lead.leadPayments.length) {
+        for (const payment of lead.leadPayments) {
+          const row = buildTrainingBaseTransaction({
+            id: `${lead.id}:${payment.id}`,
+            fullName: lead.fullName,
+            amount: payment.amount,
+            paymentStatus: PAID_PAYMENT_STATUS,
+            paymentDate: payment.paymentDate,
+            paymentMethod: payment.paymentMethod,
+            paymentReceivedBy: payment.paymentReceivedBy,
+            createdAt: payment.createdAt,
+            trainingDate: lead.scheduledStart,
+          })
+          if (row) rows.push(row)
+        }
+        continue
+      }
       const row = buildTrainingBaseTransaction({
         id: lead.id,
         fullName: lead.fullName,
-        amount: lead.agreedPrice,
+        amount: lead.paidAmount ?? lead.agreedPrice,
         paymentStatus: lead.paymentStatus,
         paymentDate: lead.paymentDate,
         paymentMethod: lead.paymentMethod,

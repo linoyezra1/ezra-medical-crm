@@ -260,7 +260,12 @@ export function computeTrainingPaymentSummary(
     .filter((s) => s.paid)
     .reduce((s, x) => s + x.amount, 0)
 
-  const baseCollected = isLeadPaid(lead) ? basePrice : 0
+  const baseCollected =
+    lead.paidAmount != null
+      ? money(lead.paidAmount)
+      : isLeadPaid(lead)
+        ? basePrice
+        : 0
   const baseCoveredAmount = Math.min(
     basePrice,
     baseCollected + internalCollected,

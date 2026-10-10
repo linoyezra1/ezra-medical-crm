@@ -335,6 +335,8 @@ export interface Lead {
   paymentMethod?: string;
   paymentReceivedBy?: string;
   paymentReceiptIssued?: boolean;
+  /** סכום שנגבה בפועל על ההדרכה (שורות תשלום) */
+  paidAmount?: number;
   /** קורס פרטי */
   isPrivateCourse?: boolean;
   sessionsCount?: number | null;
