@@ -3959,6 +3959,133 @@ export async function removeParticipant(id: string, leadId: string) {
   }
 }
 
+export type CourseInquiryRow = {
+  id: string;
+  fullName: string;
+  phone: string;
+  city: string;
+  notes: string;
+  createdAt: string;
+};
+
+export async function listCourseInquiries(): Promise<CourseInquiryRow[]> {
+  const rows = await prisma.courseInquiry.findMany({
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    fullName: row.fullName,
+    phone: row.phone,
+    city: row.city,
+    notes: row.notes,
+    createdAt: row.createdAt.toISOString().slice(0, 10),
+  }));
+}
+
+export async function createCourseInquiry(input: {
+  fullName: string;
+  phone?: string;
+  city?: string;
+  notes?: string;
+}): Promise<ActionResult<{ id: string }>> {
+  const fullName = input.fullName.trim();
+  if (!fullName) return { ok: false, error: "יש למלא שם מלא" };
+  const created = await prisma.courseInquiry.create({
+    data: {
+      fullName,
+      phone: (input.phone || "").trim(),
+      city: (input.city || "").trim(),
+      notes: (input.notes || "").trim(),
+    },
+  });
+  revalidatePath("/inquiries");
+  return { ok: true, data: { id: created.id } };
+}
+
+export async function deleteCourseInquiry(
+  id: string,
+): Promise<ActionResult<{ id: string }>> {
+  await prisma.courseInquiry.delete({ where: { id } });
+  revalidatePath("/inquiries");
+  return { ok: true, data: { id } };
+}
+
+/** שיוך מתעניין מהרשימה להדרכה (ליד חדש או נרשם ביומן) */
+export async function assignCourseInquiryToLead(
+  inquiryId: string,
+  leadId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const inquiry = await prisma.courseInquiry.findUnique({
+    where: { id: inquiryId },
+  });
+  if (!inquiry) return { ok: false, error: "המתעניין לא נמצא" };
+
+  const target = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!target) return { ok: false, error: "הדרכה לא נמצאה" };
+  const targetStatus = dbStatusToUi(target.courseStatus);
+  if (targetStatus !== "new" && targetStatus !== "closed") {
+    return {
+      ok: false,
+      error: "ניתן לשייך רק להדרכה בסטטוס ליד חדש או נרשם ביומן",
+    };
+  }
+
+  const added = await addExternalParticipant({
+    leadId,
+    fullName: inquiry.fullName,
+    phone: inquiry.phone,
+    idNumber: inquiry.idNumber,
+    email: inquiry.email,
+    isExternal: false,
+  });
+  if (!added.ok) return added;
+
+  await prisma.participant.update({
+    where: { id: added.data.participantId },
+    data: {
+      notes: inquiry.notes || null,
+      shippingCity: inquiry.city || null,
+      source: "air",
+    },
+  });
+  await prisma.courseInquiry.delete({ where: { id: inquiryId } });
+  revalidatePath("/inquiries");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/clients");
+  return { ok: true, data: { id: added.data.participantId } };
+}
+
+/** החזרת מודרך מההדרכה לרשימת המתעניינים */
+export async function releaseParticipantToAir(
+  participantId: string,
+  fromLeadId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const participant = await prisma.participant.findUnique({
+    where: { id: participantId },
+  });
+  if (!participant || participant.leadId !== fromLeadId) {
+    return { ok: false, error: "משתתף לא נמצא בהדרכה זו" };
+  }
+  const lead = await prisma.lead.findUnique({ where: { id: fromLeadId } });
+  const created = await prisma.courseInquiry.create({
+    data: {
+      fullName: participant.fullName || "מתעניין",
+      phone: participant.phone || "",
+      city: participant.shippingCity || lead?.city || "",
+      notes: participant.notes || "",
+      idNumber: participant.idNumber || "",
+      email: participant.email || "",
+    },
+  });
+  await prisma.participant.delete({ where: { id: participantId } });
+  await syncReceiptExpenseForLead(fromLeadId);
+  revalidatePath(`/leads/${fromLeadId}`);
+  revalidatePath("/leads");
+  revalidatePath("/clients");
+  revalidatePath("/inquiries");
+  return { ok: true, data: { id: created.id } };
+}
+
 /** העברת משתתף להדרכה אחרת (ליד חדש / נרשם ביומן) */
 export async function transferParticipantToLead(
   participantId: string,

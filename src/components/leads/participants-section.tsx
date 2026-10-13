@@ -83,6 +83,7 @@ import {
   sendLmsAccessToSheets,
   sendZoomLinkEmailAction,
   setParticipantAttended,
+  releaseParticipantToAir,
   transferParticipantToLead,
   updateParticipantDetails,
 } from "@/lib/actions"
@@ -474,6 +475,8 @@ function ParticipantMobileKebab({
     </>
   )
 }
+
+const AIR_TRANSFER_VALUE = "__air__"
 
 export function ParticipantsSection({
   lead,
@@ -877,12 +880,15 @@ export function ParticipantsSection({
       toast.error("יש לבחור הדרכה יעד")
       return
     }
+    const leaveInAir = transferLeadId === AIR_TRANSFER_VALUE
     setTransferSaving(true)
-    const res = await transferParticipantToLead(
-      transferP.id,
-      lead.id,
-      transferLeadId,
-    )
+    const res = leaveInAir
+      ? await releaseParticipantToAir(transferP.id, lead.id)
+      : await transferParticipantToLead(
+          transferP.id,
+          lead.id,
+          transferLeadId,
+        )
     setTransferSaving(false)
     if (!res.ok) {
       toast.error(res.error)
@@ -899,7 +905,11 @@ export function ParticipantsSection({
     })
     setTransferP(null)
     setTransferLeadId("")
-    toast.success("המשתתף הועבר להדרכה אחרת")
+    toast.success(
+      leaveInAir
+        ? "המודרך חזר לרשימת המתעניינים"
+        : "המשתתף הועבר להדרכה אחרת",
+    )
     refresh()
   }
 
@@ -2148,32 +2158,34 @@ export function ParticipantsSection({
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              בחרו הדרכה בסטטוס ליד חדש או נרשם ביומן
+              בחרו הדרכה בסטטוס ליד חדש או נרשם ביומן, או השאירו את המודרך באוויר
             </p>
-            {transferTargets.length === 0 ? (
-              <p className="text-sm text-destructive">
-                אין הדרכות זמינות להעברה כרגע
-              </p>
-            ) : (
-              <div>
-                <Label className="mb-1.5 block text-sm">הדרכת יעד</Label>
-                <Select
-                  value={transferLeadId || undefined}
-                  onValueChange={(v) => setTransferLeadId(v ?? "")}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="בחר הדרכה" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {transferTargets.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {formatTrainingOptionLabel(l, settings.courses)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div>
+              <Label className="mb-1.5 block text-sm">הדרכת יעד</Label>
+              <Select
+                value={transferLeadId || undefined}
+                onValueChange={(v) => setTransferLeadId(v ?? "")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="בחר הדרכה" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AIR_TRANSFER_VALUE}>
+                    השאר באוויר
+                  </SelectItem>
+                  {transferTargets.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {formatTrainingOptionLabel(l, settings.courses)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {transferTargets.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  אין כרגע הדרכות אחרות להעברה. אפשר להשאיר באוויר.
+                </p>
+              ) : null}
+            </div>
           </div>
           <DialogFooter className="flex-row gap-2 pt-2">
             <Button
@@ -2190,11 +2202,7 @@ export function ParticipantsSection({
             <Button
               type="button"
               className="flex-1"
-              disabled={
-                transferSaving ||
-                !transferLeadId ||
-                transferTargets.length === 0
-              }
+              disabled={transferSaving || !transferLeadId}
               onClick={() => void confirmTransfer()}
             >
               {transferSaving ? "מעביר…" : "העברה"}

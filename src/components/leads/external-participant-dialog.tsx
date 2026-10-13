@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { addExternalParticipant, ensureCustomCourseTypeOption } from "@/lib/actions"
+import { addExternalParticipant, createCourseInquiry, ensureCustomCourseTypeOption } from "@/lib/actions"
+import { Textarea } from "@/components/ui/textarea"
 import {
   COURSE_TYPE_FORMAT_ERROR,
   COURSE_TYPE_OTHER,
@@ -57,6 +58,8 @@ const EMPTY_FORM = {
   courseCategory: "",
   courseCategoryOther: "",
   agreedPrice: "",
+  city: "",
+  notes: "",
 }
 
 const CATEGORY_OTHER = "אחר"
@@ -83,6 +86,7 @@ export function ExternalParticipantDialog({
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [canPickContact, setCanPickContact] = useState(false)
+  const [airMode, setAirMode] = useState(false)
 
   useEffect(() => {
     setCanPickContact(contactsApiSupported())
@@ -90,6 +94,7 @@ export function ExternalParticipantDialog({
 
   useEffect(() => {
     if (!open) return
+    setAirMode(false)
     setForm({
       ...EMPTY_FORM,
       leadId: defaultLeadId || "",
@@ -158,6 +163,29 @@ export function ExternalParticipantDialog({
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (airMode && !lockLead) {
+      if (!form.fullName.trim()) {
+        toast.error("יש למלא שם מלא")
+        return
+      }
+      setSaving(true)
+      const res = await createCourseInquiry({
+        fullName: form.fullName,
+        phone: form.phone,
+        city: form.city,
+        notes: form.notes,
+      })
+      setSaving(false)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      toast.success("המתעניין נוסף לרשימה")
+      reset()
+      setAirMode(false)
+      onOpenChange(false)
+      return
+    }
     if (!form.leadId) {
       toast.error("יש לבחור הדרכה")
       return
@@ -269,6 +297,67 @@ export function ExternalParticipantDialog({
                 ) : null}
               </div>
             </div>
+            {!lockLead ? (
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary p-1">
+                <button
+                  type="button"
+                  className={`rounded-lg px-2 py-2 text-xs font-semibold ${
+                    !airMode
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setAirMode(false)}
+                >
+                  שיוך להדרכה
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-lg px-2 py-2 text-xs font-semibold ${
+                    airMode
+                      ? "bg-pink-500 text-white shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setAirMode(true)}
+                >
+                  השאר באוויר
+                </button>
+              </div>
+            ) : null}
+            {airMode && !lockLead ? (
+              <>
+                <div>
+                  <Label className="mb-1.5 block text-sm">טלפון</Label>
+                  <Input
+                    value={form.phone}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, phone: e.target.value }))
+                    }
+                    inputMode="tel"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1.5 block text-sm">עיר</Label>
+                  <Input
+                    value={form.city}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, city: e.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1.5 block text-sm">הערות</Label>
+                  <Textarea
+                    value={form.notes}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, notes: e.target.value }))
+                    }
+                    rows={3}
+                  />
+                </div>
+              </>
+            ) : (
+            <>
             <div>
               <Label className="mb-1.5 block text-sm">תעודת זהות</Label>
               <Input
@@ -467,6 +556,8 @@ export function ExternalParticipantDialog({
                 />
               </div>
             ) : null}
+            </>
+            )}
           </div>
 
           <DialogFooter className="sticky bottom-0 z-10 mt-0 shrink-0 border-t border-border bg-background p-4">
@@ -479,7 +570,11 @@ export function ExternalParticipantDialog({
               ביטול
             </Button>
             <Button type="submit" className="flex-1" disabled={saving}>
-              {saving ? "שומר…" : "שמור משתתף"}
+              {saving
+                ? "שומר…"
+                : airMode && !lockLead
+                  ? "שמור מתעניין"
+                  : "שמור משתתף"}
             </Button>
           </DialogFooter>
         </form>

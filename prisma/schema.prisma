@@ -503,6 +503,21 @@ model Settings {
   calendarEnabled Boolean @default(false)
 }
 
+/** מתעניין שעדיין לא שויך להדרכה */
+model CourseInquiry {
+  id        String   @id @default(cuid())
+  fullName  String
+  phone     String   @default("")
+  city      String   @default("")
+  notes     String   @default("")
+  idNumber  String   @default("")
+  email     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
 /** לידים לשיווק / יצירת קשר (נפרד מלידי הדרכה) */
 model OutreachLead {
   id           String   @id @default(cuid())

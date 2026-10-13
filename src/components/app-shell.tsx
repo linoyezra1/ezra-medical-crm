@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Receipt,
   Settings,
+  UserPlus,
   UserRound,
   Users,
   Zap,
@@ -46,6 +47,7 @@ type NavItem = {
 }
 
 const MORE: NavItem[] = [
+  { href: "/inquiries", label: "מתעניינים", icon: UserPlus },
   { href: "/outreach-leads", label: "לידים לשיווק", icon: MessageCircle },
   { href: "/quick-actions", label: "פעולות מהירות", icon: Zap },
   { href: "/payment-history", label: "היסטוריית תשלומים", icon: Receipt },
