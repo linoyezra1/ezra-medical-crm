@@ -3990,16 +3990,24 @@ export async function createCourseInquiry(input: {
 }): Promise<ActionResult<{ id: string }>> {
   const fullName = input.fullName.trim();
   if (!fullName) return { ok: false, error: "יש למלא שם מלא" };
-  const created = await prisma.courseInquiry.create({
-    data: {
-      fullName,
-      phone: (input.phone || "").trim(),
-      city: (input.city || "").trim(),
-      notes: (input.notes || "").trim(),
-    },
-  });
-  revalidatePath("/inquiries");
-  return { ok: true, data: { id: created.id } };
+  try {
+    const created = await prisma.courseInquiry.create({
+      data: {
+        fullName,
+        phone: (input.phone || "").trim(),
+        city: (input.city || "").trim(),
+        notes: (input.notes || "").trim(),
+      },
+    });
+    revalidatePath("/inquiries");
+    return { ok: true, data: { id: created.id } };
+  } catch (err) {
+    console.error("[createCourseInquiry]", err);
+    return {
+      ok: false,
+      error: "לא ניתן לשמור את המתעניין. יש לעדכן את בסיס הנתונים ואז לנסות שוב",
+    };
+  }
 }
 
 export async function deleteCourseInquiry(
@@ -4067,23 +4075,31 @@ export async function releaseParticipantToAir(
     return { ok: false, error: "משתתף לא נמצא בהדרכה זו" };
   }
   const lead = await prisma.lead.findUnique({ where: { id: fromLeadId } });
-  const created = await prisma.courseInquiry.create({
-    data: {
-      fullName: participant.fullName || "מתעניין",
-      phone: participant.phone || "",
-      city: participant.shippingCity || lead?.city || "",
-      notes: participant.notes || "",
-      idNumber: participant.idNumber || "",
-      email: participant.email || "",
-    },
-  });
-  await prisma.participant.delete({ where: { id: participantId } });
-  await syncReceiptExpenseForLead(fromLeadId);
-  revalidatePath(`/leads/${fromLeadId}`);
-  revalidatePath("/leads");
-  revalidatePath("/clients");
-  revalidatePath("/inquiries");
-  return { ok: true, data: { id: created.id } };
+  try {
+    const created = await prisma.courseInquiry.create({
+      data: {
+        fullName: participant.fullName || "מתעניין",
+        phone: participant.phone || "",
+        city: participant.shippingCity || lead?.city || "",
+        notes: participant.notes || "",
+        idNumber: participant.idNumber || "",
+        email: participant.email || "",
+      },
+    });
+    await prisma.participant.delete({ where: { id: participantId } });
+    await syncReceiptExpenseForLead(fromLeadId);
+    revalidatePath(`/leads/${fromLeadId}`);
+    revalidatePath("/leads");
+    revalidatePath("/clients");
+    revalidatePath("/inquiries");
+    return { ok: true, data: { id: created.id } };
+  } catch (err) {
+    console.error("[releaseParticipantToAir]", err);
+    return {
+      ok: false,
+      error: "לא ניתן להחזיר לאוויר. יש לעדכן את בסיס הנתונים ואז לנסות שוב",
+    };
+  }
 }
 
 /** העברת משתתף להדרכה אחרת (ליד חדש / נרשם ביומן) */
