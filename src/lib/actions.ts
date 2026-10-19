@@ -71,6 +71,7 @@ import {
   normalizeCertifyingBody,
   resolveParticipantCertifyingBodyOnCreate,
 } from "@/lib/certifying-body";
+import { resolveHubRoutingBody } from "@/lib/certificates-hub";
 import {
   findParticipantByIdNumber,
   isUsableParticipantIdNumber,
@@ -2725,6 +2726,7 @@ export async function triggerRemoteCertificates(input: {
       courseType: true,
       courseCategory: true,
       certificateUrl: true,
+      certifyingBody: true,
       trainee: {
         select: { certificateUrl: true },
       },
@@ -2735,6 +2737,7 @@ export async function triggerRemoteCertificates(input: {
           courseTypeOther: true,
           courseCategory: true,
           courseCategoryOther: true,
+          deliveryMethod: true,
         },
       },
     },
@@ -2773,6 +2776,7 @@ export async function triggerRemoteCertificates(input: {
             courseType: true,
             courseCategory: true,
             certificateUrl: true,
+            certifyingBody: true,
             trainee: {
               select: { certificateUrl: true },
             },
@@ -2783,6 +2787,7 @@ export async function triggerRemoteCertificates(input: {
                 courseTypeOther: true,
                 courseCategory: true,
                 courseCategoryOther: true,
+                deliveryMethod: true,
               },
             },
           },
@@ -2875,6 +2880,11 @@ export async function triggerRemoteCertificates(input: {
       certificateUrl: certificatePdfUrl,
       certificatePdfUrl,
       pdfUrl: certificatePdfUrl,
+      certifyingBody: resolveHubRoutingBody({
+        participantBody: p.certifyingBody,
+        isExternal: Boolean(p.isExternal),
+        leadDeliveryMethod: p.lead?.deliveryMethod,
+      }).body,
     };
   });
 

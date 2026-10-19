@@ -62,11 +62,7 @@ export function CollectParticipantsDialog({
 
   const sendRegistrationWhatsApp = () => {
     const text = registrationWhatsAppText()
-    window.open(
-      whatsappLink(lead.phone, text),
-      "_blank",
-      "noopener,noreferrer",
-    )
+    window.open(whatsappLink("", text), "_blank", "noopener,noreferrer")
   }
 
   const sendGoogleReviewWhatsApp = () => {

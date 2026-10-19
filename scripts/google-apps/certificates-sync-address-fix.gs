@@ -9,14 +9,16 @@
  *    לא: if (action === "sync" || data.participantsToAdd)
  *    כי גם מערך ריק [] הוא truthy — וזה שובר הנפקת תעודות.
  *
- * 2) בסיום השורה ב־appendRow / buildRow להוסיף עמודה T:
+ * 2) בסיום השורה ב־appendRow / buildRow להוסיף עמודה T ואז U:
  *      p.courseCategory || p.category || ""
+ *      p.certifyingBody || ""
  *
- * 3) סדר עמודות מלא (A–T) לפי CRM:
+ * 3) סדר עמודות מלא (A–U) לפי CRM:
  *    A שם | B ת״ז | C תאריך | D מייל | E טלפון | F היקף שעות
  *    G מספר תעודה | H תוקף | I הודפס | J נשלח מייל
  *    K מזמין | L תאריך ייצוא | M CRM ID | N PDF | O נוכחות
  *    P עיר | Q כתובת/רחוב | R מספר בית | S מיקוד | T קטגוריה
+ *    U תעודות דרך מי
  *
  * 4) L = תאריך ייצוא (לא נוכחות). O = נוכחות ("TRUE" / "לא נכח").
  *
@@ -28,7 +30,9 @@
  *    zipCode || postalCode
  *    courseCategory || category
  *
- * 6) לשורות קיימות: לעדכן P–T לפי CRM ID בעמודה M (לא רק append).
+ * 6) לשורות קיימות: לעדכן P–U לפי CRM ID בעמודה M (לא רק append).
+ *    הנפקת התעודות קוראת רק A–O, אז עמודה U לא משנה את הסקריפט הקיים.
+ *    צריך לעדכן את buildRow רק אם הסקריפט עצמו כותב את השורה.
  *
  * אחרי הדבקה: Deploy → Manage deployments → Version: New → Deploy.
  */
@@ -47,6 +51,7 @@ function buildParticipantSheetRow_(p) {
   const street = p.street || p.address || "";
   const zip = p.zipCode || p.postalCode || "";
   const category = p.courseCategory || p.category || "";
+  const certifyingBody = p.certifyingBody || "";
 
   return [
     p.fullName || "", // A
@@ -69,6 +74,7 @@ function buildParticipantSheetRow_(p) {
     p.houseNumber || "", // R
     zip, // S
     category, // T קטגוריה
+    certifyingBody, // U תעודות דרך מי
   ];
 }
 
@@ -95,14 +101,15 @@ function syncParticipantsToSheet_(sheet, participantsToAdd) {
     const existingRow = findRowByCrmId_(sheet, crmId);
 
     if (existingRow > 0) {
-      // P–T: עיר, רחוב, מספר בית, מיקוד, קטגוריה
-      sheet.getRange(existingRow, 16, 1, 5).setValues([
+      // P–U: עיר, רחוב, מספר בית, מיקוד, קטגוריה, תעודות דרך מי
+      sheet.getRange(existingRow, 16, 1, 6).setValues([
         [
           rowValues[15],
           rowValues[16],
           rowValues[17],
           rowValues[18],
           rowValues[19],
+          rowValues[20],
         ],
       ]);
       if (rowValues[0]) sheet.getRange(existingRow, 1).setValue(rowValues[0]);

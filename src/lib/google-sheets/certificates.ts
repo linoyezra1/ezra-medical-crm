@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import {
   resolveDigitalCertStatus,
+  resolveHubRoutingBody,
   resolvePhysicalCertStatus,
 } from "@/lib/certificates-hub"
 import {
@@ -27,11 +28,12 @@ import {
 import { formatLeadCategory } from "@/lib/helpers"
 
 /**
- * כותרות עמודות בגיליון «תעודות» — 20 עמודות בסדר קבוע (A–T)
+ * כותרות עמודות בגיליון «תעודות» — 21 עמודות בסדר קבוע (A–U)
  * G–H / N ממולאים בגיליון או ע״י Apps Script
  * O = נוכחות (TRUE / לא נכח)
  * P–S = כתובת מגורים של המודרך
  * T = קטגוריה
+ * U = תעודות דרך מי (אותו ערך כמו בניהול התעודות)
  */
 export const CERTIFICATE_SHEET_HEADERS = [
   "שם מלא", // A
@@ -54,6 +56,7 @@ export const CERTIFICATE_SHEET_HEADERS = [
   "מספר בית", // R
   "מיקוד", // S
   "קטגוריה", // T
+  "תעודות דרך מי", // U
 ] as const
 
 /** אינדקסים 0-based לפי מבנה הגיליון */
@@ -78,11 +81,12 @@ const COL = {
   houseNumber: 17, // R
   zipCode: 18, // S
   category: 19, // T
+  certifyingBody: 20, // U
 } as const
 
-const SHEET_RANGE_HEADER = "A1:T1"
-const SHEET_RANGE_DATA = "A2:T"
-const SHEET_RANGE_APPEND = "A:T"
+const SHEET_RANGE_HEADER = "A1:U1"
+const SHEET_RANGE_DATA = "A2:U"
+const SHEET_RANGE_APPEND = "A:U"
 /** עמודת מזהה משתתף למניעת כפילויות */
 const SHEET_RANGE_CRM_IDS = "M:M"
 /** כותרות A–O לפני הרחבת כתובת/קטגוריה */
@@ -120,22 +124,35 @@ async function ensureHeaderRow() {
   const row = existing.data.values?.[0] || []
   if (row.length >= CERTIFICATE_SHEET_HEADERS.length) return
 
-  // גיליון עם A–S בלבד — מוסיפים כותרת T
-  if (row.length >= 19) {
+  // גיליון עם A–T — מוסיפים רק כותרת U
+  if (row.length >= 20) {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: sheetA1(tab, "T1"),
+      range: sheetA1(tab, "U1"),
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [[CERTIFICATE_SHEET_HEADERS[19]]] },
+      requestBody: { values: [[CERTIFICATE_SHEET_HEADERS[20]]] },
     })
     return
   }
 
-  // גיליון ישן A–O — מוסיפים כותרות P–T בלי לדרוס A–O
+  // גיליון עם A–S — מוסיפים כותרות T–U
+  if (row.length >= 19) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: sheetA1(tab, "T1:U1"),
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[...CERTIFICATE_SHEET_HEADERS.slice(19)]],
+      },
+    })
+    return
+  }
+
+  // גיליון ישן A–O — מוסיפים כותרות P–U בלי לדרוס A–O
   if (row.length >= LEGACY_HEADER_COLS) {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: sheetA1(tab, "P1:T1"),
+      range: sheetA1(tab, "P1:U1"),
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[...CERTIFICATE_SHEET_HEADERS.slice(LEGACY_HEADER_COLS)]],
@@ -191,6 +208,37 @@ function categoryCell(p: {
   if (!raw) return ""
   const label = formatLeadCategory(raw)
   return label === "—" ? raw : label
+}
+
+/** אותו ערך שמפלג את ניהול התעודות */
+function certifyingBodyCell(p: {
+  certifyingBody?: string | null
+  isExternal?: boolean | null
+  lead?: { deliveryMethod?: string | null } | null
+}): string {
+  return resolveHubRoutingBody({
+    participantBody: p.certifyingBody,
+    isExternal: Boolean(p.isExternal),
+    leadDeliveryMethod: p.lead?.deliveryMethod,
+  }).body
+}
+
+/** P–U: כתובת + קטגוריה + תעודות דרך מי */
+function sheetTailCells(p: {
+  shippingCity?: string | null
+  shippingStreet?: string | null
+  shippingHouseNo?: string | null
+  shippingZip?: string | null
+  isExternal?: boolean | null
+  courseCategory?: string | null
+  certifyingBody?: string | null
+  lead?: {
+    courseCategory?: string | null
+    courseCategoryOther?: string | null
+    deliveryMethod?: string | null
+  } | null
+}): string[] {
+  return [...addressAndCategoryCells(p), certifyingBodyCell(p)]
 }
 
 /** P–T: כתובת + קטגוריה */
@@ -261,6 +309,7 @@ function participantRow(p: {
   shippingStreet?: string | null
   shippingHouseNo?: string | null
   shippingZip?: string | null
+  certifyingBody?: string | null
   trainee?: {
     certificateEmailSent: boolean
     certificateCardPrinted: boolean
@@ -273,6 +322,7 @@ function participantRow(p: {
     courseTypeOther: string | null
     courseCategory?: string | null
     courseCategoryOther?: string | null
+    deliveryMethod?: string | null
   } | null
 }): (string | boolean)[] {
   const courseDate = trainingDateLabel(p.courseDate, p.lead?.scheduledStart)
@@ -302,7 +352,7 @@ function participantRow(p: {
     p.id, // M — CRM_PARTICIPANT_ID
     pdfUrl, // N — קישור PDF / Drive (certificateUrl)
     attendanceCell(Boolean(p.attended)), // O — נוכחות
-    ...addressAndCategoryCells(p), // P–T עיר / רחוב / בית / מיקוד / קטגוריה
+    ...sheetTailCells(p), // P–U עיר / רחוב / בית / מיקוד / קטגוריה / תעודות דרך מי
   ]
 }
 
@@ -362,6 +412,7 @@ export async function exportLeadParticipantsToSheets(
             courseTypeOther: true,
             courseCategory: true,
             courseCategoryOther: true,
+            deliveryMethod: true,
           },
         },
       },
@@ -393,8 +444,8 @@ export async function exportLeadParticipantsToSheets(
         values: [[attendanceCell(Boolean(p.attended))]],
       })
       addressUpdates.push({
-        range: sheetA1(tab, `P${rowIndex}:T${rowIndex}`),
-        values: [addressAndCategoryCells(p)],
+        range: sheetA1(tab, `P${rowIndex}:U${rowIndex}`),
+        values: [sheetTailCells(p)],
       })
       const [physicalStatus, digitalStatus] = sheetCertStatusCells(p)
       certStatusUpdates.push({
@@ -531,6 +582,7 @@ export async function syncParticipantAttendanceToSheets(
             courseTypeOther: true,
             courseCategory: true,
             courseCategoryOther: true,
+            deliveryMethod: true,
           },
         },
       },
@@ -640,6 +692,7 @@ export async function exportTraineesToCertificateSheet(
             shippingHouseNo: true,
             shippingZip: true,
             courseCategory: true,
+            certifyingBody: true,
             lead: {
               select: {
                 fullName: true,
@@ -648,6 +701,7 @@ export async function exportTraineesToCertificateSheet(
                 courseTypeOther: true,
                 courseCategory: true,
                 courseCategoryOther: true,
+                deliveryMethod: true,
               },
             },
           },
@@ -704,7 +758,10 @@ export async function exportTraineesToCertificateSheet(
         p?.id || t.id, // M — מזהה משתתף אם יש, אחרת מודרך
         t.certificateUrl?.trim() || "", // N — קישור PDF / Drive
         "TRUE", // O — נוכחות
-        ...addressAndCategoryCells(p || {}), // P–T
+        ...sheetTailCells({
+          ...(p || {}),
+          certifyingBody: p?.certifyingBody || t.certifyingBody,
+        }), // P–U
       ]
     })
 
@@ -759,6 +816,7 @@ export async function exportMissingAttendedToSheets(): Promise<
             courseTypeOther: true,
             courseCategory: true,
             courseCategoryOther: true,
+            deliveryMethod: true,
           },
         },
       },
