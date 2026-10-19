@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Award, FolderArchive, RefreshCw, Search, X } from "lucide-react"
+import { Archive, Award, FolderArchive, RefreshCw, Search, X } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { CertificatesBulkBar } from "@/components/certificates-hub/certificates-bulk-bar"
@@ -32,7 +32,7 @@ import {
 } from "@/lib/certificates-hub"
 import { cn } from "@/lib/utils"
 
-export function CertificatesHubView() {
+export function CertificatesHubView({ archive = false }: { archive?: boolean }) {
   const [tab, setTab] = useState<CertificatesHubTab>("ezra")
   const [rows, setRows] = useState<CertificatesHubRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,14 +48,16 @@ export function CertificatesHubView() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const res = await listEligibleCertificateParticipantsAction()
+    const res = await listEligibleCertificateParticipantsAction(
+      archive ? "archive" : "active",
+    )
     setLoading(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
     setRows(res.data)
-  }, [])
+  }, [archive])
 
   useEffect(() => {
     void load()
@@ -137,7 +139,11 @@ export function CertificatesHubView() {
     const hits = searchCertificatesHubRows(rows, q)
     if (!hits.length) {
       setSearchHits([])
-      toast.error("לא נמצא מודרך תואם בזכאים לתעודות")
+      toast.error(
+        archive
+          ? "לא נמצא מודרך תואם בארכיון"
+          : "לא נמצא מודרך תואם בזכאים לתעודות",
+      )
       return
     }
     if (hits.length === 1) {
@@ -145,7 +151,7 @@ export function CertificatesHubView() {
       return
     }
     setSearchHits(hits)
-  }, [searchQuery, rows, navigateToHit])
+  }, [searchQuery, rows, navigateToHit, archive])
 
   const toggle = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -186,14 +192,11 @@ export function CertificatesHubView() {
       list.flatMap((r) => {
         if (r.participantId !== id) return [r]
         const updated = { ...r, ...patch }
-        if (
-          !hasPendingCertificateWork({
-            certificateEmailSent: updated.digitalCompleted,
-            certificateCardPrinted: updated.physicalCompleted,
-          })
-        ) {
-          return []
-        }
+        const pending = hasPendingCertificateWork({
+          certificateEmailSent: updated.digitalCompleted,
+          certificateCardPrinted: updated.physicalCompleted,
+        })
+        if (archive ? pending : !pending) return []
         return [updated]
       }),
     )
@@ -239,8 +242,12 @@ export function CertificatesHubView() {
   return (
     <div className={cn("pb-28", selectedIds.size > 0 && "pb-36")}>
       <PageHeader
-        title="ניהול תעודות"
-        subtitle="מודול ניסיוני — ריכוז זכאים לפי גוף מסמיך ומחזורי הפקה"
+        title={archive ? "ארכיון תעודות" : "ניהול תעודות"}
+        subtitle={
+          archive
+            ? "תעודות שדיגיטלית ופיזית סומנו כהושלמו"
+            : "מודול ניסיוני — ריכוז זכאים לפי גוף מסמיך ומחזורי הפקה"
+        }
         action={
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
@@ -256,6 +263,21 @@ export function CertificatesHubView() {
                 <Link href="/certificates/cohort-docs">
                   <FolderArchive className="size-4" />
                   תיעוד מחזורים וקבצים
+                </Link>
+              }
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              className="h-9 gap-2 rounded-xl"
+              render={
+                <Link
+                  href={archive ? "/certificates" : "/certificates/archive"}
+                >
+                  <Archive className="size-4" />
+                  {archive ? "חזרה לניהול" : "ארכיון"}
                 </Link>
               }
             />
@@ -404,14 +426,16 @@ export function CertificatesHubView() {
 
         {loading ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            טוען זכאים לתעודות…
+            {archive ? "טוען ארכיון…" : "טוען זכאים לתעודות…"}
           </p>
         ) : sections.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
             <Award className="mx-auto mb-2 size-8 opacity-40" />
-            {tab === "unassigned"
-              ? "אין משתתפים חיצוניים ללא גוף מסמיך — או אין זכאים בטאב זה"
-              : "אין מודרכים זכאים בטאב זה (הדרכה הסתיימה/ממתינה לתעודות + נוכחות + סיום כל המחזורים)"}
+            {archive
+              ? "אין בארכיון תעודות שהושלמו בטאב זה"
+              : tab === "unassigned"
+                ? "אין משתתפים חיצוניים ללא גוף מסמיך — או אין זכאים בטאב זה"
+                : "אין מודרכים זכאים בטאב זה (הדרכה הסתיימה/ממתינה לתעודות + נוכחות + סיום כל המחזורים)"}
           </div>
         ) : (
           sections.map(({ section, rows: sectionRows }) => (

@@ -430,9 +430,9 @@ export async function mergeDuplicateCertificateBatchesAction(): Promise<
  * 2. הדרכת המשתתף ב־«ממתין לתעודות» / «הסתיים»
  * 3. כל ההדרכות של אותו ת״ז (למעט אבודות) הגיעו לשלב תעודות — אין הדרכה פעילה/מתוזמנת
  */
-export async function listEligibleCertificateParticipantsAction(): Promise<
-  ActionResult<CertificatesHubRow[]>
-> {
+export async function listEligibleCertificateParticipantsAction(
+  scope: "active" | "archive" = "active",
+): Promise<ActionResult<CertificatesHubRow[]>> {
   try {
     await ensureDefaultStatusOptions()
     await mergeDuplicateCertificateBatches()
@@ -587,16 +587,13 @@ export async function listEligibleCertificateParticipantsAction(): Promise<
       const emailSent = Boolean(p.trainee?.certificateEmailSent)
       const cardPrinted = Boolean(p.trainee?.certificateCardPrinted)
 
-      if (
-        !hasPendingCertificateWork({
-          digitalCertStatus: p.digitalCertStatus,
-          physicalCertStatus: p.physicalCertStatus,
-          certificateEmailSent: emailSent,
-          certificateCardPrinted: cardPrinted,
-        })
-      ) {
-        continue
-      }
+      const pending = hasPendingCertificateWork({
+        digitalCertStatus: p.digitalCertStatus,
+        physicalCertStatus: p.physicalCertStatus,
+        certificateEmailSent: emailSent,
+        certificateCardPrinted: cardPrinted,
+      })
+      if (scope === "archive" ? pending : !pending) continue
 
       out.push({
         participantId: p.id,
