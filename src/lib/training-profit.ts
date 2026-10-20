@@ -5,6 +5,7 @@ import {
   TRAINING_SALE_PAID,
 } from "@/lib/payment"
 import type { InstructorProfile, Lead, Participant } from "@/lib/types"
+import { isTripEscortLead } from "@/lib/trip-escort"
 
 const INSTRUCTOR_EXPENSE_TYPES = new Set([
   "מדריך",
@@ -332,9 +333,13 @@ export function leadDisplayPrice(lead: Lead): number {
  * יצחק — ללא עלות מדריך.
  */
 export function resolveInstructorFee(
-  lead: Pick<Lead, "instructorId" | "instructorFeeOverride" | "instructor">,
+  lead: Pick<
+    Lead,
+    "instructorId" | "instructorFeeOverride" | "instructor" | "activityType"
+  >,
   instructors: InstructorProfile[],
 ): number {
+  if (isTripEscortLead(lead)) return 0
   if (isOwnerInstructor(lead.instructor)) return 0
 
   const byId = lead.instructorId

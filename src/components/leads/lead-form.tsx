@@ -51,6 +51,15 @@ import {
 import { addHoursToTime } from "@/lib/payment"
 import { useApp } from "@/lib/store"
 import type { Lead } from "@/lib/types"
+import {
+  calcTripEscortAgreedPrice,
+  isTripEscortLead,
+  TRIP_ESCORT_ACTIVITY,
+  TRIP_ESCORT_ROLE_LABELS,
+  TRIP_ESCORT_ROLES,
+  type TripBillingLine,
+  type TripEscortRole,
+} from "@/lib/trip-escort"
 
 const FORM_STEPS = ["details", "course", "logistics"] as const
 type FormStep = (typeof FORM_STEPS)[number]
@@ -140,12 +149,15 @@ export function LeadForm({ existing }: Props) {
       participants: [],
       expenses: [],
       isPrivateCourse: false,
+      activityType: "course",
+      tripBillingLines: [],
       sessionsCount: 1,
       sessions: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
   )
+  const tripEscort = isTripEscortLead(form)
   const [courseTypeSelect, setCourseTypeSelect] = useState(initialCourseSelect)
   const [courseTypeOther, setCourseTypeOther] = useState(initialCourseOtherText)
   const [categorySelect, setCategorySelect] = useState(initialCategorySelect)
@@ -327,16 +339,58 @@ export function LeadForm({ existing }: Props) {
   const set = <K extends keyof Lead>(key: K, value: Lead[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
-  const total = useMemo(
-    () =>
-      calcTotal(
-        form.pricingType,
-        form.pricePerUnit,
-        form.participantsCount,
-        globalPrice,
-      ),
-    [form.pricingType, form.pricePerUnit, form.participantsCount, globalPrice],
-  )
+  const total = useMemo(() => {
+    if (isTripEscortLead(form)) {
+      return calcTripEscortAgreedPrice(
+        form.tripBillingLines || [],
+        resolvedSessionsCount,
+      )
+    }
+    return calcTotal(
+      form.pricingType,
+      form.pricePerUnit,
+      form.participantsCount,
+      globalPrice,
+    )
+  }, [
+    form.activityType,
+    form.pricingType,
+    form.pricePerUnit,
+    form.participantsCount,
+    form.tripBillingLines,
+    globalPrice,
+    resolvedSessionsCount,
+  ])
+
+  const updateBillingLine = (
+    index: number,
+    patch: Partial<TripBillingLine>,
+  ) => {
+    setForm((f) => {
+      const lines = [...(f.tripBillingLines || [])]
+      const current = lines[index]
+      if (!current) return f
+      lines[index] = { ...current, ...patch }
+      return { ...f, tripBillingLines: lines }
+    })
+  }
+
+  const addBillingLine = () => {
+    setForm((f) => ({
+      ...f,
+      tripBillingLines: [
+        ...(f.tripBillingLines || []),
+        { role: "mear" as TripEscortRole, count: 1, dailyRate: 0 },
+      ],
+    }))
+  }
+
+  const removeBillingLine = (index: number) => {
+    setForm((f) => ({
+      ...f,
+      tripBillingLines: (f.tripBillingLines || []).filter((_, i) => i !== index),
+    }))
+  }
 
   const firstRender = useRef(true)
   useEffect(() => {
@@ -437,7 +491,7 @@ export function LeadForm({ existing }: Props) {
     const e: Record<string, boolean> = {}
     if (!form.name.trim()) e.name = true
     if (!form.phone.trim()) e.phone = true
-    if (!form.isPrivateCourse) {
+    if (!form.isPrivateCourse && !tripEscort) {
       if (courseTypeSelect === COURSE_TYPE_OTHER) {
         if (!courseTypeOther.trim()) {
           e.courseTypeOther = true
@@ -449,6 +503,10 @@ export function LeadForm({ existing }: Props) {
         e.courseTypeOther = true
         toast.error(COURSE_TYPE_FORMAT_ERROR)
       }
+    }
+    if (tripEscort && !(form.tripBillingLines || []).some((l) => l.count > 0)) {
+      toast.error("יש להוסיף לפחות שורת תמחור אחת לליווי הטיול")
+      e.tripBilling = true
     }
     if (sessionsMode === "other") {
       const n = Number(sessionsOtherCount)
@@ -479,12 +537,17 @@ export function LeadForm({ existing }: Props) {
     if (saving) return
 
     const { category, categoryOther } = resolveCategory()
-    const courseResolved = form.isPrivateCourse
-      ? { courseType: "", courseTypeOther: undefined as string | undefined }
-      : resolveCourseTypeForSave(courseTypeSelect, courseTypeOther)
-    const catalog = form.isPrivateCourse
-      ? null
-      : findCourseCatalog(courseResolved.courseType, settings.courses)
+    const courseResolved =
+      form.isPrivateCourse || tripEscort
+        ? {
+            courseType: tripEscort ? "מע״ר מלווה טיול" : "",
+            courseTypeOther: undefined as string | undefined,
+          }
+        : resolveCourseTypeForSave(courseTypeSelect, courseTypeOther)
+    const catalog =
+      form.isPrivateCourse || tripEscort
+        ? null
+        : findCourseCatalog(courseResolved.courseType, settings.courses)
     const instructor = resolveInstructor()
     const unassigned = isInstructorUnassigned(instructor)
     const fee = isOwnerInstructor(instructor)
@@ -512,6 +575,7 @@ export function LeadForm({ existing }: Props) {
 
       if (
         !form.isPrivateCourse &&
+        !tripEscort &&
         courseResolved.courseType &&
         courseResolved.courseType !== COURSE_TYPE_OTHER
       ) {
@@ -524,7 +588,7 @@ export function LeadForm({ existing }: Props) {
         phoneSecondary: form.phoneSecondary
           ? cleanPhone(form.phoneSecondary)
           : undefined,
-        // מחיר גלובלי / מחושב — נשמר כ־agreedPrice ב־DB
+        // מחיר גלובלי / מחושב / ליווי טיול — נשמר כ־agreedPrice ב־DB
         totalPrice: total,
         pricingType: form.pricingType,
         pricePerUnit: form.pricePerUnit,
@@ -541,6 +605,8 @@ export function LeadForm({ existing }: Props) {
         // לא מעתיקים עלות מדריך להוצאות — החישוב דינמי מפרופיל המדריך
         expenses: form.expenses.filter((e) => e.type !== "מדריך"),
         isPrivateCourse: Boolean(form.isPrivateCourse),
+        activityType: tripEscort ? TRIP_ESCORT_ACTIVITY : form.activityType || "course",
+        tripBillingLines: tripEscort ? form.tripBillingLines || [] : undefined,
         sessionsCount: resolvedSessionsCount,
         sessions: sessionSlots.map((s) => ({
           date: s.date,
@@ -630,22 +696,49 @@ export function LeadForm({ existing }: Props) {
           </Card>
         )}
 
-        <label className="mb-3 flex items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2.5 text-sm">
-          <Checkbox
-            checked={Boolean(form.isPrivateCourse)}
-            onCheckedChange={(v) => {
-              const next = Boolean(v)
-              set("isPrivateCourse", next)
-              if (next) {
-                set("courseType", "")
-                set("courseTypeOther", undefined)
-                set("courseHours", undefined)
-                if (wizardStep === "course") goToStep("details")
-              }
-            }}
-          />
-          <span className="font-semibold text-pink-800">קורס פרטי</span>
-        </label>
+        <div className="mb-3 space-y-2">
+          <label className="flex items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2.5 text-sm">
+            <Checkbox
+              checked={Boolean(form.isPrivateCourse)}
+              disabled={tripEscort}
+              onCheckedChange={(v) => {
+                const next = Boolean(v)
+                set("isPrivateCourse", next)
+                if (next) {
+                  set("courseType", "")
+                  set("courseTypeOther", undefined)
+                  set("courseHours", undefined)
+                  if (wizardStep === "course") goToStep("details")
+                }
+              }}
+            />
+            <span className="font-semibold text-pink-800">קורס פרטי</span>
+          </label>
+          <label className="flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 text-sm">
+            <Checkbox
+              checked={tripEscort}
+              onCheckedChange={(v) => {
+                const next = Boolean(v)
+                set(
+                  "activityType",
+                  next ? TRIP_ESCORT_ACTIVITY : "course",
+                )
+                if (next) {
+                  set("isPrivateCourse", false)
+                  set("pricingType", "global")
+                  if (!(form.tripBillingLines || []).length) {
+                    set("tripBillingLines", [
+                      { role: "mear", count: 1, dailyRate: 0 },
+                    ])
+                  }
+                }
+              }}
+            />
+            <span className="font-semibold text-teal-900">
+              מע״ר מלווה טיול
+            </span>
+          </label>
+        </div>
 
         <Tabs
           value={wizardStep}
@@ -662,7 +755,9 @@ export function LeadForm({ existing }: Props) {
           >
             <TabsTrigger value="details">פרטים</TabsTrigger>
             {!form.isPrivateCourse ? (
-              <TabsTrigger value="course">קורס ותמחור</TabsTrigger>
+              <TabsTrigger value="course">
+                {tripEscort ? "תמחור ליווי" : "קורס ותמחור"}
+              </TabsTrigger>
             ) : null}
             <TabsTrigger value="logistics">מיקום הדרכה</TabsTrigger>
           </TabsList>
@@ -787,7 +882,10 @@ export function LeadForm({ existing }: Props) {
               sectionRefs.current.course = el
             }}
             className="mt-8 scroll-mt-28 space-y-4 overflow-visible border-t border-border pt-6"
-          >            <Field
+          >
+            {!tripEscort ? (
+              <>
+            <Field
               label="סוג קורס"
               error={errors.courseTypeOther}
               errorMessage={
@@ -901,6 +999,13 @@ export function LeadForm({ existing }: Props) {
                 </Field>
               </div>
             ) : null}
+              </>
+            ) : (
+              <p className="rounded-xl border border-teal-200 bg-teal-50/60 px-3 py-2 text-sm text-teal-950">
+                ליווי טיול — התמחור לפי תפקידי צוות × מספר ימי הטיול (
+                {resolvedSessionsCount} ימים)
+              </p>
+            )}
 
             <Field label="קטגוריה" error={errors.categoryOther}>
               <Select
@@ -939,110 +1044,210 @@ export function LeadForm({ existing }: Props) {
               </Field>
             )}
 
-            <Field label="שיטת תמחור">
-              <div className="grid grid-cols-2 gap-2">
-                <PillToggle
-                  active={form.pricingType === "per_participant"}
-                  onClick={() => set("pricingType", "per_participant")}
-                  label="פר משתתף"
-                />
-                <PillToggle
-                  active={form.pricingType === "global"}
-                  onClick={() => set("pricingType", "global")}
-                  label="מחיר גלובלי"
-                />
-              </div>
-            </Field>
-
-            {form.pricingType === "per_participant" ? (
+            {tripEscort ? (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="מחיר ליחיד">
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      min={0}
-                      value={form.pricePerUnit || ""}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        set("pricePerUnit", v === "" ? 0 : Number(v))
-                      }}
-                      placeholder="0"
-                    />
-                  </Field>
-                  <Field label="מספר משתתפים">
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      step="any"
-                      min={0}
-                      value={form.participantsCount || ""}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        set("participantsCount", v === "" ? 0 : Number(v))
-                      }}
-                      placeholder="1"
-                    />
-                  </Field>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">תמחור ללקוח לפי צוות</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={addBillingLine}
+                  >
+                    הוסף תפקיד
+                  </Button>
                 </div>
-                <Field label="תוספת למשתתף נוסף (₪)">
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    step="any"
-                    min={0}
-                    value={
-                      form.extraParticipantPrice === undefined ||
-                      form.extraParticipantPrice === null
-                        ? ""
-                        : form.extraParticipantPrice
-                    }
-                    onChange={(e) => {
-                      const v = e.target.value
-                      set(
-                        "extraParticipantPrice",
-                        v === "" ? undefined : Number(v),
-                      )
-                    }}
-                    placeholder="50"
-                  />
-                </Field>
+                {(form.tripBillingLines || []).map((line, index) => (
+                  <div
+                    key={`bill-${index}`}
+                    className="space-y-2 rounded-xl border border-border bg-card p-3"
+                  >
+                    <div className="grid grid-cols-3 gap-2">
+                      <Field label="תפקיד">
+                        <Select
+                          value={line.role}
+                          onValueChange={(v) =>
+                            updateBillingLine(index, {
+                              role: (v as TripEscortRole) || "mear",
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TRIP_ESCORT_ROLES.map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {TRIP_ESCORT_ROLE_LABELS[role]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="כמות">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={line.count || ""}
+                          onChange={(e) =>
+                            updateBillingLine(index, {
+                              count:
+                                e.target.value === ""
+                                  ? 0
+                                  : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </Field>
+                      <Field label="תעריף ליום">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={line.dailyRate || ""}
+                          onChange={(e) =>
+                            updateBillingLine(index, {
+                              dailyRate:
+                                e.target.value === ""
+                                  ? 0
+                                  : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>
+                        שורה:{" "}
+                        {formatCurrency(
+                          (Number(line.count) || 0) *
+                            (Number(line.dailyRate) || 0) *
+                            resolvedSessionsCount,
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-destructive"
+                        onClick={() => removeBillingLine(index)}
+                      >
+                        הסר
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
-              <div className="space-y-3">
-                <Field label="מחיר גלובלי">
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    step="any"
-                    min={0}
-                    value={globalPrice || ""}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setGlobalPrice(v === "" ? 0 : Number(v))
-                    }}
-                    placeholder="0"
-                  />
+              <>
+                <Field label="שיטת תמחור">
+                  <div className="grid grid-cols-2 gap-2">
+                    <PillToggle
+                      active={form.pricingType === "per_participant"}
+                      onClick={() => set("pricingType", "per_participant")}
+                      label="פר משתתף"
+                    />
+                    <PillToggle
+                      active={form.pricingType === "global"}
+                      onClick={() => set("pricingType", "global")}
+                      label="מחיר גלובלי"
+                    />
+                  </div>
                 </Field>
-                <Field label="כמות משתתפים משוערת">
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={form.participantsCount || ""}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      set("participantsCount", v === "" ? 0 : Number(v))
-                    }}
-                    placeholder="כמה משתתפים בערך"
-                  />
-                </Field>
-              </div>
+
+                {form.pricingType === "per_participant" ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="מחיר ליחיד">
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          step="any"
+                          min={0}
+                          value={form.pricePerUnit || ""}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            set("pricePerUnit", v === "" ? 0 : Number(v))
+                          }}
+                          placeholder="0"
+                        />
+                      </Field>
+                      <Field label="מספר משתתפים">
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          step="any"
+                          min={0}
+                          value={form.participantsCount || ""}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            set("participantsCount", v === "" ? 0 : Number(v))
+                          }}
+                          placeholder="1"
+                        />
+                      </Field>
+                    </div>
+                    <Field label="תוספת למשתתף נוסף (₪)">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        min={0}
+                        value={
+                          form.extraParticipantPrice === undefined ||
+                          form.extraParticipantPrice === null
+                            ? ""
+                            : form.extraParticipantPrice
+                        }
+                        onChange={(e) => {
+                          const v = e.target.value
+                          set(
+                            "extraParticipantPrice",
+                            v === "" ? undefined : Number(v),
+                          )
+                        }}
+                        placeholder="50"
+                      />
+                    </Field>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Field label="מחיר גלובלי">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        min={0}
+                        value={globalPrice || ""}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setGlobalPrice(v === "" ? 0 : Number(v))
+                        }}
+                        placeholder="0"
+                      />
+                    </Field>
+                    <Field label="כמות משתתפים משוערת">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        value={form.participantsCount || ""}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          set("participantsCount", v === "" ? 0 : Number(v))
+                        }}
+                        placeholder="כמה משתתפים בערך"
+                      />
+                    </Field>
+                  </div>
+                )}
+              </>
             )}
 
             <Card className="flex-row items-center justify-between bg-primary/5 p-4">
-              <span className="text-sm font-semibold">מחיר כולל</span>
+              <span className="text-sm font-semibold">
+                {tripEscort ? "סכום עסקה (הכנסה)" : "מחיר כולל"}
+              </span>
               <span className="text-xl font-extrabold text-primary">
                 {formatCurrency(total)}
               </span>

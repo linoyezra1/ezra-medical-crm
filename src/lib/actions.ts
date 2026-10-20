@@ -964,6 +964,12 @@ export async function updateLead(
             ? String(raw.sessionsJson)
             : null
           : existing.sessionsJson,
+      tripBillingJson:
+        raw.tripBillingJson !== undefined
+          ? raw.tripBillingJson
+            ? String(raw.tripBillingJson)
+            : null
+          : (existing as { tripBillingJson?: string | null }).tripBillingJson,
       shippingStreet: merged.shippingStreet,
       shippingHouseNo: merged.shippingHouseNo,
       shippingCity: merged.shippingCity,

@@ -161,7 +161,10 @@ export function AppProvider({
         fd.set("phone", lead.phone);
         fd.set("email", lead.email || "");
         fd.set("city", lead.address.city || "");
-        fd.set("activityType", "course");
+        fd.set(
+          "activityType",
+          lead.activityType === "trip_escort" ? "trip_escort" : "course",
+        );
         fd.set("leadSource", lead.customerType === "existing" ? "returning" : "website");
         fd.set("notes", lead.notes || "");
         const res = await createLead(fd);

@@ -30,6 +30,7 @@ import { LeadPaymentDialog } from "@/components/leads/lead-payment-dialog"
 import { LifecycleControls } from "@/components/leads/lifecycle-controls"
 import { ExpensesSection } from "@/components/leads/expenses-section"
 import { ParticipantsSection } from "@/components/leads/participants-section"
+import { TripEscortStaffSection } from "@/components/leads/trip-escort-staff-section"
 import { TextImportModal } from "@/components/leads/text-import-modal"
 import { TrainingSalesSection } from "@/components/leads/training-sales-section"
 import { Button } from "@/components/ui/button"
@@ -61,6 +62,7 @@ import type { TraineeImportRow } from "@/lib/trainee-import"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type { Lead } from "@/lib/types"
+import { isTripEscortLead } from "@/lib/trip-escort"
 
 const DETAIL_TABS = ["home", "participants", "finance"] as const
 type DetailTab = (typeof DETAIL_TABS)[number]
@@ -75,6 +77,7 @@ export function LeadDetailView({
   const router = useRouter()
   const { getLead, settings } = useApp()
   const lead = getLead(leadId)
+  const tripEscort = lead ? isTripEscortLead(lead) : false
   const [collectOpen, setCollectOpen] = useState(false)
   const [manualParticipantOpen, setManualParticipantOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
@@ -303,7 +306,11 @@ export function LeadDetailView({
             className="h-auto min-h-[48px] w-full justify-stretch gap-0 rounded-none border-b border-slate-200 bg-card p-0"
           >
             <TopTab value="home" icon={LayoutDashboard} label="ראשי" />
-            <TopTab value="participants" icon={Users} label="משתתפים" />
+            <TopTab
+              value="participants"
+              icon={Users}
+              label={tripEscort ? "עובדים / מלווים" : "משתתפים"}
+            />
             <TopTab value="finance" icon={Wallet} label="כספים ומכירות" />
           </TabsList>
         </div>
@@ -318,16 +325,20 @@ export function LeadDetailView({
           </TabsContent>
 
           <TabsContent value="participants" className="m-0 space-y-4 p-4 md:p-6">
-            <ParticipantsTab
-              lead={lead}
-              active={detailTab === "participants"}
-              onCollect={() => setCollectOpen(true)}
-              onExcelImport={() => {
-                setPreviewRows(null)
-                setExcelImportOpen(true)
-              }}
-              onTextImport={() => setTextImportOpen(true)}
-            />
+            {tripEscort ? (
+              <TripEscortStaffSection lead={lead} />
+            ) : (
+              <ParticipantsTab
+                lead={lead}
+                active={detailTab === "participants"}
+                onCollect={() => setCollectOpen(true)}
+                onExcelImport={() => {
+                  setPreviewRows(null)
+                  setExcelImportOpen(true)
+                }}
+                onTextImport={() => setTextImportOpen(true)}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="finance" className="m-0 space-y-4 p-4 md:p-6">

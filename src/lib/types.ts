@@ -327,6 +327,25 @@ export interface Lead {
   /** raw DB fields for advanced edit */
   location?: string;
   activityType?: string;
+  /** תמחור ליווי טיול — שורות תפקיד × תעריף יומי */
+  tripBillingLines?: Array<{
+    role: "mear" | "medic" | "paramedic";
+    count: number;
+    dailyRate: number;
+  }>;
+  /** מלווים משובצים לטיול */
+  tripEscortStaff?: Array<{
+    id: string;
+    leadId: string;
+    fullName: string;
+    phone: string;
+    idNumber: string;
+    role: string;
+    assignedSessionIds: string[];
+    payAmount: number;
+    notes?: string;
+    expenseId?: string;
+  }>;
   equipmentStatus?: string | null;
   paymentTerms?: string | null;
   paymentStatus?: string;

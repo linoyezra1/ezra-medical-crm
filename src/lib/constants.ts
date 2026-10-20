@@ -107,6 +107,7 @@ export const ACTIVITY_TYPES = [
   { value: "course", label: "קורס" },
   { value: "equipment", label: "ציוד" },
   { value: "combined", label: "משולב" },
+  { value: "trip_escort", label: "מע״ר מלווה טיול" },
 ] as const;
 
 /** Closed statuses that occupy calendar / conflict window */

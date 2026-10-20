@@ -21,6 +21,12 @@ import { currentStockOf } from "@/lib/inventory-stock";
 import { parseSessionsJson, type TrainingSessionSlot } from "@/lib/payment";
 import { formatInJerusalem } from "@/lib/timezone";
 import {
+  parseAssignedSessionIds,
+  parseTripBillingJson,
+  type TripBillingLine,
+  type TripEscortStaffRow,
+} from "@/lib/trip-escort";
+import {
   dbEquipmentToUi,
   dbStatusToUi,
   type ActivityLogEntry,
@@ -45,7 +51,44 @@ type DbLeadFull = DbLead & {
   })[];
   instructorRef?: DbInstructor | null;
   activityLogs?: DbActivityLog[];
+  tripEscortStaff?: Array<{
+    id: string;
+    leadId: string;
+    fullName: string;
+    phone: string;
+    idNumber: string;
+    role: string;
+    assignedSessionIds: unknown;
+    payAmount: number;
+    notes: string | null;
+    expenseId: string | null;
+  }>;
 };
+
+function parseTripBillingFromDb(
+  raw: string | null | undefined,
+): TripBillingLine[] | undefined {
+  const lines = parseTripBillingJson(raw)
+  return lines.length ? lines : undefined
+}
+
+function mapTripEscortStaffList(
+  rows: DbLeadFull["tripEscortStaff"] | unknown,
+): TripEscortStaffRow[] | undefined {
+  if (!Array.isArray(rows) || !rows.length) return undefined
+  return rows.map((row) => ({
+    id: row.id,
+    leadId: row.leadId,
+    fullName: row.fullName,
+    phone: row.phone || "",
+    idNumber: row.idNumber || "",
+    role: row.role,
+    assignedSessionIds: parseAssignedSessionIds(row.assignedSessionIds),
+    payAmount: Number(row.payAmount) || 0,
+    notes: row.notes || undefined,
+    expenseId: row.expenseId || undefined,
+  }))
+}
 
 export function mapInstructor(db: DbInstructor): InstructorProfile {
   return {
@@ -295,6 +338,12 @@ export function mapLead(db: DbLeadFull): Lead {
       .map(mapActivityLog),
     location: db.location || undefined,
     activityType: db.activityType,
+    tripBillingLines: parseTripBillingFromDb(
+      (db as { tripBillingJson?: string | null }).tripBillingJson,
+    ),
+    tripEscortStaff: mapTripEscortStaffList(
+      (db as { tripEscortStaff?: unknown }).tripEscortStaff,
+    ),
     equipmentStatus: db.equipmentStatus,
     paymentTerms: db.paymentTerms,
     paymentStatus: db.paymentStatus,

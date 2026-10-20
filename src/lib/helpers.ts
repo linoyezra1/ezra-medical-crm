@@ -413,7 +413,13 @@ export function collectLeadCategoryOptions(
 }
 
 /** סוגי הוצאה קבועים + «אחר» */
-export const EXPENSE_TYPE_PRESETS = ["דלק", "מדריך", "אח", "קבלה"] as const
+export const EXPENSE_TYPE_PRESETS = [
+  "דלק",
+  "מדריך",
+  "אח",
+  "שכר מלווה",
+  "קבלה",
+] as const
 export const EXPENSE_TYPE_OTHER = "אחר"
 
 /**

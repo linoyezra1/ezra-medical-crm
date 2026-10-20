@@ -5,6 +5,12 @@ import {
   UNASSIGNED_INSTRUCTOR,
 } from "@/lib/instructor"
 import { resolveLeadCertifyingBody } from "@/lib/certifying-body"
+import {
+  calcTripEscortAgreedPrice,
+  isTripEscortLead,
+  serializeTripBillingJson,
+  TRIP_ESCORT_ACTIVITY,
+} from "@/lib/trip-escort"
 import { uiStatusToDb, type Lead } from "@/lib/types"
 
 /** המרת Lead מ־UI ל־payload של Prisma / API */
@@ -32,14 +38,25 @@ export function leadToDbPayload(
       : merged.courseTypeOther || null,
     courseCategory: merged.category,
     courseCategoryOther: merged.categoryOther || null,
+    activityType: isTripEscortLead(merged)
+      ? TRIP_ESCORT_ACTIVITY
+      : merged.activityType || "course",
     pricingModel:
       merged.pricingType === "per_participant" ? "per_participant" : "flat_rate",
     perParticipantRate:
       merged.pricingType === "per_participant" ? merged.pricePerUnit : null,
     extraParticipantPrice: merged.extraParticipantPrice ?? 50,
     expectedParticipants: merged.participantsCount,
-    /** מחיר כולל / מחיר גלובלי — נשמר כ־agreedPrice */
-    agreedPrice: merged.totalPrice,
+    tripBillingJson: isTripEscortLead(merged)
+      ? serializeTripBillingJson(merged.tripBillingLines || [])
+      : null,
+    /** מחיר כולל / מחיר גלובלי / ליווי טיול — נשמר כ־agreedPrice */
+    agreedPrice: isTripEscortLead(merged)
+      ? calcTripEscortAgreedPrice(
+          merged.tripBillingLines || [],
+          merged.sessions?.length || merged.sessionsCount || 0,
+        )
+      : merged.totalPrice,
     instructor: unassigned
       ? UNASSIGNED_INSTRUCTOR
       : merged.instructor?.trim() || null,

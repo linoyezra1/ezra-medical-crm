@@ -56,7 +56,7 @@ model Lead {
   urgency    String   @default("normal") // normal | urgent
 
   // Pipelines
-  activityType      String  @default("course") // course | equipment | combined
+  activityType      String  @default("course") // course | equipment | combined | trip_escort
   courseStatus      String  @default("new")
   // new | cold | pending | closed | certificates_pending | closed_won | canceled
   // legacy: completed (migrated → certificates_pending)
@@ -125,6 +125,8 @@ model Lead {
   notes              String?
   /** האם לאסוף כתובת ומיקוד בטופס המשתתפים הציבורי */
   collectCertificateShipping Boolean @default(false)
+  /** תמחור ליווי טיול — JSON: [{role,count,dailyRate}] */
+  tripBillingJson String?
 
   // Calendar
   googleCalendarEventId String?
@@ -149,12 +151,37 @@ model Lead {
   activityLogs  ActivityLog[]
   cohortDocumentations CohortDocumentation[]
   leadPayments  LeadPayment[]
+  tripEscortStaff TripEscortStaff[]
 
   @@index([phone])
   @@index([courseStatus])
   @@index([urgency])
   @@index([scheduledStart])
   @@index([instructorId])
+  @@index([activityType])
+}
+
+/** שיבוץ מלווה לטיול (מע״ר / חובש / פראמדיק) */
+model TripEscortStaff {
+  id                  String   @id @default(cuid())
+  leadId              String
+  lead                Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fullName            String
+  phone               String   @default("")
+  idNumber            String   @default("")
+  /** mear | medic | paramedic */
+  role                String
+  /** מזהי TrainingSession משובצים */
+  assignedSessionIds  Json
+  /** סכום כולל לתשלום לעובד */
+  payAmount           Float    @default(0)
+  notes               String?
+  expenseId           String?  @unique
+  expense             Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([leadId])
 }
 
 /** תשלום שנרשם על ההדרכה עצמה (לא על משתתף) — כל שורה שומרת סכום ואופן תשלום */
@@ -454,6 +481,7 @@ model Expense {
   notes       String?
   receiptPath String?
   createdAt   DateTime @default(now())
+  tripEscortStaff TripEscortStaff?
 
   @@index([leadId])
 }

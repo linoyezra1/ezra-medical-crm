@@ -108,6 +108,7 @@ export async function loadAppData(): Promise<AppData> {
           participants: true,
           trainingSessions: { orderBy: { sortOrder: "asc" } },
           expenses: true,
+          tripEscortStaff: { orderBy: { createdAt: "asc" } },
           trainingSales: {
             include: {
               inventoryItem: true,
