@@ -4003,7 +4003,7 @@ export async function createCourseInquiry(input: {
   phone?: string;
   city?: string;
   notes?: string;
-}): Promise<ActionResult<{ id: string }>> {
+}): Promise<ActionResult<CourseInquiryRow>> {
   const fullName = input.fullName.trim();
   if (!fullName) return { ok: false, error: "יש למלא שם מלא" };
   try {
@@ -4016,7 +4016,17 @@ export async function createCourseInquiry(input: {
       },
     });
     revalidatePath("/inquiries");
-    return { ok: true, data: { id: created.id } };
+    return {
+      ok: true,
+      data: {
+        id: created.id,
+        fullName: created.fullName,
+        phone: created.phone,
+        city: created.city,
+        notes: created.notes,
+        createdAt: created.createdAt.toISOString().slice(0, 10),
+      },
+    };
   } catch (err) {
     console.error("[createCourseInquiry]", err);
     return {

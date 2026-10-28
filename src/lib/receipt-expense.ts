@@ -4,9 +4,9 @@ import {
 } from "@/lib/payment"
 
 export const RECEIPT_EXPENSE_TYPE = "קבלה"
-export const RECEIPT_TAX_RATE = 0.2
+export const RECEIPT_TAX_RATE = 0.14
 export const RECEIPT_EXPENSE_NOTES =
-  "נוצר אוטומטית מרישום תשלום (20% מס קבלה)"
+  "נוצר אוטומטית מרישום תשלום (14% מס קבלה)"
 
 export function receiptExpenseAmount(paymentAmount: number): number {
   const n = Number(paymentAmount)
@@ -45,7 +45,7 @@ export type ReceiptTaxableLead = {
   }>
 }
 
-/** סכום תשלומים שסומנה עליהם קבלה — הבסיס ל־20% הוצאה */
+/** סכום תשלומים שסומנה עליהם קבלה — הבסיס ל־14% הוצאה */
 export function computeReceiptTaxableAmount(
   lead: ReceiptTaxableLead,
   opts?: { leadAmountOverride?: number },

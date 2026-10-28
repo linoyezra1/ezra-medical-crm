@@ -19,6 +19,7 @@ export async function listOutreachLeadsAction(): Promise<
       name: string
       phone: string
       organization: string | null
+      city: string | null
       category: string
       whatsappBlocked: boolean
       notes: string | null
@@ -38,6 +39,7 @@ export async function listOutreachLeadsAction(): Promise<
         name: r.name,
         phone: r.phone,
         organization: r.organization,
+        city: r.city,
         category: r.category,
         whatsappBlocked: r.whatsappBlocked,
         notes: r.notes,
@@ -267,6 +269,7 @@ export async function importOutreachLeadsAction(
     name: string
     phone: string
     organization?: string
+    city?: string
     category: string
   }[],
 ): Promise<
@@ -286,6 +289,7 @@ export async function importOutreachLeadsAction(
       const phone = sanitizePhone(row.phone || "")
       const category = sheetText(row.category)
       const organization = sheetText(row.organization) || null
+      const city = sheetText(row.city) || null
       if (!name || !phone || !category) {
         skipped++
         continue
@@ -312,6 +316,7 @@ export async function importOutreachLeadsAction(
           data: {
             name,
             organization,
+            city,
             category,
             // לא מאפסים irrelevant בייבוא חוזר
           },
@@ -323,6 +328,7 @@ export async function importOutreachLeadsAction(
             name,
             phone,
             organization,
+            city,
             category,
             irrelevant: phoneWasIrrelevant,
           },

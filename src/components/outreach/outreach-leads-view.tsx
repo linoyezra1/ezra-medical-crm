@@ -55,6 +55,7 @@ type LeadRow = {
   name: string
   phone: string
   organization: string | null
+  city: string | null
   category: string
   whatsappBlocked: boolean
   notes: string | null
@@ -95,6 +96,7 @@ export function OutreachLeadsView() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [cityFilter, setCityFilter] = useState("all")
   const [relevanceFilter, setRelevanceFilter] =
     useState<RelevanceFilter>("relevant")
 
@@ -152,18 +154,30 @@ export function OutreachLeadsView() {
     return [...set].sort((a, b) => a.localeCompare(b, "he"))
   }, [leads, templates])
 
+  const cities = useMemo(() => {
+    const set = new Set<string>()
+    for (const l of leads) {
+      const city = (l.city || "").trim()
+      if (city) set.add(city)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "he"))
+  }, [leads])
+
   const filteredLeads = useMemo(() => {
     const q = filter.trim().toLowerCase()
     return leads.filter((l) => {
       if (relevanceFilter === "relevant" && l.irrelevant) return false
       if (relevanceFilter === "irrelevant" && !l.irrelevant) return false
       if (categoryFilter !== "all" && l.category !== categoryFilter) return false
+      if (cityFilter !== "all" && (l.city || "").trim() !== cityFilter) {
+        return false
+      }
       if (!q) return true
       const hay =
-        `${l.name} ${l.phone} ${l.organization || ""} ${l.category} ${l.notes || ""}`.toLowerCase()
+        `${l.name} ${l.phone} ${l.organization || ""} ${l.city || ""} ${l.category} ${l.notes || ""}`.toLowerCase()
       return hay.includes(q)
     })
-  }, [leads, filter, categoryFilter, relevanceFilter])
+  }, [leads, filter, categoryFilter, cityFilter, relevanceFilter])
 
   const toggleLeadSelected = useCallback((id: string, next: boolean) => {
     setSelectedLeadIds((prev) => {
@@ -402,6 +416,7 @@ export function OutreachLeadsView() {
         name: r.name,
         phone: r.phone,
         organization: r.organization,
+        city: r.city,
         category: r.category,
       })),
     )
@@ -427,6 +442,7 @@ export function OutreachLeadsView() {
     const text = fillOutreachTemplate(tpl, {
       name: lead.name,
       organization: lead.organization || "",
+      city: lead.city || "",
     })
     return whatsappLink(lead.phone, text)
   }
@@ -440,7 +456,7 @@ export function OutreachLeadsView() {
 
       <CollapsibleSection
         title="תבניות הודעות לפי קטגוריה"
-        subtitle="Placeholders: {name} · {organization}"
+        subtitle="Placeholders: {name} · {organization} · {city}"
         defaultOpen
         action={
           <Button
@@ -530,7 +546,7 @@ export function OutreachLeadsView() {
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="חיפוש שם / טלפון / ארגון…"
+          placeholder="חיפוש שם / טלפון / ארגון / עיר…"
           className="max-w-xs rounded-xl"
         />
         <select
@@ -565,9 +581,25 @@ export function OutreachLeadsView() {
             className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
+            aria-label="סינון קטגוריה"
           >
             <option value="all">כל הקטגוריות</option>
             {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {cities.length > 0 ? (
+          <select
+            className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
+            value={cityFilter}
+            onChange={(e) => setCityFilter(e.target.value)}
+            aria-label="סינון עיר"
+          >
+            <option value="all">כל הערים</option>
+            {cities.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
@@ -587,7 +619,7 @@ export function OutreachLeadsView() {
             <p className="p-4 text-sm text-muted-foreground">
               {relevanceFilter === "irrelevant"
                 ? "אין לידים לא רלוונטיים להצגה."
-                : "אין לידים רלוונטיים להצגה — ייבאו קובץ Excel/CSV עם העמודות name, phone, organization, category."}
+                : "אין לידים רלוונטיים להצגה — ייבאו קובץ Excel/CSV עם העמודות name, phone, organization, city, category."}
             </p>
           ) : (
             <>
@@ -608,6 +640,7 @@ export function OutreachLeadsView() {
                     <th className="px-3 py-2 font-semibold">שם</th>
                     <th className="px-3 py-2 font-semibold">טלפון</th>
                     <th className="px-3 py-2 font-semibold">ארגון</th>
+                    <th className="px-3 py-2 font-semibold">עיר</th>
                     <th className="px-3 py-2 font-semibold">קטגוריה</th>
                     <th className="px-3 py-2 font-semibold">הערות</th>
                     <th className="px-3 py-2 font-semibold">פעולות</th>
@@ -637,6 +670,9 @@ export function OutreachLeadsView() {
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">
                         {lead.organization || "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground">
+                        {lead.city || "—"}
                       </td>
                       <td className="px-3 py-2.5">
                         <span className="rounded-lg bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
@@ -699,7 +735,9 @@ export function OutreachLeadsView() {
                           {lead.name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {lead.organization || "ללא ארגון"} · {lead.category}
+                          {lead.organization || "ללא ארגון"}
+                          {lead.city?.trim() ? ` · ${lead.city}` : ""} ·{" "}
+                          {lead.category}
                         </p>
                         <p className="mt-0.5 text-sm tabular-nums" dir="ltr">
                           {formatPhoneDisplay(lead.phone)}
@@ -759,10 +797,10 @@ export function OutreachLeadsView() {
                     templateText: e.target.value,
                   }))
                 }
-                placeholder="שלום {name}, לגבי {organization}…"
+                placeholder="שלום {name}, לגבי {organization} ב{city}…"
               />
               <p className="mt-1 text-[11px] text-muted-foreground">
-                אפשר להשתמש ב־{"{name}"} ו־{"{organization}"}
+                אפשר להשתמש ב־{"{name}"}, {"{organization}"} ו־{"{city}"}
               </p>
             </div>
           </div>
@@ -813,7 +851,8 @@ export function OutreachLeadsView() {
                     {" · "}
                     <span dir="ltr">{r.phone || "—"}</span>
                     {" · "}
-                    {r.organization || "—"} · {r.category || "—"}
+                    {r.organization || "—"}
+                    {r.city ? ` · ${r.city}` : ""} · {r.category || "—"}
                     {r.errors.length ? (
                       <span className="mt-0.5 block text-destructive">
                         {r.errors.join(", ")}

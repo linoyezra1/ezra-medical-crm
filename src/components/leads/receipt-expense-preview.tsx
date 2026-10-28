@@ -20,7 +20,7 @@ export function ReceiptExpensePreview({
   return (
     <div>
       <label className="mb-1.5 block text-sm font-medium">
-        סכום הוצאת קבלה (20% מס) לרישום:
+        סכום הוצאת קבלה (14% מס) לרישום:
       </label>
       <Input
         readOnly

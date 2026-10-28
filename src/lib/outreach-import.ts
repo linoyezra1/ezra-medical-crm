@@ -9,12 +9,13 @@ export type OutreachImportRow = {
   name: string
   phone: string
   organization: string
+  city: string
   category: string
   errors: string[]
 }
 
 const HEADER_ALIASES: Record<
-  "name" | "phone" | "organization" | "category",
+  "name" | "phone" | "organization" | "city" | "category",
   string[]
 > = {
   name: [
@@ -38,6 +39,7 @@ const HEADER_ALIASES: Record<
     "מוסד",
     "org",
   ],
+  city: ["city", "עיר", "יישוב", "town", "location"],
   category: ["category", "קטגוריה", "סוג", "group"],
 }
 
@@ -100,10 +102,11 @@ export function parseOutreachImportFile(file: ArrayBuffer): OutreachImportRow[] 
     const organization = cellStr(
       colMap.organization != null ? row[colMap.organization] : "",
     )
+    const city = cellStr(colMap.city != null ? row[colMap.city] : "")
     const category = cellStr(
       colMap.category != null ? row[colMap.category] : "",
     )
-    if (!name && !phoneRaw && !organization && !category) continue
+    if (!name && !phoneRaw && !organization && !city && !category) continue
 
     const phone = sanitizePhone(phoneRaw)
     const errors: string[] = []
@@ -119,6 +122,7 @@ export function parseOutreachImportFile(file: ArrayBuffer): OutreachImportRow[] 
       name: name.trim(),
       phone,
       organization: organization.trim(),
+      city: city.trim(),
       category: category.trim(),
       errors,
     })
@@ -129,11 +133,13 @@ export function parseOutreachImportFile(file: ArrayBuffer): OutreachImportRow[] 
 /** מחליף placeholders בתבנית הודעה */
 export function fillOutreachTemplate(
   template: string,
-  vars: { name?: string; organization?: string },
+  vars: { name?: string; organization?: string; city?: string },
 ): string {
   return template
     .replaceAll("{name}", vars.name?.trim() || "")
     .replaceAll("{organization}", vars.organization?.trim() || "")
+    .replaceAll("{city}", vars.city?.trim() || "")
     .replaceAll("{{name}}", vars.name?.trim() || "")
     .replaceAll("{{organization}}", vars.organization?.trim() || "")
+    .replaceAll("{{city}}", vars.city?.trim() || "")
 }

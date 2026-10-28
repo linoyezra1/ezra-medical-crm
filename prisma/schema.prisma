@@ -552,6 +552,7 @@ model OutreachLead {
   name         String
   phone        String
   organization String?
+  city         String?
   category     String
   /** אין וואטסאפ — אייקון וואטסאפ מושבת; מומלץ להתקשר */
   whatsappBlocked Boolean @default(false)
@@ -563,6 +564,7 @@ model OutreachLead {
   updatedAt    DateTime @updatedAt
 
   @@index([category])
+  @@index([city])
   @@index([phone])
   @@index([createdAt])
   @@index([irrelevant])

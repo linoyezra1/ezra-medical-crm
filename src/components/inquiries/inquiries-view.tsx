@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { formatTrainingOptionLabel } from "@/components/clients/training-select"
@@ -22,13 +22,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import {
   assignCourseInquiryToLead,
+  createCourseInquiry,
   deleteCourseInquiry,
   type CourseInquiryRow,
 } from "@/lib/actions"
 import { formatDate } from "@/lib/helpers"
 import { useApp } from "@/lib/store"
+
+const EMPTY_CREATE = {
+  fullName: "",
+  phone: "",
+  city: "",
+  notes: "",
+}
 
 export function InquiriesView({
   initialRows,
@@ -41,6 +50,9 @@ export function InquiriesView({
   const [assigning, setAssigning] = useState<CourseInquiryRow | null>(null)
   const [leadId, setLeadId] = useState("")
   const [saving, setSaving] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE)
+  const [creating, setCreating] = useState(false)
 
   const targets = useMemo(
     () =>
@@ -59,6 +71,29 @@ export function InquiriesView({
       ),
     )
   }, [rows, query])
+
+  const confirmCreate = async () => {
+    if (!createForm.fullName.trim()) {
+      toast.error("יש למלא שם מלא")
+      return
+    }
+    setCreating(true)
+    const res = await createCourseInquiry({
+      fullName: createForm.fullName,
+      phone: createForm.phone,
+      city: createForm.city,
+      notes: createForm.notes,
+    })
+    setCreating(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    setRows((prev) => [res.data, ...prev])
+    setCreateForm(EMPTY_CREATE)
+    setCreateOpen(false)
+    toast.success("המתעניין נוסף לרשימה")
+  }
 
   const confirmAssign = async () => {
     if (!assigning) return
@@ -96,6 +131,20 @@ export function InquiriesView({
       <PageHeader
         title="מתעניינים"
         subtitle={`${filtered.length} באוויר`}
+        action={
+          <Button
+            type="button"
+            size="icon"
+            className="size-10 shrink-0 rounded-full bg-pink-500 text-white hover:bg-pink-600"
+            aria-label="הוסף מתעניין"
+            onClick={() => {
+              setCreateForm(EMPTY_CREATE)
+              setCreateOpen(true)
+            }}
+          >
+            <Plus className="size-5" />
+          </Button>
+        }
       />
       <div className="space-y-3 p-4">
         <Input
@@ -105,8 +154,7 @@ export function InquiriesView({
         />
         {filtered.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            אין מתעניינים באוויר. אפשר להוסיף מהכפתור הוורוד בדשבורד או בלידים,
-            ולבחור «השאר באוויר».
+            אין מתעניינים באוויר. לחצו על הכפתור הוורוד למעלה כדי להוסיף.
           </p>
         ) : (
           <div className="space-y-2">
@@ -158,6 +206,80 @@ export function InquiriesView({
           </div>
         )}
       </div>
+
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open)
+          if (!open) setCreateForm(EMPTY_CREATE)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-right">מתעניין חדש</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="mb-1.5 block text-sm">שם מלא</Label>
+              <Input
+                value={createForm.fullName}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, fullName: e.target.value }))
+                }
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-sm">טלפון</Label>
+              <Input
+                value={createForm.phone}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, phone: e.target.value }))
+                }
+                inputMode="tel"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-sm">עיר</Label>
+              <Input
+                value={createForm.city}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, city: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-sm">הערות</Label>
+              <Textarea
+                value={createForm.notes}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, notes: e.target.value }))
+                }
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-row gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setCreateOpen(false)}
+            >
+              ביטול
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={creating}
+              onClick={() => void confirmCreate()}
+            >
+              {creating ? "שומר…" : "שמור מתעניין"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(assigning)}
