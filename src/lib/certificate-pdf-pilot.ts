@@ -122,6 +122,16 @@ export function pilotCertificateNumber(opts: {
   return `P-${datePart || "DRAFT"}-${idPart || "XXXX"}`
 }
 
+function isPngBytes(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  )
+}
+
 async function loadAssets() {
   const root = process.cwd()
   const [bgBytes, fontBytes] = await Promise.all([
@@ -208,7 +218,10 @@ export async function buildPilotCertificatesPdf(
   const pdfDoc = await PDFDocument.create()
   pdfDoc.registerFontkit(fontkit)
   const font = await pdfDoc.embedFont(fontBytes, { subset: true })
-  const bgImage = await pdfDoc.embedPng(bgBytes)
+  // הקובץ עלול להיות JPEG עם סיומת .png — מזהים לפי magic bytes
+  const bgImage = isPngBytes(bgBytes)
+    ? await pdfDoc.embedPng(bgBytes)
+    : await pdfDoc.embedJpg(bgBytes)
 
   for (const fields of pages) {
     const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT])
