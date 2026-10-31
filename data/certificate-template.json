@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "name": "תעודת עזרה ראשונה",
+  "backgroundUrl": "/certificates/regular-blank.png",
+  "pageWidth": 595.28,
+  "pageHeight": 841.89,
+  "elements": [
+    {
+      "id": "field_fullName",
+      "kind": "text",
+      "field": "fullName",
+      "xPct": 50,
+      "yPct": 38,
+      "maxWidthPct": 72,
+      "fontSize": 28,
+      "fontWeight": "bold",
+      "align": "center"
+    },
+    {
+      "id": "field_idNumber",
+      "kind": "text",
+      "field": "idNumber",
+      "xPct": 54.7,
+      "yPct": 45.5,
+      "maxWidthPct": 42,
+      "fontSize": 14,
+      "fontWeight": "regular",
+      "align": "center"
+    },
+    {
+      "id": "field_courseDate",
+      "kind": "text",
+      "field": "courseDate",
+      "xPct": 53.4,
+      "yPct": 55.5,
+      "maxWidthPct": 40,
+      "fontSize": 14,
+      "fontWeight": "regular",
+      "align": "center"
+    },
+    {
+      "id": "field_hoursScope",
+      "kind": "text",
+      "field": "hoursScope",
+      "xPct": 56,
+      "yPct": 60.5,
+      "maxWidthPct": 35,
+      "fontSize": 14,
+      "fontWeight": "regular",
+      "align": "center"
+    },
+    {
+      "id": "field_certificateNumber",
+      "kind": "text",
+      "field": "certificateNumber",
+      "xPct": 54.7,
+      "yPct": 65.5,
+      "maxWidthPct": 42,
+      "fontSize": 13,
+      "fontWeight": "regular",
+      "align": "center"
+    },
+    {
+      "id": "field_validUntil",
+      "kind": "text",
+      "field": "validUntil",
+      "xPct": 50,
+      "yPct": 72.5,
+      "maxWidthPct": 40,
+      "fontSize": 14,
+      "fontWeight": "regular",
+      "align": "center"
+    }
+  ]
+}

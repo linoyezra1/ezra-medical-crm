@@ -65,6 +65,11 @@ const MORE: NavItem[] = [
     icon: Award,
     badge: "ניסיוני",
   },
+  {
+    href: "/certificates/editor",
+    label: "עריכת תעודה",
+    icon: LayoutGrid,
+  },
   { href: "/settings", label: "הגדרות עסק", icon: Settings },
 ]
 

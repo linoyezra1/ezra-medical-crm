@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Archive, Award, FolderArchive, RefreshCw, Search, X } from "lucide-react"
+import {
+  Archive,
+  Award,
+  FolderArchive,
+  PencilRuler,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { CertificatesBulkBar } from "@/components/certificates-hub/certificates-bulk-bar"
@@ -253,6 +261,19 @@ export function CertificatesHubView({ archive = false }: { archive?: boolean }) 
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
               ניסיוני
             </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              className="h-9 gap-2 rounded-xl"
+              render={
+                <Link href="/certificates/editor">
+                  <PencilRuler className="size-4" />
+                  עריכת תעודה
+                </Link>
+              }
+            />
             <Button
               type="button"
               variant="outline"

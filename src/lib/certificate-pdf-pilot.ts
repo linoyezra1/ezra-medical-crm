@@ -1,28 +1,33 @@
 /**
- * פיילוט הפקת תעודת עזרה ראשונה כ־PDF מקומי (ללא Google / מייל).
- * רקע קבוע + הטבעת טקסט עם Auto-fit לשם.
+ * הפקת תעודת עזרה ראשונה כ־PDF מקומי (ללא Google / מייל).
+ * רקע + שדות לפי תבנית עריכה (או ברירת מחדל).
  */
 
 import { readFile } from "fs/promises"
 import path from "path"
 import fontkit from "@pdf-lib/fontkit"
-import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib"
+import {
+  PDFDocument,
+  rgb,
+  type PDFFont,
+  type PDFImage,
+  type PDFPage,
+} from "pdf-lib"
 import { formatSheetDateDdMmYyyy } from "@/lib/google-sheets/sheet-dates"
+import {
+  defaultCertificateTemplate,
+  normalizeCertificateTemplate,
+  pctToPdfX,
+  pctToPdfY,
+  resolveFieldText,
+  type CertificatePreviewFields,
+  type CertificateTemplate,
+  type CertificateTextElement,
+} from "@/lib/certificate-template"
 
-const A4_WIDTH = 595.28
-const A4_HEIGHT = 841.89
-
-/** צבע טקסט כהה על הרקע הלבן */
 const TEXT_COLOR = rgb(0.12, 0.14, 0.18)
 
-export type PilotCertificateFields = {
-  fullName: string
-  idNumber: string
-  courseDate: string
-  hoursScope: string
-  certificateNumber: string
-  validUntil: string
-}
+export type PilotCertificateFields = CertificatePreviewFields
 
 /**
  * pdf-lib מצייר LTR — להצגה עברית הופכים מחרוזות עם תווים עבריים.
@@ -51,32 +56,36 @@ function fitFontSize(
   return size
 }
 
-function drawCentered(
+function drawTextElement(
   page: PDFPage,
-  font: PDFFont,
-  text: string,
-  opts: {
-    centerX: number
-    baselineY: number
-    maxWidth: number
-    maxSize: number
-    minSize?: number
-  },
+  fonts: { regular: PDFFont; bold: PDFFont },
+  element: CertificateTextElement,
+  fields: PilotCertificateFields,
+  pageWidth: number,
+  pageHeight: number,
 ) {
-  const raw = (text || "").trim()
+  const raw = resolveFieldText(element, fields)
   if (!raw) return
+
+  const font = element.fontWeight === "bold" ? fonts.bold : fonts.regular
   const drawn = preparePdfText(raw)
+  const maxWidth = (pageWidth * Math.max(5, element.maxWidthPct || 40)) / 100
   const size = fitFontSize(
     font,
     raw,
-    opts.maxWidth,
-    opts.maxSize,
-    opts.minSize ?? 11,
+    maxWidth,
+    Math.max(8, Number(element.fontSize) || 14),
+    9,
   )
   const width = font.widthOfTextAtSize(drawn, size)
+  const anchorX = pctToPdfX(element.xPct, pageWidth)
+  let x = anchorX
+  if (element.align === "center") x = anchorX - width / 2
+  else if (element.align === "right") x = anchorX - width
+
   page.drawText(drawn, {
-    x: opts.centerX - width / 2,
-    y: opts.baselineY,
+    x,
+    y: pctToPdfY(element.yPct, pageHeight, size),
     size,
     font,
     color: TEXT_COLOR,
@@ -115,9 +124,7 @@ export function pilotCertificateNumber(opts: {
   courseDate: string
   participantId: string
 }): string {
-  const datePart = (opts.courseDate || "")
-    .replace(/\D/g, "")
-    .slice(0, 8)
+  const datePart = (opts.courseDate || "").replace(/\D/g, "").slice(0, 8)
   const idPart = opts.participantId.replace(/\W/g, "").slice(-6).toUpperCase()
   return `P-${datePart || "DRAFT"}-${idPart || "XXXX"}`
 }
@@ -132,106 +139,163 @@ function isPngBytes(bytes: Uint8Array): boolean {
   )
 }
 
-async function loadAssets() {
+function isJpgBytes(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  )
+}
+
+async function embedImageBytes(pdfDoc: PDFDocument, bytes: Uint8Array) {
+  if (isPngBytes(bytes)) return pdfDoc.embedPng(bytes)
+  if (isJpgBytes(bytes)) return pdfDoc.embedJpg(bytes)
+  // ניסיון אחרון — קבצים עם סיומת שגויה
+  try {
+    return await pdfDoc.embedJpg(bytes)
+  } catch {
+    return pdfDoc.embedPng(bytes)
+  }
+}
+
+function publicUrlToDiskPath(url: string): string {
+  const clean = String(url || "").trim().split("?")[0]
+  if (!clean) {
+    return path.join(process.cwd(), "public", "certificates", "regular-blank.png")
+  }
+  if (path.isAbsolute(clean)) return clean
+  const relative = clean.replace(/^\/+/, "")
+  return path.join(process.cwd(), "public", relative)
+}
+
+async function loadFontBytes(): Promise<{ regular: Buffer; bold: Buffer }> {
   const root = process.cwd()
+  const fontsDir = path.join(root, "public", "fonts")
+  const candidatesRegular = [
+    path.join(fontsDir, "tahoma.ttf"),
+    path.join(fontsDir, "NotoSansHebrew-Regular.ttf"),
+  ]
+  const candidatesBold = [
+    path.join(fontsDir, "tahomabd.ttf"),
+    path.join(fontsDir, "tahoma.ttf"),
+    path.join(fontsDir, "NotoSansHebrew-Regular.ttf"),
+  ]
+
+  async function firstExisting(paths: string[]) {
+    for (const p of paths) {
+      try {
+        return await readFile(p)
+      } catch {
+        /* try next */
+      }
+    }
+    throw new Error("לא נמצא קובץ פונט לתעודות ב־public/fonts")
+  }
+
+  const regular = await firstExisting(candidatesRegular)
+  let bold = regular
+  try {
+    bold = await firstExisting(candidatesBold)
+  } catch {
+    bold = regular
+  }
+  return { regular, bold }
+}
+
+async function loadTemplateAssets(template: CertificateTemplate) {
   const [bgBytes, fontBytes] = await Promise.all([
-    readFile(path.join(root, "public", "certificates", "regular-blank.png")),
-    readFile(path.join(root, "public", "fonts", "NotoSansHebrew-Regular.ttf")),
+    readFile(publicUrlToDiskPath(template.backgroundUrl)),
+    loadFontBytes(),
   ])
   return { bgBytes, fontBytes }
 }
 
-/**
- * מיקומים מכוילים יחסית ל־A4 מול תבנית הרקע.
- * y נמדד מתחתית העמוד (מערכת pdf-lib).
- */
-function drawCertificatePage(
+async function drawCertificatePage(
   page: PDFPage,
-  font: PDFFont,
+  pdfDoc: PDFDocument,
+  fonts: { regular: PDFFont; bold: PDFFont },
+  template: CertificateTemplate,
   fields: PilotCertificateFields,
+  imageCache: Map<string, PDFImage>,
 ) {
-  const cx = A4_WIDTH / 2
+  const pageWidth = template.pageWidth
+  const pageHeight = template.pageHeight
 
-  // שם מלא — אזור רחב מתחת ל«הריני לאשר כי»
-  drawCentered(page, font, fields.fullName, {
-    centerX: cx,
-    baselineY: A4_HEIGHT * 0.62,
-    maxWidth: A4_WIDTH * 0.72,
-    maxSize: 28,
-    minSize: 12,
-  })
+  for (const element of template.elements) {
+    if (element.kind === "text") {
+      drawTextElement(page, fonts, element, fields, pageWidth, pageHeight)
+      continue
+    }
 
-  // מספר זהות (ליד התווית שברקע)
-  drawCentered(page, font, fields.idNumber, {
-    centerX: cx + 28,
-    baselineY: A4_HEIGHT * 0.545,
-    maxWidth: A4_WIDTH * 0.42,
-    maxSize: 14,
-    minSize: 10,
-  })
+    try {
+      let image = imageCache.get(element.src)
+      if (!image) {
+        const bytes = await readFile(publicUrlToDiskPath(element.src))
+        image = await embedImageBytes(pdfDoc, bytes)
+        imageCache.set(element.src, image)
+      }
+      const width = (pageWidth * Math.max(1, element.widthPct)) / 100
+      const height = (pageHeight * Math.max(1, element.heightPct)) / 100
+      const x = pctToPdfX(element.xPct, pageWidth)
+      const y =
+        pageHeight * (1 - Math.min(100, Math.max(0, element.yPct)) / 100) -
+        height
+      page.drawImage(image, { x, y, width, height })
+    } catch (err) {
+      console.error("[certificate-pdf] failed to draw image", element.src, err)
+    }
+  }
+}
 
-  // תאריך
-  drawCentered(page, font, fields.courseDate, {
-    centerX: cx + 20,
-    baselineY: A4_HEIGHT * 0.445,
-    maxWidth: A4_WIDTH * 0.4,
-    maxSize: 14,
-    minSize: 10,
-  })
-
-  // היקף שעות
-  drawCentered(page, font, fields.hoursScope, {
-    centerX: cx + 36,
-    baselineY: A4_HEIGHT * 0.395,
-    maxWidth: A4_WIDTH * 0.35,
-    maxSize: 14,
-    minSize: 10,
-  })
-
-  // מספר תעודה
-  drawCentered(page, font, fields.certificateNumber, {
-    centerX: cx + 28,
-    baselineY: A4_HEIGHT * 0.345,
-    maxWidth: A4_WIDTH * 0.42,
-    maxSize: 13,
-    minSize: 9,
-  })
-
-  // תוקף עד
-  drawCentered(page, font, fields.validUntil, {
-    centerX: cx,
-    baselineY: A4_HEIGHT * 0.275,
-    maxWidth: A4_WIDTH * 0.4,
-    maxSize: 14,
-    minSize: 10,
-  })
+export async function loadCertificateTemplateForPdf(): Promise<CertificateTemplate> {
+  try {
+    const {
+      certificateTemplateFilePath,
+    } = await import("@/lib/certificate-template")
+    const raw = await readFile(certificateTemplateFilePath(), "utf8")
+    return normalizeCertificateTemplate(JSON.parse(raw))
+  } catch {
+    return defaultCertificateTemplate()
+  }
 }
 
 export async function buildPilotCertificatesPdf(
   pages: PilotCertificateFields[],
+  templateInput?: CertificateTemplate | null,
 ): Promise<Uint8Array> {
   if (!pages.length) {
     throw new Error("אין נתונים להפקת תעודה")
   }
 
-  const { bgBytes, fontBytes } = await loadAssets()
+  const template = normalizeCertificateTemplate(
+    templateInput || (await loadCertificateTemplateForPdf()),
+  )
+  const { bgBytes, fontBytes } = await loadTemplateAssets(template)
   const pdfDoc = await PDFDocument.create()
   pdfDoc.registerFontkit(fontkit)
-  const font = await pdfDoc.embedFont(fontBytes, { subset: true })
-  // הקובץ עלול להיות JPEG עם סיומת .png — מזהים לפי magic bytes
-  const bgImage = isPngBytes(bgBytes)
-    ? await pdfDoc.embedPng(bgBytes)
-    : await pdfDoc.embedJpg(bgBytes)
+  const regular = await pdfDoc.embedFont(fontBytes.regular, { subset: true })
+  const bold = await pdfDoc.embedFont(fontBytes.bold, { subset: true })
+  const fonts = { regular, bold }
+  const bgImage = await embedImageBytes(pdfDoc, bgBytes)
+  const imageCache = new Map<string, PDFImage>()
 
   for (const fields of pages) {
-    const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT])
+    const page = pdfDoc.addPage([template.pageWidth, template.pageHeight])
     page.drawImage(bgImage, {
       x: 0,
       y: 0,
-      width: A4_WIDTH,
-      height: A4_HEIGHT,
+      width: template.pageWidth,
+      height: template.pageHeight,
     })
-    drawCertificatePage(page, font, fields)
+    await drawCertificatePage(
+      page,
+      pdfDoc,
+      fonts,
+      template,
+      fields,
+      imageCache,
+    )
   }
 
   return pdfDoc.save()
