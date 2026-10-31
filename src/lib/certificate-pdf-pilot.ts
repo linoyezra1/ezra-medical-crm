@@ -40,6 +40,7 @@ export function preparePdfText(raw: string): string {
   return [...text].reverse().join("")
 }
 
+/** מקטין גופן עד שהטקסט נכנס לרוחב השדה (פר תעודה / פר שדה). */
 function fitFontSize(
   font: PDFFont,
   text: string,
@@ -48,12 +49,22 @@ function fitFontSize(
   minSize: number,
 ): number {
   const drawn = preparePdfText(text)
-  if (!drawn) return maxSize
-  let size = maxSize
-  while (size > minSize && font.widthOfTextAtSize(drawn, size) > maxWidth) {
-    size -= 0.5
+  if (!drawn || maxWidth <= 0) return maxSize
+  let lo = minSize
+  let hi = maxSize
+  let best = minSize
+  // חיפוש בינארי — מדויק יותר מירידה ב־0.5
+  for (let i = 0; i < 24; i++) {
+    const mid = Math.round(((lo + hi) / 2) * 100) / 100
+    if (font.widthOfTextAtSize(drawn, mid) <= maxWidth) {
+      best = mid
+      lo = mid + 0.05
+    } else {
+      hi = mid - 0.05
+    }
+    if (lo > hi) break
   }
-  return size
+  return Math.max(minSize, Math.min(maxSize, best))
 }
 
 function drawTextElement(
@@ -70,13 +81,10 @@ function drawTextElement(
   const font = element.fontWeight === "bold" ? fonts.bold : fonts.regular
   const drawn = preparePdfText(raw)
   const maxWidth = (pageWidth * Math.max(5, element.maxWidthPct || 40)) / 100
-  const size = fitFontSize(
-    font,
-    raw,
-    maxWidth,
-    Math.max(8, Number(element.fontSize) || 14),
-    9,
-  )
+  const maxSize = Math.max(8, Number(element.fontSize) || 14)
+  // רצפה נמוכה מספיק לשמות ארוכים — בלי לחתוך ל־…
+  const minSize = Math.min(7, Math.max(5, maxSize * 0.35))
+  const size = fitFontSize(font, raw, maxWidth, maxSize, minSize)
   const width = font.widthOfTextAtSize(drawn, size)
   const anchorX = pctToPdfX(element.xPct, pageWidth)
   let x = anchorX
@@ -159,13 +167,23 @@ async function embedImageBytes(pdfDoc: PDFDocument, bytes: Uint8Array) {
   }
 }
 
+/**
+ * ממיר URL ציבורי (למשל /certificates/regular-blank.png) לנתיב דיסק תחת public/.
+ * חשוב: בלינוקס path.isAbsolute('/certificates/...') === true — ולכן אסור
+ * לטפל בנתיבי URL שמתחילים ב־/ כנתיבי קבצים מוחלטים.
+ */
 function publicUrlToDiskPath(url: string): string {
   const clean = String(url || "").trim().split("?")[0]
   if (!clean) {
     return path.join(process.cwd(), "public", "certificates", "regular-blank.png")
   }
-  if (path.isAbsolute(clean)) return clean
-  const relative = clean.replace(/^\/+/, "")
+  // נתיב Windows מלא בלבד (C:\... או \\share\...)
+  if (/^[a-zA-Z]:[\\/]/.test(clean) || clean.startsWith("\\\\")) {
+    return clean
+  }
+  const relative = clean
+    .replace(/^\/+/, "")
+    .replace(/^public[\\/]/i, "")
   return path.join(process.cwd(), "public", relative)
 }
 

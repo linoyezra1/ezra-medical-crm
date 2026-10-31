@@ -1,7 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import {
   ArrowRight,
   Bold,
@@ -78,6 +85,7 @@ export function CertificateEditorView() {
   const [traineeHits, setTraineeHits] = useState<TraineeHit[]>([])
   const [searchingTrainees, setSearchingTrainees] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const [canvasWidth, setCanvasWidth] = useState(520)
   const dragRef = useRef<{
     id: string
     startX: number
@@ -85,6 +93,16 @@ export function CertificateEditorView() {
     origX: number
     origY: number
   } | null>(null)
+
+  useLayoutEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    const update = () => setCanvasWidth(el.getBoundingClientRect().width || 520)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [template])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -589,19 +607,13 @@ export function CertificateEditorView() {
               }
 
               const text = resolvePreviewText(el, previewFields)
-              const justify =
-                el.align === "center"
-                  ? "center"
-                  : el.align === "right"
-                    ? "flex-end"
-                    : "flex-start"
               return (
                 <div
                   key={el.id}
                   role="button"
                   tabIndex={0}
                   className={cn(
-                    "absolute flex cursor-grab touch-none border border-transparent px-1 active:cursor-grabbing",
+                    "absolute cursor-grab touch-none border border-transparent px-0.5 active:cursor-grabbing",
                     selectedId === el.id &&
                       "rounded-md border-amber-500 border-dashed bg-amber-400/10",
                   )}
@@ -615,18 +627,18 @@ export function CertificateEditorView() {
                         : el.align === "right"
                           ? "translateX(-100%)"
                           : "none",
-                    justifyContent: justify,
-                    fontSize: `clamp(10px, ${el.fontSize * 0.12}cqw, ${el.fontSize}px)`,
-                    fontWeight: el.fontWeight === "bold" ? 700 : 500,
-                    fontFamily: "Tahoma, Arial, sans-serif",
-                    color: "#1f2937",
-                    lineHeight: 1.2,
-                    textAlign: el.align,
                   }}
                   onPointerDown={(e) => onPointerDownElement(e, el)}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <span className="max-w-full truncate">{text || "—"}</span>
+                  <AutoFitPreviewText
+                    text={text || "—"}
+                    maxFontSize={el.fontSize}
+                    fontWeight={el.fontWeight}
+                    align={el.align}
+                    pageWidth={template.pageWidth}
+                    canvasWidth={canvasWidth}
+                  />
                 </div>
               )
             })}
@@ -643,6 +655,78 @@ function resolvePreviewText(
 ) {
   if (el.field === "custom") return el.customText || ""
   return fields[el.field] || ""
+}
+
+/**
+ * מקטין את הפונט עד שהטקסט נכנס לרוחב השדה — בלי שלוש נקודות.
+ * משקף את לוגיקת ה־Auto-fit בהפקת ה־PDF.
+ */
+function AutoFitPreviewText({
+  text,
+  maxFontSize,
+  fontWeight,
+  align,
+  pageWidth,
+  canvasWidth,
+}: {
+  text: string
+  maxFontSize: number
+  fontWeight: "regular" | "bold"
+  align: "center" | "right" | "left"
+  pageWidth: number
+  canvasWidth: number
+}) {
+  const boxRef = useRef<HTMLDivElement>(null)
+  const textRef = useRef<HTMLSpanElement>(null)
+  const scale = pageWidth > 0 ? canvasWidth / pageWidth : 1
+  const maxPx = Math.max(8, maxFontSize * scale)
+  const minPx = Math.min(7 * scale, Math.max(5 * scale, maxPx * 0.35))
+  const [fontSize, setFontSize] = useState(maxPx)
+
+  useLayoutEffect(() => {
+    const box = boxRef.current
+    const span = textRef.current
+    if (!box || !span) return
+
+    let lo = minPx
+    let hi = maxPx
+    let best = minPx
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2
+      span.style.fontSize = `${mid}px`
+      if (span.scrollWidth <= box.clientWidth + 0.5) {
+        best = mid
+        lo = mid + 0.05
+      } else {
+        hi = mid - 0.05
+      }
+      if (lo > hi) break
+    }
+    setFontSize(best)
+    span.style.fontSize = `${best}px`
+  }, [text, maxPx, minPx, fontWeight, align, canvasWidth])
+
+  return (
+    <div
+      ref={boxRef}
+      className="w-full overflow-hidden"
+      style={{ textAlign: align }}
+    >
+      <span
+        ref={textRef}
+        className="inline-block max-w-none whitespace-nowrap"
+        style={{
+          fontSize,
+          fontWeight: fontWeight === "bold" ? 700 : 500,
+          fontFamily: "Tahoma, Arial, sans-serif",
+          color: "#1f2937",
+          lineHeight: 1.2,
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  )
 }
 
 function TextElementControls({
