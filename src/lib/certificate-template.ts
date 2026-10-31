@@ -249,13 +249,12 @@ function isValidElement(value: unknown): value is CertificateElement {
   return false
 }
 
-/** המרת אחוזי עורך (מלמעלה) ל־baseline Y של pdf-lib (מלמטה) */
-export function pctToPdfY(
-  yPct: number,
-  pageHeight: number,
-  fontSize = 0,
-): number {
-  return pageHeight * (1 - Math.min(100, Math.max(0, yPct)) / 100) - fontSize * 0.2
+/**
+ * המרת אחוזי עורך (מלמעלה) ל־Y של קצה עליון ב־pdf-lib (מלמטה).
+ * את ה־baseline מחשבים בנפרד: topY - ascent.
+ */
+export function pctToPdfY(yPct: number, pageHeight: number): number {
+  return pageHeight * (1 - Math.min(100, Math.max(0, yPct)) / 100)
 }
 
 export function pctToPdfX(xPct: number, pageWidth: number): number {

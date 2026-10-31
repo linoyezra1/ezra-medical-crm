@@ -30,33 +30,51 @@ const TEXT_COLOR = rgb(0.12, 0.14, 0.18)
 export type PilotCertificateFields = CertificatePreviewFields
 
 /**
- * pdf-lib מצייר LTR — להצגה עברית הופכים מחרוזות עם תווים עבריים.
- * מספרים / תאריכים לטיניים נשארים כמו שהם.
+ * סדר ויזואלי לציור LTR ב־pdf-lib (בלי תלות ב־bidi של המציג).
+ * הופכים רצפי עברית + סדר המקטעים; מספרים/לטינית נשארים כמו שהם.
+ * חשוב: מציירים תו־תו — אחרת מציגי PDF מודרניים הופכים שוב את המחרוזת.
  */
 export function preparePdfText(raw: string): string {
+  return toVisualPdfChars(raw).join("")
+}
+
+function toVisualPdfChars(raw: string): string[] {
   const text = (raw || "").trim()
-  if (!text) return ""
-  if (!/[\u0590-\u05FF]/.test(text)) return text
-  return [...text].reverse().join("")
+  if (!text) return []
+  if (!/[\u0590-\u05FF]/.test(text)) return [...text]
+
+  // מילים + רווחים: הופכים סדר מילים, ובתוך מילה עברית — תווים.
+  // "מאור ויצמן" → ויזואלית LTR "ןמציו רואמ" (נקרא RTL כמאור ויצמן)
+  // "רענון 28" → "28 ןונער"
+  const tokens = text.split(/(\s+)/)
+  const visual = tokens
+    .map((token) => {
+      if (!token || /^\s+$/.test(token)) return token
+      if (/[\u0590-\u05FF]/.test(token)) return [...token].reverse().join("")
+      return token
+    })
+    .reverse()
+    .join("")
+  return [...visual]
 }
 
 /** מקטין גופן עד שהטקסט נכנס לרוחב השדה (פר תעודה / פר שדה). */
 function fitFontSize(
   font: PDFFont,
-  text: string,
+  chars: string[],
   maxWidth: number,
   maxSize: number,
   minSize: number,
 ): number {
-  const drawn = preparePdfText(text)
-  if (!drawn || maxWidth <= 0) return maxSize
+  if (!chars.length || maxWidth <= 0) return maxSize
+  const widthAt = (size: number) =>
+    chars.reduce((sum, ch) => sum + font.widthOfTextAtSize(ch, size), 0)
   let lo = minSize
   let hi = maxSize
   let best = minSize
-  // חיפוש בינארי — מדויק יותר מירידה ב־0.5
   for (let i = 0; i < 24; i++) {
     const mid = Math.round(((lo + hi) / 2) * 100) / 100
-    if (font.widthOfTextAtSize(drawn, mid) <= maxWidth) {
+    if (widthAt(mid) <= maxWidth) {
       best = mid
       lo = mid + 0.05
     } else {
@@ -79,25 +97,35 @@ function drawTextElement(
   if (!raw) return
 
   const font = element.fontWeight === "bold" ? fonts.bold : fonts.regular
-  const drawn = preparePdfText(raw)
+  const chars = toVisualPdfChars(raw)
+  if (!chars.length) return
+
   const maxWidth = (pageWidth * Math.max(5, element.maxWidthPct || 40)) / 100
   const maxSize = Math.max(8, Number(element.fontSize) || 14)
-  // רצפה נמוכה מספיק לשמות ארוכים — בלי לחתוך ל־…
   const minSize = Math.min(7, Math.max(5, maxSize * 0.35))
-  const size = fitFontSize(font, raw, maxWidth, maxSize, minSize)
-  const width = font.widthOfTextAtSize(drawn, size)
-  const anchorX = pctToPdfX(element.xPct, pageWidth)
-  let x = anchorX
-  if (element.align === "center") x = anchorX - width / 2
-  else if (element.align === "right") x = anchorX - width
+  const size = fitFontSize(font, chars, maxWidth, maxSize, minSize)
+  const widths = chars.map((ch) => font.widthOfTextAtSize(ch, size))
+  const totalWidth = widths.reduce((a, b) => a + b, 0)
 
-  page.drawText(drawn, {
-    x,
-    y: pctToPdfY(element.yPct, pageHeight, size),
-    size,
-    font,
-    color: TEXT_COLOR,
-  })
+  const anchorX = pctToPdfX(element.xPct, pageWidth)
+  let cursorX = anchorX
+  if (element.align === "center") cursorX = anchorX - totalWidth / 2
+  else if (element.align === "right") cursorX = anchorX - totalWidth
+
+  // בעורך yPct = קצה עליון של השדה; ב־pdf-lib y = baseline.
+  const ascent = font.heightAtSize(size, { descender: false })
+  const baselineY = pctToPdfY(element.yPct, pageHeight) - ascent
+
+  for (let i = 0; i < chars.length; i++) {
+    page.drawText(chars[i], {
+      x: cursorX,
+      y: baselineY,
+      size,
+      font,
+      color: TEXT_COLOR,
+    })
+    cursorX += widths[i]
+  }
 }
 
 /** תוקף: +2 שנים מתאריך ההדרכה (DD/MM/YYYY או YYYY-MM-DD) */
