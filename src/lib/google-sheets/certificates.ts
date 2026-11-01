@@ -769,6 +769,9 @@ export async function exportTraineesToCertificateSheet(
               certificateCardPrinted: t.certificateCardPrinted,
             },
           })
+      // תמיד trainee.id בעמודה M כשמייצאים ממסך מודרכים —
+      // כדי שההנפקה תמצא את השורה גם בלי participant מקושר בגיליון.
+      // (כינויי participant↔trainee מטופלים גם ב־ensureCertificateDetails)
       return [
         t.fullName || "",
         t.idNumber || "",
@@ -782,8 +785,8 @@ export async function exportTraineesToCertificateSheet(
         digitalStatus,
         p?.organizerName || lead?.fullName || "",
         formatSheetDateTimeDdMmYyyy(new Date()),
-        p?.id || t.id, // M — מזהה משתתף אם יש, אחרת מודרך
-        t.certificateUrl?.trim() || "", // N — קישור PDF / Drive
+        t.id, // M — מזהה מודרך
+        "", // N — תמיד ריק בייצוא; PDF חדש נוצר בהנפקה
         "TRUE", // O — נוכחות
         ...sheetTailCells({
           ...(p || {}),
@@ -970,13 +973,66 @@ export type SheetCertificateDetails = {
 }
 
 /**
+ * מרחיב מזהי CRM לסט כינויים: משתתף ↔ מודרך,
+ * כי בעמודה M יכול להופיע participant.id או trainee.id.
+ */
+async function expandCrmIdAliases(
+  ids: string[],
+): Promise<{
+  /** כל המזהים לחיפוש בגיליון */
+  lookupIds: Set<string>
+  /** מזהה שביקשו → כל הכינויים שלו */
+  aliasesByRequestId: Map<string, string[]>
+}> {
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+  const aliasesByRequestId = new Map<string, string[]>()
+  const lookupIds = new Set<string>(unique)
+
+  if (!unique.length) {
+    return { lookupIds, aliasesByRequestId }
+  }
+
+  const participants = await prisma.participant.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, traineeId: true },
+  })
+  const trainees = await prisma.trainee.findMany({
+    where: { id: { in: unique } },
+    select: {
+      id: true,
+      participants: { select: { id: true }, take: 20 },
+    },
+  })
+
+  for (const id of unique) {
+    const aliases = new Set<string>([id])
+    const asParticipant = participants.find((p) => p.id === id)
+    if (asParticipant?.traineeId) {
+      aliases.add(asParticipant.traineeId)
+      lookupIds.add(asParticipant.traineeId)
+    }
+    const asTrainee = trainees.find((t) => t.id === id)
+    if (asTrainee) {
+      for (const p of asTrainee.participants) {
+        aliases.add(p.id)
+        lookupIds.add(p.id)
+      }
+    }
+    aliasesByRequestId.set(id, [...aliases])
+  }
+
+  return { lookupIds, aliasesByRequestId }
+}
+
+/**
  * אחרי ייצוא לגיליון: מוודא מספר תעודה (G) ותוקף (H) לכל משתתף —
  * כמו autoFillCertDetails בסקריפט. מחזיר פרטים להפקת PDF מקומית.
+ * מתאים גם כש־M מכיל participant.id והבקשה הגיעה עם trainee.id (ולהפך).
  */
 export async function ensureCertificateDetailsForParticipantIds(
   participantIds: string[],
 ): Promise<
-  | { ok: true; details: SheetCertificateDetails[] }
+  | { ok: true; details: SheetCertificateDetails[]; missingRequestIds: string[] }
   | { ok: false; error: string }
 > {
   if (!isGoogleSheetsConfigured()) {
@@ -985,9 +1041,11 @@ export async function ensureCertificateDetailsForParticipantIds(
   const ids = [
     ...new Set(participantIds.map((id) => String(id || "").trim()).filter(Boolean)),
   ]
-  if (!ids.length) return { ok: true, details: [] }
+  if (!ids.length) return { ok: true, details: [], missingRequestIds: [] }
 
   try {
+    const { lookupIds, aliasesByRequestId } = await expandCrmIdAliases(ids)
+
     const sheets = await getSheetsClient()
     const spreadsheetId = getSpreadsheetId()
     const tab = getSheetTabName()
@@ -1005,15 +1063,16 @@ export async function ensureCertificateDetailsForParticipantIds(
     }
     let nextNum = maxNum + 1
 
-    const idSet = new Set(ids)
     const updates: { range: string; values: string[][] }[] = []
     const details: SheetCertificateDetails[] = []
     const seenRows = new Set<number>()
+    /** מזהה בגיליון (M) → פרטי שורה */
+    const detailsBySheetId = new Map<string, SheetCertificateDetails>()
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i] || []
       const crmId = String(row[COL.crmId] || "").trim()
-      if (!crmId || !idSet.has(crmId)) continue
+      if (!crmId || !lookupIds.has(crmId)) continue
       const rowIndex = i + 2
       if (seenRows.has(rowIndex)) continue
       seenRows.add(rowIndex)
@@ -1050,7 +1109,7 @@ export async function ensureCertificateDetailsForParticipantIds(
         }
       }
 
-      details.push({
+      const detail: SheetCertificateDetails = {
         rowIndex,
         crmId,
         fullName,
@@ -1061,7 +1120,9 @@ export async function ensureCertificateDetailsForParticipantIds(
         certificateNumber,
         validUntil,
         pdfUrl,
-      })
+      }
+      details.push(detail)
+      detailsBySheetId.set(crmId, detail)
     }
 
     if (updates.length) {
@@ -1074,9 +1135,26 @@ export async function ensureCertificateDetailsForParticipantIds(
       })
     }
 
-    return { ok: true, details }
+    const missingRequestIds = ids.filter((requestId) => {
+      const aliases = aliasesByRequestId.get(requestId) || [requestId]
+      return !aliases.some((a) => detailsBySheetId.has(a))
+    })
+
+    if (missingRequestIds.length) {
+      console.warn(
+        "[certificates:issue] sheets:details",
+        "חסרים מזהים בגיליון",
+        { missingRequestIds, foundRows: details.length },
+      )
+    }
+
+    return { ok: true, details, missingRequestIds }
   } catch (err) {
-    console.error("[ensureCertificateDetailsForParticipantIds]", err)
+    console.error(
+      "[certificates:issue] sheets:details",
+      "שגיאה בהקצאת מספרי תעודה בגיליון",
+      err,
+    )
     return {
       ok: false,
       error:

@@ -1,4 +1,5 @@
 import { Readable } from "stream"
+import { certError, certLog, certWarn } from "@/lib/certificate-issuance-log"
 import {
   getCertificatesDriveFolderId,
   getDriveClient,
@@ -26,8 +27,15 @@ export async function uploadCertificatePdfToDrive(input: {
   }
 
   const folderId = getCertificatesDriveFolderId()
-  const fileName = String(input.fileName || "certificate.pdf").trim() || "certificate.pdf"
+  const fileName =
+    String(input.fileName || "certificate.pdf").trim() || "certificate.pdf"
   const bytes = Buffer.from(input.pdfBytes)
+
+  certLog("drive:upload-start", "מעלה PDF ל־Drive", {
+    fileName,
+    folderId,
+    bytes: bytes.length,
+  })
 
   try {
     const drive = await getDriveClient()
@@ -47,6 +55,7 @@ export async function uploadCertificatePdfToDrive(input: {
 
     const fileId = created.data.id
     if (!fileId) {
+      certError("drive:upload", "העלאה ללא מזהה קובץ", undefined, { fileName })
       return { ok: false, error: "העלאה ל־Drive הצליחה ללא מזהה קובץ" }
     }
 
@@ -61,10 +70,11 @@ export async function uploadCertificatePdfToDrive(input: {
         supportsAllDrives: true,
       })
     } catch (permErr) {
-      console.warn(
-        "[uploadCertificatePdfToDrive] לא ניתן לשתף anyone-with-link",
-        permErr,
-      )
+      certWarn("drive:share", "לא ניתן לשתף anyone-with-link", {
+        fileId,
+        err:
+          permErr instanceof Error ? permErr.message : String(permErr),
+      })
     }
 
     const meta = await drive.files.get({
@@ -76,9 +86,16 @@ export async function uploadCertificatePdfToDrive(input: {
       meta.data.webViewLink?.trim() ||
       `https://drive.google.com/file/d/${fileId}/view`
 
+    certLog("drive:upload-ok", "העלאה ל־Drive הצליחה", {
+      fileId,
+      webViewLink,
+    })
     return { ok: true, fileId, webViewLink }
   } catch (err) {
-    console.error("[uploadCertificatePdfToDrive]", err)
+    certError("drive:upload", "שגיאה בהעלאת PDF ל־Google Drive", err, {
+      fileName,
+      folderId,
+    })
     return {
       ok: false,
       error:

@@ -1,9 +1,14 @@
 /**
  * הנפקת תעודות מקומית (Scenario A):
- * PDF ב־CRM → העלאה ל־Drive → שמירת URL ב־CRM + עמודה N → מייל דרך Apps Script.
+ * תמיד PDF חדש מהתבנית השמורה בעורך → Drive → CRM + עמודה N → מייל ב־Apps Script.
  */
 
 import { prisma } from "@/lib/db"
+import {
+  certError,
+  certLog,
+  certWarn,
+} from "@/lib/certificate-issuance-log"
 import {
   buildPilotCertificatesPdf,
   loadCertificateTemplateForPdf,
@@ -27,7 +32,6 @@ export type LocalIssuanceItem = {
   hours: string
   certificateNumber: string
   pdfUrl: string
-  reusedExisting: boolean
 }
 
 export type LocalIssuanceResult =
@@ -35,13 +39,13 @@ export type LocalIssuanceResult =
       ok: true
       items: LocalIssuanceItem[]
       generated: number
-      reused: number
     }
   | { ok: false; error: string }
 
 function safeFileName(fullName: string, idNumber: string, certNum: string) {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")
   const base =
-    `${fullName || "תעודה"} - ${idNumber || certNum} תעודת מגיש עזרה ראשונה`
+    `${fullName || "תעודה"} - ${idNumber || certNum} - ${stamp}`
       .replace(/[\\/:*?"<>|]+/g, " ")
       .replace(/\s+/g, " ")
       .trim()
@@ -84,17 +88,24 @@ async function persistCertificateUrl(crmId: string, pdfUrl: string) {
 }
 
 /**
- * מפיק PDF מקומי לכל משתתף (או משתמש ב־PDF קיים בעמודה N),
- * מעלה ל־Drive, מעדכן CRM + שיטס.
+ * תמיד מפיק PDF חדש לפי התבנית האחרונה בעורך (מתעלם מקישור ישן ב־N / CRM / Drive).
  */
 export async function generateAndUploadCertificatesLocally(input: {
   participantIds: string[]
   templateType: string
 }): Promise<LocalIssuanceResult> {
+  certLog("pdf:start", "התחלת הפקה מקומית", {
+    count: input.participantIds.length,
+    templateType: input.templateType,
+    ids: input.participantIds.slice(0, 20),
+  })
+
   if (!isGoogleSheetsConfigured()) {
+    certError("pdf:config", "Google Sheets לא מוגדר")
     return { ok: false, error: "Google Sheets לא מוגדר — לא ניתן לתעד תעודות" }
   }
   if (!isGoogleDriveConfigured()) {
+    certError("pdf:config", "חסר GOOGLE_DRIVE_CERTIFICATES_FOLDER_ID")
     return {
       ok: false,
       error:
@@ -102,40 +113,94 @@ export async function generateAndUploadCertificatesLocally(input: {
     }
   }
 
-  const detailsRes = await ensureCertificateDetailsForParticipantIds(
+  // אחרי append לשיטס לפעמים הקריאה המיידית עדיין לא רואה את השורה — ניסיון חוזר קצר
+  let detailsRes = await ensureCertificateDetailsForParticipantIds(
     input.participantIds,
   )
-  if (!detailsRes.ok) return detailsRes
-
-  const byId = new Map<string, SheetCertificateDetails>()
-  for (const d of detailsRes.details) byId.set(d.crmId, d)
-
-  const missing = input.participantIds.filter((id) => !byId.has(id))
-  if (missing.length) {
-    return {
-      ok: false,
-      error: `לא נמצאו בגיליון אחרי ייצוא: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}`,
+  if (!detailsRes.ok) {
+    certError("sheets:details", detailsRes.error)
+    return detailsRes
+  }
+  for (
+    let attempt = 0;
+    attempt < 3 && detailsRes.ok && detailsRes.missingRequestIds.length > 0;
+    attempt++
+  ) {
+    certWarn("sheets:details-retry", "מזהים חסרים בגיליון — מנסים שוב", {
+      attempt: attempt + 1,
+      missing: detailsRes.missingRequestIds,
+    })
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)))
+    detailsRes = await ensureCertificateDetailsForParticipantIds(
+      input.participantIds,
+    )
+    if (!detailsRes.ok) {
+      certError("sheets:details", detailsRes.error)
+      return detailsRes
     }
   }
 
+  if (detailsRes.missingRequestIds.length) {
+    certError("sheets:missing", "לא נמצאו בגיליון אחרי ייצוא", {
+      missing: detailsRes.missingRequestIds,
+    })
+    return {
+      ok: false,
+      error: `לא נמצאו בגיליון אחרי ייצוא: ${detailsRes.missingRequestIds
+        .slice(0, 5)
+        .join(", ")}${detailsRes.missingRequestIds.length > 5 ? "…" : ""}`,
+    }
+  }
+
+  if (!detailsRes.details.length) {
+    certError("sheets:empty", "אין שורות תואמות בגיליון")
+    return {
+      ok: false,
+      error: "לא נמצאו שורות תואמות בגיליון להפקת תעודה",
+    }
+  }
+
+  certLog("sheets:details-ok", "פרטי גיליון מוכנים", {
+    rows: detailsRes.details.map((d) => ({
+      crmId: d.crmId,
+      rowIndex: d.rowIndex,
+      fullName: d.fullName,
+      email: d.email ? "(יש)" : "(חסר)",
+      certificateNumber: d.certificateNumber,
+    })),
+  })
+
+  // שורה אחת בגיליון = תעודה אחת (גם אם ביקשו גם trainee וגם participant)
+  const uniqueRows = new Map<number, SheetCertificateDetails>()
+  for (const d of detailsRes.details) {
+    if (!uniqueRows.has(d.rowIndex)) uniqueRows.set(d.rowIndex, d)
+  }
+
   const template = await loadCertificateTemplateForPdf(input.templateType)
+  certLog("pdf:template", "נטענה תבנית", {
+    templateType: input.templateType,
+    name: template.name,
+    backgroundUrl: template.backgroundUrl,
+    elements: template.elements.length,
+  })
+
   const items: LocalIssuanceItem[] = []
   let generated = 0
-  let reused = 0
 
-  for (const crmId of input.participantIds) {
-    const row = byId.get(crmId)!
+  for (const row of uniqueRows.values()) {
     if (!row.fullName) {
-      return { ok: false, error: `חסר שם מלא למשתתף ${crmId}` }
+      certError("pdf:row", "חסר שם מלא", { crmId: row.crmId })
+      return { ok: false, error: `חסר שם מלא למשתתף ${row.crmId}` }
     }
 
-    let pdfUrl = row.pdfUrl
-    let reusedExisting = false
+    certLog("pdf:build", "בונה PDF", {
+      crmId: row.crmId,
+      fullName: row.fullName,
+      certificateNumber: row.certificateNumber,
+      hasEmail: Boolean(row.email),
+    })
 
-    if (pdfUrl) {
-      reusedExisting = true
-      reused++
-    } else {
+    try {
       const fields: PilotCertificateFields = {
         fullName: row.fullName,
         idNumber: row.idNumber,
@@ -145,6 +210,11 @@ export async function generateAndUploadCertificatesLocally(input: {
         validUntil: row.validUntil,
       }
       const pdfBytes = await buildPilotCertificatesPdf([fields], template)
+      certLog("pdf:built", "PDF נוצר", {
+        crmId: row.crmId,
+        bytes: pdfBytes.length,
+      })
+
       const upload = await uploadCertificatePdfToDrive({
         pdfBytes,
         fileName: safeFileName(
@@ -154,36 +224,71 @@ export async function generateAndUploadCertificatesLocally(input: {
         ),
       })
       if (!upload.ok) {
+        certError("drive:upload", upload.error, undefined, {
+          crmId: row.crmId,
+          fullName: row.fullName,
+        })
         return {
           ok: false,
           error: `העלאה ל־Drive נכשלה עבור ${row.fullName}: ${upload.error}`,
         }
       }
-      pdfUrl = upload.webViewLink
-      generated++
-    }
 
-    await persistCertificateUrl(crmId, pdfUrl)
-    items.push({
-      crmId,
-      fullName: row.fullName,
-      email: row.email,
-      hours: row.hours,
-      certificateNumber: row.certificateNumber,
-      pdfUrl,
-      reusedExisting,
-    })
+      certLog("drive:uploaded", "הועלה ל־Drive", {
+        crmId: row.crmId,
+        fileId: upload.fileId,
+        webViewLink: upload.webViewLink,
+      })
+
+      const pdfUrl = upload.webViewLink
+      generated++
+      await persistCertificateUrl(row.crmId, pdfUrl)
+      items.push({
+        crmId: row.crmId,
+        fullName: row.fullName,
+        email: row.email,
+        hours: row.hours,
+        certificateNumber: row.certificateNumber,
+        pdfUrl,
+      })
+    } catch (err) {
+      certError("pdf:exception", "כשל בהפקת/העלאת תעודה", err, {
+        crmId: row.crmId,
+        fullName: row.fullName,
+      })
+      return {
+        ok: false,
+        error:
+          err instanceof Error
+            ? `שגיאה בהפקת תעודה עבור ${row.fullName}: ${err.message}`
+            : `שגיאה בהפקת תעודה עבור ${row.fullName}`,
+      }
+    }
   }
 
   const sync = await syncCertificateUrlsForParticipantIds(
     items.map((i) => i.crmId),
   )
   if (!sync.ok) {
+    certError("sheets:sync-url", sync.error, undefined, {
+      crmIds: items.map((i) => i.crmId),
+    })
     return {
       ok: false,
       error: `ה־PDF הופק אך עדכון עמודה N נכשל: ${sync.error}`,
     }
   }
 
-  return { ok: true, items, generated, reused }
+  certLog("pdf:done", "הפקה מקומית הושלמה", {
+    generated,
+    updatedSheetUrls: sync.updated,
+    items: items.map((i) => ({
+      crmId: i.crmId,
+      fullName: i.fullName,
+      hasEmail: Boolean(i.email),
+      certificateNumber: i.certificateNumber,
+    })),
+  })
+
+  return { ok: true, items, generated }
 }

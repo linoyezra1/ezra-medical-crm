@@ -61,6 +61,11 @@ import {
 } from "@/lib/google-sheets/certificates";
 import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client";
 import { generateAndUploadCertificatesLocally } from "@/lib/certificate-issuance-local";
+import {
+  certError,
+  certLog,
+  certWarn,
+} from "@/lib/certificate-issuance-log";
 import { refreshParticipantsFromWix } from "@/lib/google-sheets/wix-sync";
 import {
   dbStatusToUi,
@@ -2902,6 +2907,16 @@ export async function triggerRemoteCertificates(input: {
     templateType = "REFRESH";
   }
 
+  certLog("flow:start", "התחלת הנפקת תעודות", {
+    templateType,
+    leadId: leadIdFilter || null,
+    requestedIds: ids.length,
+    participantsFound: ownedParticipants.length,
+    traineesFound: ownedTrainees.length,
+    linkedFromTrainees: linkedFromTrainees.length,
+    webhookIds: webhookIds.length,
+  });
+
   // ייצוא חסרים לגיליון לפני ההנפקה
   if (isGoogleSheetsConfigured()) {
     const leadIds = [
@@ -2910,36 +2925,51 @@ export async function triggerRemoteCertificates(input: {
       ),
     ];
     for (const lid of leadIds) {
+      certLog("sheets:export-lead", "מייצא משתתפי הדרכה לגיליון", {
+        leadId: lid,
+      });
       const exportRes = await exportLeadParticipantsToSheets(lid);
       if (!exportRes.ok) {
-        console.error("[triggerRemoteCertificates] export", exportRes.error);
+        certError("sheets:export-lead", exportRes.error, undefined, {
+          leadId: lid,
+        });
         return {
           ok: false,
           error: `לא ניתן לייצא לגיליון לפני הנפקה: ${exportRes.error}`,
         };
       }
+      certLog("sheets:export-lead-ok", "ייצוא הדרכה הושלם", {
+        leadId: lid,
+        exported: exportRes.exported,
+        attendanceUpdated: exportRes.attendanceUpdated,
+      });
     }
     if (ownedTrainees.length) {
-      const exportRes = await exportTraineesToCertificateSheet(
-        ownedTrainees.map((t) => t.id),
-      );
+      const traineeExportIds = ownedTrainees.map((t) => t.id);
+      certLog("sheets:export-trainees", "מייצא מודרכים לגיליון", {
+        ids: traineeExportIds,
+      });
+      const exportRes = await exportTraineesToCertificateSheet(traineeExportIds);
       if (!exportRes.ok) {
-        console.error(
-          "[triggerRemoteCertificates] trainee export",
-          exportRes.error,
-        );
+        certError("sheets:export-trainees", exportRes.error, undefined, {
+          ids: traineeExportIds,
+        });
         return {
           ok: false,
           error: `לא ניתן לייצא מודרכים לגיליון לפני הנפקה: ${exportRes.error}`,
         };
       }
+      certLog("sheets:export-trainees-ok", "ייצוא מודרכים הושלם", {
+        exported: exportRes.exported,
+      });
     }
 
     const hoursSync = await syncCertificateHoursForParticipantIds(webhookIds);
     if (!hoursSync.ok) {
-      console.error("[triggerRemoteCertificates] hours sync", hoursSync.error);
+      certWarn("sheets:hours-sync", hoursSync.error, { webhookIds });
     }
   } else {
+    certError("sheets:config", "Google Sheets לא מוגדר");
     return {
       ok: false,
       error: "Google Sheets לא מוגדר — לא ניתן להנפיק תעודות",
@@ -2954,11 +2984,17 @@ export async function triggerRemoteCertificates(input: {
     ]),
   ];
 
+  certLog("pdf:dispatch", "מעביר להפקה מקומית + Drive", {
+    sheetCrmIds,
+    templateType,
+  });
+
   const local = await generateAndUploadCertificatesLocally({
     participantIds: sheetCrmIds,
     templateType,
   });
   if (!local.ok) {
+    certError("pdf:failed", local.error, undefined, { sheetCrmIds });
     return { ok: false, error: local.error };
   }
 
@@ -2966,6 +3002,7 @@ export async function triggerRemoteCertificates(input: {
     process.env.GOOGLE_APPS_SCRIPT_WEBHOOK_URL?.trim() ||
     process.env.NEXT_PUBLIC_GOOGLE_APPS_SCRIPT_URL?.trim();
   if (!webhookUrl) {
+    certError("email:config", "חסר GOOGLE_APPS_SCRIPT_WEBHOOK_URL");
     return {
       ok: false,
       error:
@@ -2996,6 +3033,29 @@ export async function triggerRemoteCertificates(input: {
     }),
   };
 
+  const missingEmail = local.items.filter((i) => !i.email?.trim());
+  if (missingEmail.length) {
+    certWarn("email:missing-address", "לחלק מהמודרכים חסר אימייל בגיליון", {
+      names: missingEmail.map((i) => ({ crmId: i.crmId, fullName: i.fullName })),
+    });
+  }
+
+  certLog("email:webhook-start", "שולח בקשת מייל ל־Apps Script", {
+    urlHost: (() => {
+      try {
+        return new URL(webhookUrl).host;
+      } catch {
+        return "(invalid-url)";
+      }
+    })(),
+    action: payload.action,
+    participantIds: payload.participantIds,
+    pdfCount: local.items.length,
+    withPdfUrl: payload.participants.filter((p) =>
+      Boolean(p.certificatePdfUrl || p.pdfUrl),
+    ).length,
+  });
+
   try {
     const res = await fetch(webhookUrl, {
       method: "POST",
@@ -3004,7 +3064,14 @@ export async function triggerRemoteCertificates(input: {
       redirect: "follow",
     });
     const text = await res.text();
+    certLog("email:webhook-response", "תשובת Apps Script", {
+      httpStatus: res.status,
+      ok: res.ok,
+      bodyPreview: text.slice(0, 500),
+    });
+
     let scriptMessage = "";
+    let processedCount: number | undefined;
     try {
       const json = JSON.parse(text) as {
         ok?: boolean;
@@ -3012,28 +3079,66 @@ export async function triggerRemoteCertificates(input: {
         message?: string;
         error?: string;
         processedCount?: number;
+        skippedNoPdf?: number;
+        skippedNoEmail?: number;
       };
+      processedCount = json.processedCount;
       if (json.error) {
+        certError("email:webhook-error", json.error, undefined, {
+          httpStatus: res.status,
+          skippedNoPdf: json.skippedNoPdf,
+          skippedNoEmail: json.skippedNoEmail,
+        });
         return { ok: false, error: json.error };
       }
       scriptMessage = json.message || "";
       if (json.ok === false || json.success === false) {
+        certError(
+          "email:webhook-fail",
+          scriptMessage || "כישלון בשליחת מייל",
+          undefined,
+          {
+            httpStatus: res.status,
+            processedCount: json.processedCount,
+            skippedNoPdf: json.skippedNoPdf,
+            skippedNoEmail: json.skippedNoEmail,
+          },
+        );
         return {
           ok: false,
           error: scriptMessage || "הסקריפט ב-Sheets החזיר כישלון בשליחת מייל",
         };
       }
+      certLog("email:webhook-ok", "מיילים נשלחו דרך Apps Script", {
+        processedCount: json.processedCount,
+        skippedNoPdf: json.skippedNoPdf,
+        skippedNoEmail: json.skippedNoEmail,
+        message: scriptMessage,
+      });
     } catch {
       if (!res.ok) {
+        certError("email:webhook-http", text || `HTTP ${res.status}`, undefined, {
+          httpStatus: res.status,
+        });
         return {
           ok: false,
           error: text || `שגיאת Webhook (${res.status})`,
         };
       }
       scriptMessage = text.trim();
+      certWarn("email:webhook-nonjson", "תשובת webhook אינה JSON", {
+        httpStatus: res.status,
+        bodyPreview: text.slice(0, 300),
+      });
     }
 
     if (!res.ok) {
+      certError(
+        "email:webhook-http",
+        scriptMessage || `HTTP ${res.status}`,
+        undefined,
+        { httpStatus: res.status },
+      );
       return {
         ok: false,
         error: scriptMessage || `שגיאת Webhook (${res.status})`,
@@ -3043,19 +3148,22 @@ export async function triggerRemoteCertificates(input: {
     revalidatePath("/certificates");
     revalidatePath("/leads");
 
+    certLog("flow:done", "הנפקה הושלמה", {
+      generated: local.generated,
+      emailedHint: processedCount ?? local.items.length,
+    });
+
     return {
       ok: true,
       data: {
         dispatched: local.items.length,
         message:
           scriptMessage ||
-          `הופקו ${local.generated} תעודות ב־CRM` +
-            (local.reused ? ` · ${local.reused} קיימות` : "") +
-            ` · נשלח מייל דרך Sheets (${local.items.length}).`,
+          `הופקו ${local.generated} תעודות חדשות ב־CRM (תבנית עדכנית) · נשלח מייל (${local.items.length}).`,
       },
     };
   } catch (err) {
-    console.error("[triggerRemoteCertificates]", err);
+    certError("email:webhook-exception", "שגיאת רשת ל־Apps Script", err);
     return {
       ok: false,
       error:
