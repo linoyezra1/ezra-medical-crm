@@ -287,31 +287,9 @@ function doPost(e) {
         continue;
       }
 
-      var pdfFile = null;
-      if (existingPdfUrl) {
-        pdfFile = getFileFromUrlOrId(existingPdfUrl);
-      }
-
-      // גיבוי: הורדת הקובץ ב־URL אם DriveApp לא מצליח לפתוח לפי ID
-      var attachmentBlob = null;
-      if (!pdfFile && existingPdfUrl) {
-        try {
-          var resp = UrlFetchApp.fetch(existingPdfUrl, {
-            muteHttpExceptions: true,
-            followRedirects: true,
-          });
-          if (resp.getResponseCode() >= 200 && resp.getResponseCode() < 400) {
-            attachmentBlob = resp
-              .getBlob()
-              .setName(
-                String(fullName || "certificate").replace(/[\\/:*?"<>|]/g, " ") +
-                  ".pdf",
-              );
-          }
-        } catch (fetchErr) {
-          Logger.log("UrlFetch PDF failed: " + fetchErr);
-        }
-      }
+      var resolved = resolveCertificateAttachment_(existingPdfUrl, fullName);
+      var pdfFile = resolved.file;
+      var attachmentBlob = resolved.blob;
 
       if (!pdfFile && !attachmentBlob) {
         skippedNoPdf++;
@@ -367,6 +345,54 @@ function doPost(e) {
       }),
     ).setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+/**
+ * פותר מצורף תעודה מ־URL בעמודה N / payload.
+ * קישור http(s) (Cloudinary וכו׳) → UrlFetchApp בלבד (בלי DriveApp).
+ * מזהה / קישור Drive → getFileFromUrlOrId, עם גיבוי UrlFetch.
+ */
+function resolveCertificateAttachment_(existingPdfUrl, fullName) {
+  var url = String(existingPdfUrl || "").trim();
+  if (!url) return { file: null, blob: null };
+
+  var attachmentName =
+    String(fullName || "certificate").replace(/[\\/:*?"<>|]/g, " ").trim() +
+    " - תעודה.pdf";
+
+  // Cloudinary / כל קישור אינטרנט — לא דרך DriveApp (גורם Toegang geweigerd)
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      var resp = UrlFetchApp.fetch(url, {
+        muteHttpExceptions: true,
+        followRedirects: true,
+      });
+      if (resp.getResponseCode() >= 200 && resp.getResponseCode() < 400) {
+        return {
+          file: null,
+          blob: resp.getBlob().setName(attachmentName),
+        };
+      }
+      Logger.log(
+        "UrlFetch PDF HTTP " + resp.getResponseCode() + " for " + url,
+      );
+    } catch (fetchErr) {
+      Logger.log("UrlFetch PDF failed: " + fetchErr);
+    }
+    return { file: null, blob: null };
+  }
+
+  // מזהה Drive / קישור Drive פנימי
+  try {
+    if (typeof getFileFromUrlOrId === "function") {
+      var pdfFile = getFileFromUrlOrId(url);
+      if (pdfFile) return { file: pdfFile, blob: null };
+    }
+  } catch (driveErr) {
+    Logger.log("getFileFromUrlOrId failed: " + driveErr);
+  }
+
+  return { file: null, blob: null };
 }
 
 /** שליחת מייל עם Blob (כשאין File מ־DriveApp) */

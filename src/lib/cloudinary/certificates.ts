@@ -53,20 +53,31 @@ function certificatesFolder(): string {
   )
 }
 
-/** public_id בטוח ל־Cloudinary (בלי סיומת .pdf) */
-function toPublicIdBase(fileName: string): string {
+/** public_id בטוח ל־Cloudinary — כולל סיומת .pdf בסוף (חובה ל־URL תקין) */
+function toPublicIdWithPdf(fileName: string): string {
   const withoutExt = fileName.replace(/\.pdf$/i, "")
-  return (
+  const base =
     withoutExt
       .replace(/[^\w\u0590-\u05FF\-]+/g, "_")
       .replace(/_+/g, "_")
       .replace(/^_|_$/g, "")
       .slice(0, 180) || `certificate_${Date.now()}`
-  )
+  return `${base}.pdf`
+}
+
+/** מבטיח שה־URL הציבורי מסתיים ב־.pdf */
+function ensurePdfUrl(url: string): string {
+  const trimmed = url.trim()
+  if (!trimmed) return trimmed
+  if (/\.pdf($|\?)/i.test(trimmed)) return trimmed
+  // raw URL בלי סיומת — מוסיפים .pdf לפני query אם יש
+  const q = trimmed.indexOf("?")
+  if (q === -1) return `${trimmed}.pdf`
+  return `${trimmed.slice(0, q)}.pdf${trimmed.slice(q)}`
 }
 
 /**
- * מעלה PDF תעודה ל־Cloudinary כ־raw ומחזיר secure_url ציבורי.
+ * מעלה PDF תעודה ל־Cloudinary כ־raw ומחזיר secure_url ציבורי שמסתיים ב־.pdf.
  */
 export async function uploadCertificatePdfToCloudinary(input: {
   pdfBytes: Uint8Array
@@ -78,7 +89,7 @@ export async function uploadCertificatePdfToCloudinary(input: {
   const fileName =
     String(input.fileName || "certificate.pdf").trim() || "certificate.pdf"
   const folder = certificatesFolder()
-  const publicId = `${folder}/${toPublicIdBase(fileName)}`
+  const publicId = `${folder}/${toPublicIdWithPdf(fileName)}`
   const bytes = Buffer.from(input.pdfBytes)
   const dataUri = `data:application/pdf;base64,${bytes.toString("base64")}`
 
@@ -93,12 +104,13 @@ export async function uploadCertificatePdfToCloudinary(input: {
     const result = await cloudinary.uploader.upload(dataUri, {
       resource_type: "raw",
       public_id: publicId,
+      format: "pdf",
       overwrite: true,
       invalidate: true,
       type: "upload",
     })
 
-    const url = (result.secure_url || result.url || "").trim()
+    let url = (result.secure_url || result.url || "").trim()
     if (!url) {
       certError("cloudinary:upload", "העלאה ללא URL", undefined, {
         fileName,
@@ -106,6 +118,7 @@ export async function uploadCertificatePdfToCloudinary(input: {
       })
       return { ok: false, error: "העלאה ל־Cloudinary הצליחה ללא URL" }
     }
+    url = ensurePdfUrl(url)
 
     certLog("cloudinary:upload-ok", "העלאה ל־Cloudinary הצליחה", {
       publicId: result.public_id,
