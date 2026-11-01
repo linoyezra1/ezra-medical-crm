@@ -1,6 +1,6 @@
 /**
  * הנפקת תעודות מקומית (Scenario A):
- * תמיד PDF חדש מהתבנית השמורה בעורך → Drive → CRM + עמודה N → מייל ב־Apps Script.
+ * תמיד PDF חדש מהתבנית השמורה בעורך → Cloudinary → CRM + עמודה N → מייל ב־Apps Script.
  */
 
 import { prisma } from "@/lib/db"
@@ -14,16 +14,16 @@ import {
   loadCertificateTemplateForPdf,
   type PilotCertificateFields,
 } from "@/lib/certificate-pdf-pilot"
-import { uploadCertificatePdfToDrive } from "@/lib/google-drive/certificates"
+import {
+  isCloudinaryConfigured,
+  uploadCertificatePdfToCloudinary,
+} from "@/lib/cloudinary/certificates"
 import {
   ensureCertificateDetailsForParticipantIds,
   syncCertificateUrlsForParticipantIds,
   type SheetCertificateDetails,
 } from "@/lib/google-sheets/certificates"
-import {
-  isGoogleDriveConfigured,
-  isGoogleSheetsConfigured,
-} from "@/lib/google-sheets/client"
+import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client"
 
 export type LocalIssuanceItem = {
   crmId: string
@@ -88,7 +88,7 @@ async function persistCertificateUrl(crmId: string, pdfUrl: string) {
 }
 
 /**
- * תמיד מפיק PDF חדש לפי התבנית האחרונה בעורך (מתעלם מקישור ישן ב־N / CRM / Drive).
+ * תמיד מפיק PDF חדש לפי התבנית האחרונה בעורך (מתעלם מקישור ישן ב־N / CRM).
  */
 export async function generateAndUploadCertificatesLocally(input: {
   participantIds: string[]
@@ -104,12 +104,12 @@ export async function generateAndUploadCertificatesLocally(input: {
     certError("pdf:config", "Google Sheets לא מוגדר")
     return { ok: false, error: "Google Sheets לא מוגדר — לא ניתן לתעד תעודות" }
   }
-  if (!isGoogleDriveConfigured()) {
-    certError("pdf:config", "חסר GOOGLE_DRIVE_CERTIFICATES_FOLDER_ID")
+  if (!isCloudinaryConfigured()) {
+    certError("pdf:config", "חסרים פרטי Cloudinary")
     return {
       ok: false,
       error:
-        "חסר GOOGLE_DRIVE_CERTIFICATES_FOLDER_ID — יש לשתף את תיקיית התעודות עם ה־Service Account",
+        "חסרים פרטי Cloudinary — הגדירו CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET",
     }
   }
 
@@ -215,7 +215,7 @@ export async function generateAndUploadCertificatesLocally(input: {
         bytes: pdfBytes.length,
       })
 
-      const upload = await uploadCertificatePdfToDrive({
+      const upload = await uploadCertificatePdfToCloudinary({
         pdfBytes,
         fileName: safeFileName(
           row.fullName,
@@ -224,23 +224,23 @@ export async function generateAndUploadCertificatesLocally(input: {
         ),
       })
       if (!upload.ok) {
-        certError("drive:upload", upload.error, undefined, {
+        certError("cloudinary:upload", upload.error, undefined, {
           crmId: row.crmId,
           fullName: row.fullName,
         })
         return {
           ok: false,
-          error: `העלאה ל־Drive נכשלה עבור ${row.fullName}: ${upload.error}`,
+          error: `העלאה ל־Cloudinary נכשלה עבור ${row.fullName}: ${upload.error}`,
         }
       }
 
-      certLog("drive:uploaded", "הועלה ל־Drive", {
+      certLog("cloudinary:uploaded", "הועלה ל־Cloudinary", {
         crmId: row.crmId,
-        fileId: upload.fileId,
-        webViewLink: upload.webViewLink,
+        publicId: upload.publicId,
+        url: upload.url,
       })
 
-      const pdfUrl = upload.webViewLink
+      const pdfUrl = upload.url
       generated++
       await persistCertificateUrl(row.crmId, pdfUrl)
       items.push({

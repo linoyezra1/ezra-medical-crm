@@ -2676,7 +2676,7 @@ export async function exportLeadCertificatesToSheetsAction(
 }
 
 /**
- * הנפקת תעודות: PDF מקומי ב־CRM → Drive → שיטס N,
+ * הנפקת תעודות: PDF מקומי ב־CRM → Cloudinary → שיטס N,
  * ואז webhook ל־Apps Script לשליחת מייל בלבד (בלי Google Docs).
  * leadId אופציונלי — אם חסר, מזוהה לפי רשומות המשתתפים שנבחרו.
  */
@@ -2984,7 +2984,7 @@ export async function triggerRemoteCertificates(input: {
     ]),
   ];
 
-  certLog("pdf:dispatch", "מעביר להפקה מקומית + Drive", {
+  certLog("pdf:dispatch", "מעביר להפקה מקומית + Cloudinary", {
     sheetCrmIds,
     templateType,
   });
@@ -3011,7 +3011,7 @@ export async function triggerRemoteCertificates(input: {
     };
   }
 
-  // מייל בלבד — הסקריפט לא יוצר Docs (PDF כבר ב־Drive + עמודה N)
+  // מייל בלבד — הסקריפט לא יוצר Docs (PDF כבר ב־Cloudinary + עמודה N)
   const payload = {
     action: "emailCertificates",
     skipPdfGeneration: true,
