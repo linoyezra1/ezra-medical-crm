@@ -15,6 +15,7 @@ import {
 } from "@/lib/course-type"
 import { isTrainingFullySettled } from "@/lib/training-profit"
 import {
+  getCertificateStartNumber,
   getSheetTabName,
   getSheetsClient,
   getSpreadsheetId,
@@ -354,6 +355,32 @@ function participantRow(p: {
     attendanceCell(Boolean(p.attended)), // O — נוכחות
     ...sheetTailCells(p), // P–U עיר / רחוב / בית / מיקוד / קטגוריה / תעודות דרך מי
   ]
+}
+
+/** תוקף = תאריך הדרכה + 2 שנים (DD/MM/YYYY) */
+function addTwoYearsDdMmYyyy(courseDate: string): string {
+  const raw = (courseDate || "").trim()
+  const dmy = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/)
+  const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  let year: number
+  let month: number
+  let day: number
+  if (dmy) {
+    day = Number(dmy[1])
+    month = Number(dmy[2])
+    year = Number(dmy[3])
+  } else if (ymd) {
+    year = Number(ymd[1])
+    month = Number(ymd[2])
+    day = Number(ymd[3])
+  } else {
+    return ""
+  }
+  const d = new Date(year + 2, month - 1, day)
+  if (Number.isNaN(d.getTime())) return ""
+  const dd = String(d.getDate()).padStart(2, "0")
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  return `${dd}/${mm}/${d.getFullYear()}`
 }
 
 function crmIdRowMap(
@@ -925,6 +952,137 @@ export async function syncCertificateHoursForParticipantIds(
       ok: false,
       error:
         err instanceof Error ? err.message : "שגיאה בעדכון היקף שעות בגיליון",
+    }
+  }
+}
+
+export type SheetCertificateDetails = {
+  rowIndex: number
+  crmId: string
+  fullName: string
+  idNumber: string
+  email: string
+  hours: string
+  courseDate: string
+  certificateNumber: string
+  validUntil: string
+  pdfUrl: string
+}
+
+/**
+ * אחרי ייצוא לגיליון: מוודא מספר תעודה (G) ותוקף (H) לכל משתתף —
+ * כמו autoFillCertDetails בסקריפט. מחזיר פרטים להפקת PDF מקומית.
+ */
+export async function ensureCertificateDetailsForParticipantIds(
+  participantIds: string[],
+): Promise<
+  | { ok: true; details: SheetCertificateDetails[] }
+  | { ok: false; error: string }
+> {
+  if (!isGoogleSheetsConfigured()) {
+    return { ok: false, error: "Google Sheets לא מוגדר" }
+  }
+  const ids = [
+    ...new Set(participantIds.map((id) => String(id || "").trim()).filter(Boolean)),
+  ]
+  if (!ids.length) return { ok: true, details: [] }
+
+  try {
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+    const existing = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: sheetA1(tab, SHEET_RANGE_DATA),
+    })
+    const rows = existing.data.values || []
+
+    // מקסימום מספר תעודה קיים
+    let maxNum = getCertificateStartNumber() - 1
+    for (const row of rows) {
+      const n = parseInt(String(row[COL.certificateNumber] || "").trim(), 10)
+      if (!Number.isNaN(n) && n > maxNum) maxNum = n
+    }
+    let nextNum = maxNum + 1
+
+    const idSet = new Set(ids)
+    const updates: { range: string; values: string[][] }[] = []
+    const details: SheetCertificateDetails[] = []
+    const seenRows = new Set<number>()
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] || []
+      const crmId = String(row[COL.crmId] || "").trim()
+      if (!crmId || !idSet.has(crmId)) continue
+      const rowIndex = i + 2
+      if (seenRows.has(rowIndex)) continue
+      seenRows.add(rowIndex)
+
+      const fullName = String(row[COL.fullName] || "").trim()
+      const idNumber = String(row[COL.idNumber] || "").trim()
+      const email = String(row[COL.email] || "").trim()
+      const hours = String(row[COL.hours] || "").trim()
+      const courseDateRaw = row[COL.courseDate]
+      const courseDate =
+        formatSheetDateDdMmYyyy(courseDateRaw) ||
+        String(courseDateRaw || "").trim()
+
+      let certificateNumber = String(row[COL.certificateNumber] || "").trim()
+      let validUntil =
+        formatSheetDateDdMmYyyy(row[COL.certificateExpiry]) ||
+        String(row[COL.certificateExpiry] || "").trim()
+      const pdfUrl = String(row[COL.pdfUrl] || "").trim()
+
+      if (!certificateNumber) {
+        certificateNumber = String(nextNum++)
+        updates.push({
+          range: sheetA1(tab, `G${rowIndex}`),
+          values: [[certificateNumber]],
+        })
+      }
+      if (!validUntil && courseDate) {
+        validUntil = addTwoYearsDdMmYyyy(courseDate)
+        if (validUntil) {
+          updates.push({
+            range: sheetA1(tab, `H${rowIndex}`),
+            values: [[validUntil]],
+          })
+        }
+      }
+
+      details.push({
+        rowIndex,
+        crmId,
+        fullName,
+        idNumber,
+        email,
+        hours,
+        courseDate,
+        certificateNumber,
+        validUntil,
+        pdfUrl,
+      })
+    }
+
+    if (updates.length) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          valueInputOption: "USER_ENTERED",
+          data: updates,
+        },
+      })
+    }
+
+    return { ok: true, details }
+  } catch (err) {
+    console.error("[ensureCertificateDetailsForParticipantIds]", err)
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "שגיאה בהקצאת מספרי תעודה בגיליון",
     }
   }
 }

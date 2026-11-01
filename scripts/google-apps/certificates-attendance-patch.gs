@@ -1,6 +1,9 @@
 /**
  * תיקונים לסקריפט הפקת התעודות (להדביק במקום הפונקציות הקיימות).
  *
+ * ⚠️ מעבר ל־CRM PDF: להדביק גם certificates-email-only-cutover.gs
+ *    (מחליף doPost / processSelectedRows / createCertificatePDF — בלי Google Docs).
+ *
  * 1) הסקריפט לא מוסיף שורות — זה ה-CRM.
  * 2) עמודה O = נוכחות. לדלג רק על «לא נכח». תא ריק = נוכח (שורות ישנות).
  * 3) לקרוא 15 עמודות (A–O). PDF נשאר בעמודה N (14).

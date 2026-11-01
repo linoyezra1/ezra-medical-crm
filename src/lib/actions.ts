@@ -60,6 +60,7 @@ import {
   exportTraineesToCertificateSheet,
 } from "@/lib/google-sheets/certificates";
 import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client";
+import { generateAndUploadCertificatesLocally } from "@/lib/certificate-issuance-local";
 import { refreshParticipantsFromWix } from "@/lib/google-sheets/wix-sync";
 import {
   dbStatusToUi,
@@ -2670,8 +2671,8 @@ export async function exportLeadCertificatesToSheetsAction(
 }
 
 /**
- * הפעלת הנפקת תעודות מרחוק דרך Google Apps Script Web App.
- * מאמת PIN בשרת, מוודא ייצוא לגיליון, ושולח webhook.
+ * הנפקת תעודות: PDF מקומי ב־CRM → Drive → שיטס N,
+ * ואז webhook ל־Apps Script לשליחת מייל בלבד (בלי Google Docs).
  * leadId אופציונלי — אם חסר, מזוהה לפי רשומות המשתתפים שנבחרו.
  */
 export async function triggerRemoteCertificates(input: {
@@ -2938,6 +2939,27 @@ export async function triggerRemoteCertificates(input: {
     if (!hoursSync.ok) {
       console.error("[triggerRemoteCertificates] hours sync", hoursSync.error);
     }
+  } else {
+    return {
+      ok: false,
+      error: "Google Sheets לא מוגדר — לא ניתן להנפיק תעודות",
+    };
+  }
+
+  // מזהים שמופיעים בעמודה M אחרי ייצוא (משתתף ו/או מודרך)
+  const sheetCrmIds = [
+    ...new Set([
+      ...[...participantsById.keys()],
+      ...ownedTrainees.map((t) => t.id),
+    ]),
+  ];
+
+  const local = await generateAndUploadCertificatesLocally({
+    participantIds: sheetCrmIds,
+    templateType,
+  });
+  if (!local.ok) {
+    return { ok: false, error: local.error };
   }
 
   const webhookUrl =
@@ -2952,16 +2974,26 @@ export async function triggerRemoteCertificates(input: {
     };
   }
 
-  // חשוב: לא לשלוח participantsToAdd כאן —
-  // הסקריפט מפרש participantsToAdd כ־action=sync ודולג על הנפקת תעודות.
+  // מייל בלבד — הסקריפט לא יוצר Docs (PDF כבר ב־Drive + עמודה N)
   const payload = {
-    action: "generateCertificates",
+    action: "emailCertificates",
+    skipPdfGeneration: true,
     templateType,
     participantIds: webhookIds,
     authPin: pin,
     pin,
     leadId: leadIdFilter || ownedParticipants[0]?.leadId || null,
-    participants: participantPayload,
+    participants: participantPayload.map((p) => {
+      const issued = local.items.find(
+        (i) => i.crmId === p.id || i.crmId === p.crmId,
+      );
+      return {
+        ...p,
+        certificatePdfUrl: issued?.pdfUrl || p.certificatePdfUrl || "",
+        pdfUrl: issued?.pdfUrl || p.pdfUrl || "",
+        certificateUrl: issued?.pdfUrl || p.certificateUrl || "",
+      };
+    }),
   };
 
   try {
@@ -2979,6 +3011,7 @@ export async function triggerRemoteCertificates(input: {
         success?: boolean;
         message?: string;
         error?: string;
+        processedCount?: number;
       };
       if (json.error) {
         return { ok: false, error: json.error };
@@ -2987,11 +3020,10 @@ export async function triggerRemoteCertificates(input: {
       if (json.ok === false || json.success === false) {
         return {
           ok: false,
-          error: scriptMessage || "הסקריפט ב-Sheets החזיר כישלון",
+          error: scriptMessage || "הסקריפט ב-Sheets החזיר כישלון בשליחת מייל",
         };
       }
     } catch {
-      // Apps Script לעיתים מחזיר טקסט פשוט
       if (!res.ok) {
         return {
           ok: false,
@@ -3008,13 +3040,18 @@ export async function triggerRemoteCertificates(input: {
       };
     }
 
+    revalidatePath("/certificates");
+    revalidatePath("/leads");
+
     return {
       ok: true,
       data: {
-        dispatched: webhookIds.length,
+        dispatched: local.items.length,
         message:
           scriptMessage ||
-          `הבקשה נשלחה ל-Google Sheets! התעודות מופקות ונשלחות במייל ברקע (${webhookIds.length}).`,
+          `הופקו ${local.generated} תעודות ב־CRM` +
+            (local.reused ? ` · ${local.reused} קיימות` : "") +
+            ` · נשלח מייל דרך Sheets (${local.items.length}).`,
       },
     };
   } catch (err) {

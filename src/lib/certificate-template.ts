@@ -161,7 +161,24 @@ export function defaultCertificateTemplate(): CertificateTemplate {
   }
 }
 
-export function certificateTemplateFilePath(): string {
+export function certificateTemplateFilePath(
+  templateType?: string | null,
+): string {
+  const type = String(templateType || "")
+    .trim()
+    .toUpperCase()
+  if (type && type !== "REGULAR") {
+    return path.join(
+      process.cwd(),
+      "data",
+      `certificate-template-${type.toLowerCase()}.json`,
+    )
+  }
+  return path.join(process.cwd(), "data", "certificate-template.json")
+}
+
+/** נתיב ברירת מחדל (REGULAR) — תמיד קיים */
+export function certificateTemplateDefaultFilePath(): string {
   return path.join(process.cwd(), "data", "certificate-template.json")
 }
 

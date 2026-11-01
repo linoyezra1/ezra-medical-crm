@@ -74,7 +74,7 @@ export function IssueCertificatesDialog({
     }
     toast.success(
       res.data.message ||
-        "הבקשה נשלחה ל-Google Sheets! התעודות מופקות ונשלחות במייל ברקע.",
+        "התעודות הופקו ב־CRM ונשלחו במייל דרך Sheets.",
     )
     setPin("")
     onOpenChange(false)
@@ -119,13 +119,17 @@ export function IssueCertificatesDialog({
         <DialogHeader className="text-right">
           <DialogTitle className="flex items-center gap-2 text-base">
             <ScrollText className="size-5 text-primary" />
-            הפקת תעודות מרחוק
+            הפקת תעודות
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 text-right">
           <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm font-semibold text-primary">
             {participantIds.length} משתתפים מסומנים
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            ההנפקה יוצרת PDF ב־CRM (לפי עורך התבנית), שומרת ב־Drive ובשיטס,
+            ושולחת מייל למודרך — בלי Google Docs.
           </p>
 
           <div className="space-y-2">
@@ -149,7 +153,11 @@ export function IssueCertificatesDialog({
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              הפיילוט משתמש כרגע בתבנית הרגילה בלבד (ללא מייל).
+              תבנית לפי סוג:{" "}
+              <code className="text-[10px]">
+                data/certificate-template-{"{type}"}.json
+              </code>{" "}
+              או ברירת המחדל מהעורך. פיילוט = הורדה מקומית בלבד.
             </p>
           </div>
 
@@ -183,7 +191,7 @@ export function IssueCertificatesDialog({
             onClick={() => void submitRemote()}
           >
             <ScrollText className="size-4" />
-            {busy === "remote" ? "שולח…" : "הנפק ושלח תעודות"}
+            {busy === "remote" ? "מפיק ושולח…" : "הנפק ושלח תעודות"}
           </Button>
           <Button
             type="button"
@@ -193,10 +201,10 @@ export function IssueCertificatesDialog({
             onClick={() => void submitPilot()}
           >
             <FlaskConical className="size-4" />
-            {busy === "pilot" ? "מפיק PDF…" : "הפקת תעודה פיילוט"}
+            {busy === "pilot" ? "מפיק PDF…" : "הורדת PDF לבדיקה"}
           </Button>
           <p className="w-full text-center text-[11px] text-muted-foreground">
-            פיילוט — מוריד PDF במקום · ללא שליחת מייל
+            הורדה לבדיקה — ללא מייל וללא שמירה ב־Drive
           </p>
           <Button
             type="button"

@@ -294,16 +294,26 @@ async function drawCertificatePage(
   }
 }
 
-export async function loadCertificateTemplateForPdf(): Promise<CertificateTemplate> {
-  try {
-    const {
-      certificateTemplateFilePath,
-    } = await import("@/lib/certificate-template")
-    const raw = await readFile(certificateTemplateFilePath(), "utf8")
-    return normalizeCertificateTemplate(JSON.parse(raw))
-  } catch {
-    return defaultCertificateTemplate()
+export async function loadCertificateTemplateForPdf(
+  templateType?: string | null,
+): Promise<CertificateTemplate> {
+  const {
+    certificateTemplateFilePath,
+    certificateTemplateDefaultFilePath,
+  } = await import("@/lib/certificate-template")
+  const candidates = [
+    certificateTemplateFilePath(templateType),
+    certificateTemplateDefaultFilePath(),
+  ]
+  for (const filePath of candidates) {
+    try {
+      const raw = await readFile(filePath, "utf8")
+      return normalizeCertificateTemplate(JSON.parse(raw))
+    } catch {
+      /* try next */
+    }
   }
+  return defaultCertificateTemplate()
 }
 
 export async function buildPilotCertificatesPdf(
@@ -315,7 +325,7 @@ export async function buildPilotCertificatesPdf(
   }
 
   const template = normalizeCertificateTemplate(
-    templateInput || (await loadCertificateTemplateForPdf()),
+    templateInput || (await loadCertificateTemplateForPdf(null)),
   )
   const { bgBytes, fontBytes } = await loadTemplateAssets(template)
   const pdfDoc = await PDFDocument.create()

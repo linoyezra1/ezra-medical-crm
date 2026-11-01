@@ -1,10 +1,14 @@
 import { readFileSync, existsSync } from "fs"
-import { google, type sheets_v4 } from "googleapis"
+import { google, type drive_v3, type sheets_v4 } from "googleapis"
 
 export type GoogleServiceAccount = {
   client_email: string
   private_key: string
 }
+
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
+const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 
 function tryParseServiceAccountJson(
   raw: string,
@@ -75,6 +79,26 @@ export function isGoogleSheetsConfigured(): boolean {
   )
 }
 
+export function isGoogleDriveConfigured(): boolean {
+  return Boolean(
+    loadServiceAccount() &&
+      (process.env.GOOGLE_DRIVE_CERTIFICATES_FOLDER_ID?.trim() ||
+        process.env.GOOGLE_CERTIFICATES_FOLDER_ID?.trim()),
+  )
+}
+
+export function getCertificatesDriveFolderId(): string {
+  const id =
+    process.env.GOOGLE_DRIVE_CERTIFICATES_FOLDER_ID?.trim() ||
+    process.env.GOOGLE_CERTIFICATES_FOLDER_ID?.trim()
+  if (!id) {
+    throw new Error(
+      "חסר GOOGLE_DRIVE_CERTIFICATES_FOLDER_ID (תיקיית Drive לתעודות)",
+    )
+  }
+  return id
+}
+
 export function getSpreadsheetId(): string {
   const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim()
   if (!id) throw new Error("חסר GOOGLE_SHEETS_SPREADSHEET_ID")
@@ -91,17 +115,44 @@ export function sheetA1(tab: string, a1: string): string {
   return `'${name}'!${a1}`
 }
 
-export async function getSheetsClient(): Promise<sheets_v4.Sheets> {
+function createGoogleAuth(scopes: string[]) {
   const sa = loadServiceAccount()
   if (!sa) {
     throw new Error(
       "חסרים פרטי Google Service Account (GOOGLE_CREDENTIALS / GOOGLE_SERVICE_ACCOUNT_JSON / קובץ credentials)",
     )
   }
-  const auth = new google.auth.JWT({
+  return new google.auth.JWT({
     email: sa.client_email,
     key: sa.private_key.replace(/\\n/g, "\n"),
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    scopes,
   })
+}
+
+export async function getSheetsClient(): Promise<sheets_v4.Sheets> {
+  const auth = createGoogleAuth([SHEETS_SCOPE])
   return google.sheets({ version: "v4", auth })
+}
+
+/** Sheets + Drive — להפקת תעודות (מספור בגיליון + העלאת PDF) */
+export async function getSheetsAndDriveClients(): Promise<{
+  sheets: sheets_v4.Sheets
+  drive: drive_v3.Drive
+}> {
+  const auth = createGoogleAuth([SHEETS_SCOPE, DRIVE_SCOPE, DRIVE_FILE_SCOPE])
+  return {
+    sheets: google.sheets({ version: "v4", auth }),
+    drive: google.drive({ version: "v3", auth }),
+  }
+}
+
+export async function getDriveClient(): Promise<drive_v3.Drive> {
+  const auth = createGoogleAuth([DRIVE_SCOPE, DRIVE_FILE_SCOPE])
+  return google.drive({ version: "v3", auth })
+}
+
+export function getCertificateStartNumber(): number {
+  const raw = process.env.CERTIFICATE_START_NUMBER?.trim()
+  const n = raw ? Number(raw) : 26767
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 26767
 }
