@@ -1,16 +1,147 @@
 /**
- * מעבר להפקת PDF ב־CRM (בלי Google Docs).
+ * מעבר להפקת PDF ב־CRM (בלי Google Docs) + סנכרון שורות לגיליון.
  *
  * להדביק במקום doPost / processSelectedRows הרלוונטיים בפרויקט Apps Script,
  * ואז: Deploy → Manage deployments → Edit → Version: New → Deploy.
  *
- * זרימה חדשה:
- * 1) CRM מייצר PDF + מעלה ל־Drive + כותב עמודה N
- * 2) CRM קורא webhook עם action=emailCertificates / skipPdfGeneration=true
- * 3) הסקריפט רק שולח מייל + מסמן עמודה J
+ * זרימות:
+ * A) action=sync + participantsToAdd → כתיבה/עדכון שורות בגיליון (בלי Docs)
+ * B) action=emailCertificates / skipPdfGeneration=true → מייל בלבד לפי עמודה N
  *
- * אם אין PDF בעמודה N — מחזירים שגיאה (לא יוצרים Docs).
+ * אם אין PDF בעמודה N בהנפקה — מחזירים שגיאה (לא יוצרים Docs).
+ *
+ * חשוב: כתיבת שורות חדשות ב־sync נעשית ב־setValues ל־A:U בשורה ריקה
+ * (לא appendRow) — כדי לא להזיז עמודות כשיש תאים יתומים.
  */
+
+function parseToDate_(value) {
+  if (value == null || value === "") return null;
+  if (Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value)) {
+    return value;
+  }
+  var s = String(value).trim();
+  var m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+  if (m) {
+    var d = parseInt(m[1], 10);
+    var mo = parseInt(m[2], 10) - 1;
+    var y = parseInt(m[3], 10);
+    if (y < 100) y += 2000;
+    var dt = new Date(y, mo, d);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  var parsed = new Date(s);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function buildParticipantSheetRow_(p) {
+  var hours = p.hoursScope || p.hours || "";
+  var inviter = p.inviterName || p.organizerName || "";
+  var crmId = p.crmId || p.id || "";
+  var courseDate = parseToDate_(p.courseDate) || p.courseDate || "";
+  var attended =
+    p.attendanceStatus != null && String(p.attendanceStatus).trim() !== ""
+      ? p.attendanceStatus
+      : p.attendance === false
+        ? "לא נכח"
+        : "TRUE";
+  var street = p.street || p.address || "";
+  var zip = p.zipCode || p.postalCode || "";
+  var category = p.courseCategory || p.category || "";
+  var certifyingBody = p.certifyingBody || "";
+
+  return [
+    p.fullName || "", // A
+    p.idNumber || "", // B
+    courseDate, // C
+    p.email || "", // D
+    p.phone || "", // E
+    hours, // F
+    "", // G
+    "", // H
+    "", // I
+    "", // J
+    inviter, // K
+    Utilities.formatDate(new Date(), "Asia/Jerusalem", "dd/MM/yyyy HH:mm"), // L
+    crmId, // M
+    p.certificatePdfUrl || p.pdfUrl || p.certificateUrl || "", // N
+    attended, // O
+    p.city || "", // P
+    street, // Q
+    p.houseNumber || "", // R
+    zip, // S
+    category, // T
+    certifyingBody, // U
+  ];
+}
+
+function findRowByCrmId_(sheet, crmId) {
+  var id = String(crmId || "").trim();
+  if (!id) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  var values = sheet.getRange(2, 13, lastRow, 13).getValues(); // M
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0] || "").trim() === id) return i + 2;
+  }
+  return 0;
+}
+
+/** שורה ראשונה שבה עמודה A ריקה (אחרי כותרת) — בלי appendRow */
+function findNextEmptyRowByColA_(sheet) {
+  var lastRow = Math.max(sheet.getLastRow(), 1);
+  var values = sheet.getRange(1, 1, lastRow, 1).getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (!String(values[i][0] || "").trim()) return i + 1;
+  }
+  return lastRow + 1;
+}
+
+function syncParticipantsToSheet_(sheet, participantsToAdd) {
+  var added = 0;
+  var updated = 0;
+
+  for (var i = 0; i < participantsToAdd.length; i++) {
+    var p = participantsToAdd[i] || {};
+    var rowValues = buildParticipantSheetRow_(p);
+    while (rowValues.length < 21) rowValues.push("");
+    rowValues = rowValues.slice(0, 21);
+
+    var crmId = rowValues[12];
+    var existingRow = findRowByCrmId_(sheet, crmId);
+
+    if (existingRow > 0) {
+      sheet.getRange(existingRow, 16, 1, 6).setValues([
+        [
+          rowValues[15],
+          rowValues[16],
+          rowValues[17],
+          rowValues[18],
+          rowValues[19],
+          rowValues[20],
+        ],
+      ]);
+      if (rowValues[0]) sheet.getRange(existingRow, 1).setValue(rowValues[0]);
+      if (rowValues[1]) sheet.getRange(existingRow, 2).setValue(rowValues[1]);
+      if (rowValues[2]) sheet.getRange(existingRow, 3).setValue(rowValues[2]);
+      if (rowValues[3]) sheet.getRange(existingRow, 4).setValue(rowValues[3]);
+      if (rowValues[4]) sheet.getRange(existingRow, 5).setValue(rowValues[4]);
+      if (rowValues[5]) sheet.getRange(existingRow, 6).setValue(rowValues[5]);
+      if (rowValues[10]) sheet.getRange(existingRow, 11).setValue(rowValues[10]);
+      if (rowValues[13]) sheet.getRange(existingRow, 14).setValue(rowValues[13]);
+      if (rowValues[14]) sheet.getRange(existingRow, 15).setValue(rowValues[14]);
+      updated++;
+    } else {
+      var nextRow = findNextEmptyRowByColA_(sheet);
+      sheet.getRange(nextRow, 1, 1, 21).setValues([rowValues]);
+      added++;
+    }
+  }
+
+  if (typeof autoFillCertDetails === "function") {
+    autoFillCertDetails(sheet);
+  }
+  return { added: added, updated: updated };
+}
 
 function doPost(e) {
   try {
@@ -48,17 +179,30 @@ function doPost(e) {
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // סנכרון משתתפים מה־CRM (ללא הנפקה)
+    // סנכרון משתתפים מה־CRM (ללא הנפקה / בלי Docs)
+    // רק action===sync — לא לפי קיום participantsToAdd (מערך ריק הוא truthy)
     if (action === "sync") {
-      // משאירים את לוגיקת sync הקיימת בפרויקט — לא נגע כאן.
-      // אם אין sync בגרסה זו, מחזירים הודעה ברורה.
+      var toAdd = Array.isArray(data.participantsToAdd)
+        ? data.participantsToAdd
+        : [];
+      var result = syncParticipantsToSheet_(sheet, toAdd);
       return ContentService.createTextOutput(
         JSON.stringify({
-          success: false,
+          success: true,
           message:
-            "action=sync — השתמשו בגרסת doPost המלאה עם סנכרון, או קראו ל־emailCertificates בלבד",
+            "סונכרנו " +
+            result.added +
+            " חדשים, עודכנו " +
+            result.updated +
+            " (כולל כתובת P–S וקטגוריה T)",
+          addedCount: result.added,
+          updatedCount: result.updated,
         }),
       ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (!skipPdf && action !== "emailCertificates" && action !== "generateCertificates") {
+      // בקשות לא מוכרות — לא יוצרים Docs
     }
 
     autoFillCertDetails(sheet);
@@ -88,7 +232,7 @@ function doPost(e) {
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
-    var range = sheet.getRange(2, 1, lastRow - 1, 14);
+    var range = sheet.getRange(2, 1, lastRow, 14);
     var values = range.getValues();
     var processedCount = 0;
     var skippedNoPdf = 0;
@@ -131,9 +275,7 @@ function doPost(e) {
       var fullName = row[0];
       var email = row[3];
       var hours = row[5];
-      var existingPdfUrl = row[13]
-        ? String(row[13]).trim()
-        : "";
+      var existingPdfUrl = row[13] ? String(row[13]).trim() : "";
 
       if (!existingPdfUrl && crmParticipantId && urlFromPayload[crmParticipantId]) {
         existingPdfUrl = urlFromPayload[crmParticipantId];

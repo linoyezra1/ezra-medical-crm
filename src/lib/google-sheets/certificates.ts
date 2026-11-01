@@ -447,13 +447,7 @@ function crmIdRowMap(
   const map = new Map<string, number>()
   for (let i = 0; i < (columnM || []).length; i++) {
     const id = String(columnM?.[i]?.[0] || "").trim()
-    if (
-      !id ||
-      id.includes("מזהה משתתף") ||
-      id === "CRM_PARTICIPANT_ID"
-    ) {
-      continue
-    }
+    if (!id || isCrmIdHeaderCell(id)) continue
     if (!map.has(id)) map.set(id, i + 1)
   }
   return map
@@ -705,6 +699,19 @@ export async function syncParticipantAttendanceToSheets(
   }
 }
 
+function isCrmIdHeaderCell(value: string): boolean {
+  const v = value.trim()
+  if (!v) return true
+  const lower = v.toLowerCase()
+  return (
+    v.includes("מזהה משתתף") ||
+    lower === "crm_participant_id" ||
+    lower === "idcrm" ||
+    lower === "crm id" ||
+    lower === "crmid"
+  )
+}
+
 async function fetchExistingCrmIdsInSheet(): Promise<Set<string>> {
   const sheets = await getSheetsClient()
   const spreadsheetId = getSpreadsheetId()
@@ -717,12 +724,7 @@ async function fetchExistingCrmIdsInSheet(): Promise<Set<string>> {
     (existing.data.values || [])
       .flat()
       .map((v) => String(v || "").trim())
-      .filter(
-        (v) =>
-          v &&
-          !v.includes("מזהה משתתף") &&
-          v !== "CRM_PARTICIPANT_ID",
-      ),
+      .filter((v) => v && !isCrmIdHeaderCell(v)),
   )
 }
 
@@ -855,6 +857,163 @@ export async function exportTraineesToCertificateSheet(
   }
 }
 
+type SyncParticipantPayload = {
+  id: string
+  crmId: string
+  fullName: string
+  idNumber: string
+  phone: string
+  email: string
+  courseDate: string
+  city: string
+  street: string
+  address: string
+  houseNumber: string
+  zipCode: string
+  postalCode: string
+  inviterName: string
+  organizerName: string
+  hours: string
+  hoursScope: string
+  attendance: boolean
+  attendanceStatus: string
+  courseCategory: string
+  category: string
+  certifyingBody: string
+  certificateUrl: string
+  certificatePdfUrl: string
+  pdfUrl: string
+}
+
+function participantToAppsScriptSyncPayload(
+  p: Parameters<typeof participantRow>[0],
+): SyncParticipantPayload {
+  const courseDate = trainingDateLabel(p.courseDate, p.lead?.scheduledStart)
+  const certCourse = resolveParticipantCertificateCourseType(p)
+  const hoursScope = hoursScopeForSheet(
+    certCourse.courseType,
+    certCourse.courseTypeOther,
+  )
+  const inviter = sheetText(p.organizerName) || sheetText(p.lead?.fullName)
+  const street = sheetText(p.shippingStreet)
+  const zip = sheetText(p.shippingZip)
+  const category = categoryCell(p)
+  const body = certifyingBodyCell(p)
+  const pdfUrl =
+    p.certificateUrl?.trim() || p.trainee?.certificateUrl?.trim() || ""
+  const attendanceStatus = attendanceCell(Boolean(p.attended))
+
+  return {
+    id: p.id,
+    crmId: p.id,
+    fullName: sheetText(p.fullName),
+    idNumber: sheetText(p.idNumber),
+    phone: sheetText(p.phone),
+    email: sheetText(p.email),
+    courseDate,
+    city: sheetText(p.shippingCity),
+    street,
+    address: street,
+    houseNumber: sheetText(p.shippingHouseNo),
+    zipCode: zip,
+    postalCode: zip,
+    inviterName: inviter,
+    organizerName: inviter,
+    hours: hoursScope,
+    hoursScope,
+    attendance: Boolean(p.attended),
+    attendanceStatus,
+    courseCategory: category,
+    category,
+    certifyingBody: body,
+    certificateUrl: pdfUrl,
+    certificatePdfUrl: pdfUrl,
+    pdfUrl,
+  }
+}
+
+/**
+ * דוחף action=sync ל־Apps Script (הגיליון המחובר לסקריפט).
+ * דורש GOOGLE_APPS_SCRIPT_WEBHOOK_URL + GOOGLE_APPS_SCRIPT_SECURITY_PIN.
+ */
+async function pushParticipantsSyncToAppsScript(
+  participantsToAdd: SyncParticipantPayload[],
+): Promise<{ ok: true; added: number; updated: number } | { ok: false; error: string }> {
+  if (!participantsToAdd.length) {
+    return { ok: true, added: 0, updated: 0 }
+  }
+
+  const webhookUrl =
+    process.env.GOOGLE_APPS_SCRIPT_WEBHOOK_URL?.trim() ||
+    process.env.NEXT_PUBLIC_GOOGLE_APPS_SCRIPT_URL?.trim()
+  const pin =
+    process.env.GOOGLE_APPS_SCRIPT_SECURITY_PIN?.trim() ||
+    process.env.CERTIFICATES_APPS_SCRIPT_PIN?.trim() ||
+    process.env.CERTIFICATE_ISSUANCE_PIN?.trim() ||
+    "214215444"
+
+  if (!webhookUrl) {
+    return {
+      ok: false,
+      error: "חסר GOOGLE_APPS_SCRIPT_WEBHOOK_URL לסנכרון דרך הסקריפט",
+    }
+  }
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "sync",
+        pin,
+        authPin: pin,
+        participantsToAdd,
+      }),
+    })
+    const text = await res.text()
+    let json: {
+      success?: boolean
+      ok?: boolean
+      message?: string
+      error?: string
+      addedCount?: number
+      updatedCount?: number
+    } = {}
+    try {
+      json = JSON.parse(text) as typeof json
+    } catch {
+      return {
+        ok: false,
+        error: `Apps Script sync: תשובה לא־JSON (HTTP ${res.status})`,
+      }
+    }
+    if (!res.ok || json.success === false || json.ok === false) {
+      return {
+        ok: false,
+        error: json.error || json.message || `Apps Script sync נכשל (HTTP ${res.status})`,
+      }
+    }
+    console.log("[certificates:sync] apps-script-sync-ok", {
+      added: json.addedCount ?? 0,
+      updated: json.updatedCount ?? 0,
+      sent: participantsToAdd.length,
+    })
+    return {
+      ok: true,
+      added: Number(json.addedCount) || 0,
+      updated: Number(json.updatedCount) || 0,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "שגיאת רשת בסנכרון ל־Apps Script",
+    }
+  }
+}
+
 /** מוסיף לגיליון נוכחים שעדיין לא יוצאו (למשל מסך מודרכים) */
 export async function exportMissingAttendedToSheets(): Promise<
   { ok: true; exported: number } | { ok: false; error: string }
@@ -867,9 +1026,6 @@ export async function exportMissingAttendedToSheets(): Promise<
   }
   try {
     await ensureHeaderRow()
-    const sheets = await getSheetsClient()
-    const spreadsheetId = getSpreadsheetId()
-    const tab = getSheetTabName()
 
     const participants = await prisma.participant.findMany({
       where: { attended: true },
@@ -878,6 +1034,7 @@ export async function exportMissingAttendedToSheets(): Promise<
           select: {
             certificateEmailSent: true,
             certificateCardPrinted: true,
+            certificateUrl: true,
           },
         },
         lead: {
@@ -902,9 +1059,27 @@ export async function exportMissingAttendedToSheets(): Promise<
         !existingIds.has(p.id) &&
         !(p.traineeId && existingIds.has(p.traineeId)),
     )
-    if (!toExport.length) return { ok: true, exported: 0 }
+    if (!toExport.length) {
+      console.log("[certificates:sync] export-missing: אין חדשים לכתיבה", {
+        attended: participants.length,
+        alreadyInSheet: existingIds.size,
+      })
+      return { ok: true, exported: 0 }
+    }
 
     await appendCertificateRowsSafe(toExport.map((p) => participantRow(p)))
+
+    // גיבוי: כתיבה גם דרך Apps Script לגיליון המחובר לסקריפט
+    const scriptSync = await pushParticipantsSyncToAppsScript(
+      toExport.map((p) => participantToAppsScriptSyncPayload(p)),
+    )
+    if (!scriptSync.ok) {
+      console.warn(
+        "[certificates:sync] apps-script-sync-skip",
+        scriptSync.error,
+      )
+    }
+
     await prisma.participant.updateMany({
       where: { id: { in: toExport.map((p) => p.id) } },
       data: { sheetsExportedAt: new Date() },
