@@ -1,4 +1,6 @@
-import { v2 as cloudinary } from "cloudinary"
+import { createHash, randomBytes } from "crypto"
+import { Readable } from "stream"
+import { v2 as cloudinary, type UploadApiResponse } from "cloudinary"
 import { certError, certLog } from "@/lib/certificate-issuance-log"
 
 export type CloudinaryUploadResult =
@@ -12,7 +14,6 @@ function ensureCloudinaryConfig(): { ok: true } | { ok: false; error: string } {
 
   const url = process.env.CLOUDINARY_URL?.trim()
   if (url) {
-    // ה־SDK קורא את CLOUDINARY_URL מהסביבה אוטומטית
     configured = true
     return { ok: true }
   }
@@ -53,35 +54,58 @@ function certificatesFolder(): string {
   )
 }
 
-/** public_id בטוח ל־Cloudinary — כולל סיומת .pdf בסוף (חובה ל־URL תקין) */
-function toPublicIdWithPdf(fileName: string): string {
-  const withoutExt = fileName.replace(/\.pdf$/i, "")
-  const base =
-    withoutExt
-      .replace(/[^\w\u0590-\u05FF\-]+/g, "_")
-      .replace(/_+/g, "_")
-      .replace(/^_|_$/g, "")
-      .slice(0, 180) || `certificate_${Date.now()}`
-  return `${base}.pdf`
+/**
+ * public_id באנגלית בלבד — עברית ב־URL שוברת הורדה ב־Apps Script / דפדפן.
+ * בלי סיומת .pdf: PDF מועלה כ־image (המלצת Cloudinary) והסיומת מתווספת ב־delivery.
+ */
+function toAsciiPublicId(input: {
+  fileName: string
+  certificateNumber?: string
+}): string {
+  const cert =
+    String(input.certificateNumber || "")
+      .replace(/\D/g, "")
+      .slice(0, 12) || "cert"
+  const digitsFromName = input.fileName.replace(/\D/g, "").slice(-10)
+  const stamp = Date.now()
+  const rand = randomBytes(3).toString("hex")
+  const hash = createHash("sha1")
+    .update(input.fileName)
+    .digest("hex")
+    .slice(0, 6)
+  const base = [cert, digitsFromName || hash, stamp, rand]
+    .filter(Boolean)
+    .join("-")
+  return base
 }
 
-/** מבטיח שה־URL הציבורי מסתיים ב־.pdf */
-function ensurePdfUrl(url: string): string {
-  const trimmed = url.trim()
-  if (!trimmed) return trimmed
-  if (/\.pdf($|\?)/i.test(trimmed)) return trimmed
-  // raw URL בלי סיומת — מוסיפים .pdf לפני query אם יש
-  const q = trimmed.indexOf("?")
-  if (q === -1) return `${trimmed}.pdf`
-  return `${trimmed.slice(0, q)}.pdf${trimmed.slice(q)}`
+function uploadBuffer(
+  bytes: Buffer,
+  options: Record<string, unknown>,
+): Promise<UploadApiResponse> {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      options,
+      (err, result) => {
+        if (err || !result) {
+          reject(err || new Error("Cloudinary upload ללא תוצאה"))
+          return
+        }
+        resolve(result)
+      },
+    )
+    Readable.from(bytes).pipe(stream)
+  })
 }
 
 /**
- * מעלה PDF תעודה ל־Cloudinary כ־raw ומחזיר secure_url ציבורי שמסתיים ב־.pdf.
+ * מעלה PDF ל־Cloudinary כ־image/pdf עם public_id ASCII בלבד.
+ * מחזיר secure_url ציבורי שניתן להורדה ב־UrlFetchApp / דפדפן.
  */
 export async function uploadCertificatePdfToCloudinary(input: {
   pdfBytes: Uint8Array
   fileName: string
+  certificateNumber?: string
 }): Promise<CloudinaryUploadResult> {
   const cfg = ensureCloudinaryConfig()
   if (!cfg.ok) return cfg
@@ -89,9 +113,11 @@ export async function uploadCertificatePdfToCloudinary(input: {
   const fileName =
     String(input.fileName || "certificate.pdf").trim() || "certificate.pdf"
   const folder = certificatesFolder()
-  const publicId = `${folder}/${toPublicIdWithPdf(fileName)}`
+  const publicId = `${folder}/${toAsciiPublicId({
+    fileName,
+    certificateNumber: input.certificateNumber,
+  })}`
   const bytes = Buffer.from(input.pdfBytes)
-  const dataUri = `data:application/pdf;base64,${bytes.toString("base64")}`
 
   certLog("cloudinary:upload-start", "מעלה PDF ל־Cloudinary", {
     fileName,
@@ -101,16 +127,19 @@ export async function uploadCertificatePdfToCloudinary(input: {
   })
 
   try {
-    const result = await cloudinary.uploader.upload(dataUri, {
-      resource_type: "raw",
+    // PDF כ־image — URL יציב יותר מ־raw עם עברית ב־public_id
+    const result = await uploadBuffer(bytes, {
+      resource_type: "image",
       public_id: publicId,
-      format: "pdf",
       overwrite: true,
       invalidate: true,
+      unique_filename: false,
+      use_filename: false,
+      format: "pdf",
       type: "upload",
     })
 
-    let url = (result.secure_url || result.url || "").trim()
+    const url = (result.secure_url || result.url || "").trim()
     if (!url) {
       certError("cloudinary:upload", "העלאה ללא URL", undefined, {
         fileName,
@@ -118,10 +147,20 @@ export async function uploadCertificatePdfToCloudinary(input: {
       })
       return { ok: false, error: "העלאה ל־Cloudinary הצליחה ללא URL" }
     }
-    url = ensurePdfUrl(url)
+
+    // וידוא בסיסי שהקישור נראה כמו PDF של Cloudinary
+    if (!/res\.cloudinary\.com\//i.test(url)) {
+      certError("cloudinary:upload", "URL לא נראה כמו Cloudinary", undefined, {
+        url,
+      })
+      return { ok: false, error: `URL לא תקין מ־Cloudinary: ${url}` }
+    }
 
     certLog("cloudinary:upload-ok", "העלאה ל־Cloudinary הצליחה", {
       publicId: result.public_id,
+      resourceType: result.resource_type,
+      format: result.format,
+      bytes: result.bytes,
       url,
     })
     return {
@@ -133,6 +172,7 @@ export async function uploadCertificatePdfToCloudinary(input: {
     certError("cloudinary:upload", "שגיאה בהעלאת PDF ל־Cloudinary", err, {
       fileName,
       folder,
+      publicId,
     })
     return {
       ok: false,

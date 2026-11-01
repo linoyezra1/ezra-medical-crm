@@ -228,6 +228,7 @@ export async function generateAndUploadCertificatesLocally(input: {
           row.idNumber,
           row.certificateNumber,
         ),
+        certificateNumber: row.certificateNumber,
       })
       if (!upload.ok) {
         certError("cloudinary:upload", upload.error, undefined, {
