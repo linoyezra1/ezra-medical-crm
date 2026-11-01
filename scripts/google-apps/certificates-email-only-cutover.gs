@@ -268,121 +268,136 @@ function doPost(e) {
         ? [String(rawParticipantIds).trim()]
         : [];
 
-    var lastRow = sheet.getLastRow();
-    if (lastRow < 2) {
-      return ContentService.createTextOutput(
-        JSON.stringify({
-          success: false,
-          message: "אין שורות בגיליון להפקה",
-          processedCount: 0,
-        }),
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    var range = sheet.getRange(2, 1, lastRow, 14);
-    var values = range.getValues();
     var processedCount = 0;
     var skippedNoPdf = 0;
     var skippedNoEmail = 0;
     var fetchErrors = [];
+    var emailedIds = {};
 
-    // מפת CRM id → URL מה־payload (עדיף על עמודה N — טרי מה־CRM/Cloudinary)
-    var urlFromPayload = {};
-    var payloadParticipants = data.participants || [];
-    if (Array.isArray(payloadParticipants)) {
-      for (var pi = 0; pi < payloadParticipants.length; pi++) {
-        var pp = payloadParticipants[pi] || {};
-        var pid = String(pp.crmId || pp.id || "").trim();
-        var purl = String(
-          pp.certificatePdfUrl || pp.pdfUrl || pp.certificateUrl || "",
-        ).trim();
-        if (pid && purl) urlFromPayload[pid] = purl;
+    // ---- נתיב ראשי: שליחה ישירות מה־payload של ה־CRM (לא תלוי בהתאמת עמודה M) ----
+    var payloadParticipants = Array.isArray(data.participants)
+      ? data.participants
+      : [];
+    for (var pi = 0; pi < payloadParticipants.length; pi++) {
+      var pp = payloadParticipants[pi] || {};
+      var pid = String(pp.crmId || pp.id || "").trim();
+      var purl = String(
+        pp.certificatePdfUrl || pp.pdfUrl || pp.certificateUrl || "",
+      ).trim();
+      var pName = String(pp.fullName || "").trim();
+      var pEmail = String(pp.email || "").trim();
+      var pHours = String(pp.hoursScope || pp.hours || "").trim();
+
+      if (participantIds.length && pid && participantIds.indexOf(pid) === -1) {
+        continue;
       }
-    }
-
-    for (var i = 0; i < values.length; i++) {
-      var row = values[i];
-      var rowIndex = i + 2;
-
-      if (typeof isNotAttendedRow_ === "function") {
-        if (isNotAttendedRow_(sheet, rowIndex, row)) continue;
-      }
-
-      var crmParticipantId = row[12] ? String(row[12]).trim() : "";
-
-      if (participantIds.length > 0 && participantIds[0] !== "") {
-        var isMatch = participantIds.some(function (id) {
-          return id === crmParticipantId;
-        });
-        if (!isMatch) continue;
-      }
-
-      var fullName = row[0];
-      var email = row[3];
-      var hours = row[5];
-      var sheetPdfUrl = row[13] ? String(row[13]).trim() : "";
-
-      // עדיפות: URL מה־payload → אחר כך עמודה N
-      var existingPdfUrl =
-        (crmParticipantId && urlFromPayload[crmParticipantId]) ||
-        sheetPdfUrl ||
-        "";
-
-      if (
-        existingPdfUrl &&
-        existingPdfUrl !== sheetPdfUrl &&
-        /^https?:\/\//i.test(existingPdfUrl)
-      ) {
-        sheet.getRange(rowIndex, 14).setValue(existingPdfUrl);
-      }
-
-      if (!fullName || !email) {
+      if (!pEmail || !pName) {
         skippedNoEmail++;
         continue;
       }
-
-      var resolved = resolveCertificateAttachment_(existingPdfUrl, fullName);
-      var pdfFile = resolved.file;
-      var attachmentBlob = resolved.blob;
-
-      if (!pdfFile && !attachmentBlob) {
+      if (!purl) {
         skippedNoPdf++;
-        if (resolved.error) fetchErrors.push(resolved.error);
+        continue;
+      }
+
+      var resolvedP = resolveCertificateAttachment_(purl, pName);
+      if (!resolvedP.blob && !resolvedP.file) {
+        skippedNoPdf++;
+        if (resolvedP.error) fetchErrors.push(resolvedP.error);
         Logger.log(
-          "אין PDF מוכן לשורה " +
-            rowIndex +
-            " (" +
-            fullName +
-            ") url=" +
-            (existingPdfUrl || "(ריק)") +
+          "payload PDF fail id=" +
+            pid +
+            " url=" +
+            purl +
             " err=" +
-            (resolved.error || ""),
+            (resolvedP.error || ""),
         );
         continue;
       }
 
-      if (pdfFile) {
-        sendCertificateEmail(email, fullName, hours, pdfFile);
+      if (resolvedP.file) {
+        sendCertificateEmail(pEmail, pName, pHours, resolvedP.file);
       } else {
-        sendCertificateEmailBlob_(email, fullName, hours, attachmentBlob);
+        sendCertificateEmailBlob_(pEmail, pName, pHours, resolvedP.blob);
       }
-      sheet.getRange(rowIndex, 10).setValue(true);
       processedCount++;
+      if (pid) emailedIds[pid] = true;
+
+      // עדכון שיטס אם יש שורה תואמת
+      try {
+        var rowNum = findRowByCrmId_(sheet, pid);
+        if (rowNum > 0) {
+          sheet.getRange(rowNum, 14).setValue(purl); // N
+          sheet.getRange(rowNum, 10).setValue(true); // J
+        }
+      } catch (sheetUpdErr) {
+        Logger.log("sheet update after email: " + sheetUpdErr);
+      }
     }
 
-    if (processedCount === 0 && skippedNoPdf > 0) {
+    // ---- גיבוי: שורות מהגיליון שעדיין לא נשלחו (אם ה־payload היה ריק) ----
+    if (processedCount === 0) {
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        var range = sheet.getRange(2, 1, lastRow, 14);
+        var values = range.getValues();
+        for (var i = 0; i < values.length; i++) {
+          var row = values[i];
+          var rowIndex = i + 2;
+          var crmParticipantId = row[12] ? String(row[12]).trim() : "";
+          if (emailedIds[crmParticipantId]) continue;
+
+          if (participantIds.length > 0 && participantIds[0] !== "") {
+            var isMatch = participantIds.some(function (id) {
+              return id === crmParticipantId;
+            });
+            if (!isMatch) continue;
+          }
+
+          var fullName = row[0];
+          var email = row[3];
+          var hours = row[5];
+          var sheetPdfUrl = row[13] ? String(row[13]).trim() : "";
+          if (!fullName || !email) {
+            skippedNoEmail++;
+            continue;
+          }
+          if (!sheetPdfUrl) {
+            skippedNoPdf++;
+            continue;
+          }
+
+          var resolved = resolveCertificateAttachment_(sheetPdfUrl, fullName);
+          if (!resolved.file && !resolved.blob) {
+            skippedNoPdf++;
+            if (resolved.error) fetchErrors.push(resolved.error);
+            continue;
+          }
+          if (resolved.file) {
+            sendCertificateEmail(email, fullName, hours, resolved.file);
+          } else {
+            sendCertificateEmailBlob_(email, fullName, hours, resolved.blob);
+          }
+          sheet.getRange(rowIndex, 10).setValue(true);
+          processedCount++;
+        }
+      }
+    }
+
+    if (processedCount === 0) {
       var detail =
         fetchErrors.length > 0
-          ? " · " + fetchErrors.slice(0, 2).join(" | ")
-          : existingPdfUrlHint_(urlFromPayload);
+          ? " · " + fetchErrors.slice(0, 3).join(" | ")
+          : " · בדקו: participantIds, אימייל ב־payload, ו־UrlFetch ל־Cloudinary";
       return ContentService.createTextOutput(
         JSON.stringify({
           success: false,
           message:
-            "לא נמצא PDF להורדה עבור השורות שנבחרו (עמודה N / Cloudinary)." +
+            "לא נשלחו מיילים — לא הצלחנו להוריד/לשייך PDF מ־Cloudinary." +
             detail,
           processedCount: 0,
           skippedNoPdf: skippedNoPdf,
+          skippedNoEmail: skippedNoEmail,
         }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
@@ -393,7 +408,7 @@ function doPost(e) {
         message:
           "נשלחו " +
           processedCount +
-          " מיילים עם תעודות (PDF מ־CRM, ללא Google Docs)",
+          " מיילים עם תעודות (PDF מ־Cloudinary)",
         processedCount: processedCount,
         skippedNoPdf: skippedNoPdf,
         skippedNoEmail: skippedNoEmail,
