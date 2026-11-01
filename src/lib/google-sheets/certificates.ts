@@ -87,11 +87,69 @@ const COL = {
 
 const SHEET_RANGE_HEADER = "A1:U1"
 const SHEET_RANGE_DATA = "A2:U"
-const SHEET_RANGE_APPEND = "A:U"
+/** מספר עמודות קבוע לכתיבה בטוחה (A–U) */
+const CERTIFICATE_COL_COUNT = CERTIFICATE_SHEET_HEADERS.length
 /** עמודת מזהה משתתף למניעת כפילויות */
 const SHEET_RANGE_CRM_IDS = "M:M"
 /** כותרות A–O לפני הרחבת כתובת/קטגוריה */
 const LEGACY_HEADER_COLS = 15
+
+function padCertificateRow(
+  row: (string | boolean | number | null | undefined)[],
+): string[] {
+  const out = row.map((c) => (c == null ? "" : String(c)))
+  while (out.length < CERTIFICATE_COL_COUNT) out.push("")
+  return out.slice(0, CERTIFICATE_COL_COUNT)
+}
+
+/**
+ * כתיבה בטוחה לגיליון תעודות — בלי values.append.
+ * מוצא את השורה הראשונה שבה עמודה A ריקה (אחרי כותרת) וכותב A{n}:U{…}.
+ * מונע הזזה ימינה כשיש תאים יתומים / נתונים מעבר ל־U.
+ */
+async function appendCertificateRowsSafe(
+  values: (string | boolean | number | null | undefined)[][],
+): Promise<{ startRow: number; count: number }> {
+  if (!values.length) return { startRow: 2, count: 0 }
+
+  const sheets = await getSheetsClient()
+  const spreadsheetId = getSpreadsheetId()
+  const tab = getSheetTabName()
+
+  const colA = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: sheetA1(tab, "A:A"),
+    majorDimension: "ROWS",
+  })
+  const aValues = colA.data.values || []
+
+  // aValues[0] = A1 (כותרת). מחפשים A ריק משורה 2 ואילך.
+  let nextRow = Math.max(2, aValues.length + 1)
+  for (let i = 1; i < aValues.length; i++) {
+    const cell = String(aValues[i]?.[0] ?? "").trim()
+    if (!cell) {
+      nextRow = i + 1
+      break
+    }
+  }
+
+  const padded = values.map(padCertificateRow)
+  const endRow = nextRow + padded.length - 1
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: sheetA1(tab, `A${nextRow}:U${endRow}`),
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: padded },
+  })
+
+  console.log(
+    "[certificates:issue] sheets:safe-write",
+    "נכתבו שורות ל־A:U",
+    { startRow: nextRow, endRow, count: padded.length },
+  )
+
+  return { startRow: nextRow, count: padded.length }
+}
 
 function sheetCertStatusCells(p: {
   digitalCertStatus?: string | null
@@ -507,13 +565,7 @@ export async function exportLeadParticipantsToSheets(
     // כל מי שעדיין לא בגיליון (גם נרשם חדש שטרם סומן נוכחות)
     const toExport = participants.filter((p) => !rowIndexFor(p))
     if (toExport.length) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: sheetA1(tab, SHEET_RANGE_APPEND),
-        valueInputOption: "USER_ENTERED",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: { values: toExport.map((p) => participantRow(p)) },
-      })
+      await appendCertificateRowsSafe(toExport.map((p) => participantRow(p)))
 
       const now = new Date()
       await prisma.participant.updateMany({
@@ -636,13 +688,9 @@ export async function syncParticipantAttendanceToSheets(
 
     if (!attended) return { ok: true }
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: sheetA1(tab, SHEET_RANGE_APPEND),
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [participantRow({ ...p, attended: true })] },
-    })
+    await appendCertificateRowsSafe([
+      participantRow({ ...p, attended: true }),
+    ])
     await prisma.participant.update({
       where: { id: participantId },
       data: { sheetsExportedAt: new Date() },
@@ -795,13 +843,7 @@ export async function exportTraineesToCertificateSheet(
       ]
     })
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: sheetA1(tab, SHEET_RANGE_APPEND),
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values },
-    })
+    await appendCertificateRowsSafe(values)
 
     return { ok: true, exported: toExport.length }
   } catch (err) {
@@ -862,13 +904,7 @@ export async function exportMissingAttendedToSheets(): Promise<
     )
     if (!toExport.length) return { ok: true, exported: 0 }
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: sheetA1(tab, SHEET_RANGE_APPEND),
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values: toExport.map((p) => participantRow(p)) },
-    })
+    await appendCertificateRowsSafe(toExport.map((p) => participantRow(p)))
     await prisma.participant.updateMany({
       where: { id: { in: toExport.map((p) => p.id) } },
       data: { sheetsExportedAt: new Date() },
