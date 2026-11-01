@@ -20,6 +20,7 @@ import {
 } from "@/lib/cloudinary/certificates"
 import {
   ensureCertificateDetailsForParticipantIds,
+  resetCertificateEmailSentInSheet,
   syncCertificateUrlsForParticipantIds,
   type SheetCertificateDetails,
 } from "@/lib/google-sheets/certificates"
@@ -88,13 +89,15 @@ async function persistCertificateUrl(crmId: string, pdfUrl: string) {
 }
 
 /**
- * תמיד מפיק PDF חדש לפי התבנית האחרונה בעורך (מתעלם מקישור ישן ב־N / CRM).
+ * תמיד מפיק PDF חדש לפי התבנית האחרונה בעורך.
+ * גם אם עמודה N ריקה (נמחק ידנית בשיטס) או שיש קישור ישן ב־CRM —
+ * נוצר PDF חדש ב־Cloudinary, נכתב ל־N, ואז נשלח מייל.
  */
 export async function generateAndUploadCertificatesLocally(input: {
   participantIds: string[]
   templateType: string
 }): Promise<LocalIssuanceResult> {
-  certLog("pdf:start", "התחלת הפקה מקומית", {
+  certLog("pdf:start", "התחלת הפקה מקומית (תמיד PDF חדש)", {
     count: input.participantIds.length,
     templateType: input.templateType,
     ids: input.participantIds.slice(0, 20),
@@ -193,11 +196,14 @@ export async function generateAndUploadCertificatesLocally(input: {
       return { ok: false, error: `חסר שם מלא למשתתף ${row.crmId}` }
     }
 
-    certLog("pdf:build", "בונה PDF", {
+    const hadSheetPdf = Boolean(row.pdfUrl?.trim())
+    certLog("pdf:build", "בונה PDF חדש", {
       crmId: row.crmId,
       fullName: row.fullName,
       certificateNumber: row.certificateNumber,
       hasEmail: Boolean(row.email),
+      reissueAfterClearedN: !hadSheetPdf,
+      previousSheetPdf: hadSheetPdf ? "(היה קישור ב־N — מוחלף)" : "(N ריק)",
     })
 
     try {
@@ -266,12 +272,12 @@ export async function generateAndUploadCertificatesLocally(input: {
     }
   }
 
-  const sync = await syncCertificateUrlsForParticipantIds(
-    items.map((i) => i.crmId),
-  )
+  const issuedIds = items.map((i) => i.crmId)
+
+  const sync = await syncCertificateUrlsForParticipantIds(issuedIds)
   if (!sync.ok) {
     certError("sheets:sync-url", sync.error, undefined, {
-      crmIds: items.map((i) => i.crmId),
+      crmIds: issuedIds,
     })
     return {
       ok: false,
@@ -279,9 +285,16 @@ export async function generateAndUploadCertificatesLocally(input: {
     }
   }
 
-  certLog("pdf:done", "הפקה מקומית הושלמה", {
+  // מאפשר שליחה מחדש אחרי מחיקת N / הנפקה חוזרת
+  const resetJ = await resetCertificateEmailSentInSheet(issuedIds)
+  if (!resetJ.ok) {
+    certWarn("sheets:reset-j", resetJ.error, { crmIds: issuedIds })
+  }
+
+  certLog("pdf:done", "הפקה מקומית הושלמה — מוכן לשליחת מייל", {
     generated,
     updatedSheetUrls: sync.updated,
+    resetEmailFlags: resetJ.ok ? resetJ.updated : 0,
     items: items.map((i) => ({
       crmId: i.crmId,
       fullName: i.fullName,

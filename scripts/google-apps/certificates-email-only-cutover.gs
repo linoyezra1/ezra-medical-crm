@@ -12,7 +12,50 @@
  *
  * חשוב: כתיבת שורות חדשות ב־sync נעשית ב־setValues ל־A:U בשורה ריקה
  * (לא appendRow) — כדי לא להזיז עמודות כשיש תאים יתומים.
+ *
+ * אם מחקתם את קובץ ה־CONFIG הישן — השאירו את הבלוק למטה (או שחזרו את CONFIG המקורי).
  */
+
+var CONFIG = {
+  SECURITY_PIN: "214215444", // חייב להתאים ל־CERTIFICATE_ISSUANCE_PIN ב־Railway
+  SHEET_NAME: "תעודות",
+  // אופציונלי — נשמר לתאימות עם הסקריפט הישן (מייל מ־Cloudinary לא דורש Drive)
+  FOLDER_ID: "1VbxwVPM-SWLXELziUvYItzi21mVW_ss7",
+  REVIEW_LINK: "https://g.page/r/CX_PLACEHOLDER/review", // החליפו לקישור הדירוג האמיתי שלכם
+  TEMPLATES: {
+    REGULAR: "",
+    REFRESH: "",
+    SKIPPERS: "",
+    BLS: "",
+  },
+};
+
+/** stubs — מספר תעודה + תוקף נכתבים מה־CRM (רצף מ־45825, תוקף +2 שנים) */
+function autoFillCertDetails(sheet) {
+  // לא ממלאים G/H כאן — ה־CRM כבר כותב אותם בהנפקה
+  if (!sheet) return;
+}
+
+function syncPrintStatusToCertificates(ss) {
+  if (!ss) return;
+}
+
+function getFileFromUrlOrId(urlOrId) {
+  var raw = String(urlOrId || "").trim();
+  if (!raw || /^https?:\/\//i.test(raw)) return null;
+  try {
+    return DriveApp.getFileById(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function sendCertificateEmail(email, fullName, hours, pdfFile) {
+  var blob = pdfFile.getAs(MimeType.PDF).setName(
+    String(fullName || "certificate").replace(/[\\/:*?"<>|]/g, " ") + " - תעודה.pdf",
+  );
+  sendCertificateEmailBlob_(email, fullName, hours, blob);
+}
 
 function parseToDate_(value) {
   if (value == null || value === "") return null;
@@ -205,9 +248,13 @@ function doPost(e) {
       // בקשות לא מוכרות — לא יוצרים Docs
     }
 
-    autoFillCertDetails(sheet);
+    if (typeof autoFillCertDetails === "function") {
+      autoFillCertDetails(sheet);
+    }
     try {
-      syncPrintStatusToCertificates(ss);
+      if (typeof syncPrintStatusToCertificates === "function") {
+        syncPrintStatusToCertificates(ss);
+      }
     } catch (syncErr) {
       Logger.log("syncPrintStatusToCertificates: " + syncErr);
     }
@@ -237,8 +284,9 @@ function doPost(e) {
     var processedCount = 0;
     var skippedNoPdf = 0;
     var skippedNoEmail = 0;
+    var fetchErrors = [];
 
-    // מפת CRM id → URL מה־payload (גיבוי אם עמודה N עדיין לא עודכנה)
+    // מפת CRM id → URL מה־payload (עדיף על עמודה N — טרי מה־CRM/Cloudinary)
     var urlFromPayload = {};
     var payloadParticipants = data.participants || [];
     if (Array.isArray(payloadParticipants)) {
@@ -264,10 +312,7 @@ function doPost(e) {
 
       if (participantIds.length > 0 && participantIds[0] !== "") {
         var isMatch = participantIds.some(function (id) {
-          return (
-            id === crmParticipantId ||
-            (crmParticipantId && crmParticipantId.indexOf(id) !== -1)
-          );
+          return id === crmParticipantId;
         });
         if (!isMatch) continue;
       }
@@ -275,10 +320,19 @@ function doPost(e) {
       var fullName = row[0];
       var email = row[3];
       var hours = row[5];
-      var existingPdfUrl = row[13] ? String(row[13]).trim() : "";
+      var sheetPdfUrl = row[13] ? String(row[13]).trim() : "";
 
-      if (!existingPdfUrl && crmParticipantId && urlFromPayload[crmParticipantId]) {
-        existingPdfUrl = urlFromPayload[crmParticipantId];
+      // עדיפות: URL מה־payload → אחר כך עמודה N
+      var existingPdfUrl =
+        (crmParticipantId && urlFromPayload[crmParticipantId]) ||
+        sheetPdfUrl ||
+        "";
+
+      if (
+        existingPdfUrl &&
+        existingPdfUrl !== sheetPdfUrl &&
+        /^https?:\/\//i.test(existingPdfUrl)
+      ) {
         sheet.getRange(rowIndex, 14).setValue(existingPdfUrl);
       }
 
@@ -293,12 +347,16 @@ function doPost(e) {
 
       if (!pdfFile && !attachmentBlob) {
         skippedNoPdf++;
+        if (resolved.error) fetchErrors.push(resolved.error);
         Logger.log(
-          "אין PDF מוכן ב־CRM/עמודה N לשורה " +
+          "אין PDF מוכן לשורה " +
             rowIndex +
             " (" +
             fullName +
-            ") — Docs כבוי",
+            ") url=" +
+            (existingPdfUrl || "(ריק)") +
+            " err=" +
+            (resolved.error || ""),
         );
         continue;
       }
@@ -313,11 +371,16 @@ function doPost(e) {
     }
 
     if (processedCount === 0 && skippedNoPdf > 0) {
+      var detail =
+        fetchErrors.length > 0
+          ? " · " + fetchErrors.slice(0, 2).join(" | ")
+          : existingPdfUrlHint_(urlFromPayload);
       return ContentService.createTextOutput(
         JSON.stringify({
           success: false,
           message:
-            "לא נמצא PDF מוכן ב־CRM (עמודה N) עבור השורות שנבחרו. הפקת Docs בוטלה — יש להנפיק מחדש מה־CRM.",
+            "לא נמצא PDF להורדה עבור השורות שנבחרו (עמודה N / Cloudinary)." +
+            detail,
           processedCount: 0,
           skippedNoPdf: skippedNoPdf,
         }),
@@ -347,52 +410,60 @@ function doPost(e) {
   }
 }
 
+function existingPdfUrlHint_(urlFromPayload) {
+  var keys = Object.keys(urlFromPayload || {});
+  if (!keys.length) return " · אין URL ב־payload מה־CRM";
+  return " · יש URL ב־payload אך לא הותאם לשורה בגיליון (בדקו עמודה M)";
+}
+
 /**
  * פותר מצורף תעודה מ־URL בעמודה N / payload.
  * קישור http(s) (Cloudinary וכו׳) → UrlFetchApp בלבד (בלי DriveApp).
- * מזהה / קישור Drive → getFileFromUrlOrId, עם גיבוי UrlFetch.
+ * מזהה / קישור Drive → getFileFromUrlOrId.
  */
 function resolveCertificateAttachment_(existingPdfUrl, fullName) {
   var url = String(existingPdfUrl || "").trim();
-  if (!url) return { file: null, blob: null };
+  if (!url) return { file: null, blob: null, error: "URL ריק" };
 
   var attachmentName =
     String(fullName || "certificate").replace(/[\\/:*?"<>|]/g, " ").trim() +
     " - תעודה.pdf";
 
-  // Cloudinary / כל קישור אינטרנט — לא דרך DriveApp (גורם Toegang geweigerd)
+  // Cloudinary / כל קישור אינטרנט — לא דרך DriveApp
   if (/^https?:\/\//i.test(url)) {
     try {
       var resp = UrlFetchApp.fetch(url, {
         muteHttpExceptions: true,
         followRedirects: true,
+        headers: { Accept: "application/pdf,*/*" },
       });
-      if (resp.getResponseCode() >= 200 && resp.getResponseCode() < 400) {
-        return {
-          file: null,
-          blob: resp.getBlob().setName(attachmentName),
-        };
+      var code = resp.getResponseCode();
+      if (code >= 200 && code < 400) {
+        var blob = resp.getBlob().setName(attachmentName);
+        return { file: null, blob: blob, error: null };
       }
-      Logger.log(
-        "UrlFetch PDF HTTP " + resp.getResponseCode() + " for " + url,
-      );
+      var errHttp = "UrlFetch HTTP " + code;
+      Logger.log(errHttp + " for " + url);
+      return { file: null, blob: null, error: errHttp };
     } catch (fetchErr) {
-      Logger.log("UrlFetch PDF failed: " + fetchErr);
+      var errMsg = "UrlFetch: " + fetchErr;
+      Logger.log(errMsg);
+      return { file: null, blob: null, error: errMsg };
     }
-    return { file: null, blob: null };
   }
 
   // מזהה Drive / קישור Drive פנימי
   try {
     if (typeof getFileFromUrlOrId === "function") {
       var pdfFile = getFileFromUrlOrId(url);
-      if (pdfFile) return { file: pdfFile, blob: null };
+      if (pdfFile) return { file: pdfFile, blob: null, error: null };
     }
   } catch (driveErr) {
     Logger.log("getFileFromUrlOrId failed: " + driveErr);
+    return { file: null, blob: null, error: String(driveErr) };
   }
 
-  return { file: null, blob: null };
+  return { file: null, blob: null, error: "לא זוהה מקור PDF" };
 }
 
 /** שליחת מייל עם Blob (כשאין File מ־DriveApp) */

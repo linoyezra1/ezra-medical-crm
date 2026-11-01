@@ -1236,8 +1236,10 @@ async function expandCrmIdAliases(
 }
 
 /**
- * אחרי ייצוא לגיליון: מוודא מספר תעודה (G) ותוקף (H) לכל משתתף —
- * כמו autoFillCertDetails בסקריפט. מחזיר פרטים להפקת PDF מקומית.
+ * אחרי ייצוא לגיליון: מוודא מספר תעודה (G) ותוקף (H) לכל משתתף ב־CRM בלבד
+ * (לא תלוי ב־autoFillCertDetails בסקריפט).
+ * מספור רץ מ־CERTIFICATE_START_NUMBER (ברירת מחדל 45825).
+ * תוקף תמיד = תאריך הדרכה + 2 שנים.
  * מתאים גם כש־M מכיל participant.id והבקשה הגיעה עם trainee.id (ולהפך).
  */
 export async function ensureCertificateDetailsForParticipantIds(
@@ -1266,11 +1268,12 @@ export async function ensureCertificateDetailsForParticipantIds(
     })
     const rows = existing.data.values || []
 
-    // מקסימום מספר תעודה קיים
-    let maxNum = getCertificateStartNumber() - 1
+    // רצף מ־45825 ומעלה: מתעלמים ממספרים ישנים מתחת ליסוד
+    const startNum = getCertificateStartNumber()
+    let maxNum = startNum - 1
     for (const row of rows) {
       const n = parseInt(String(row[COL.certificateNumber] || "").trim(), 10)
-      if (!Number.isNaN(n) && n > maxNum) maxNum = n
+      if (!Number.isNaN(n) && n >= startNum && n > maxNum) maxNum = n
     }
     let nextNum = maxNum + 1
 
@@ -1298,27 +1301,38 @@ export async function ensureCertificateDetailsForParticipantIds(
         String(courseDateRaw || "").trim()
 
       let certificateNumber = String(row[COL.certificateNumber] || "").trim()
-      let validUntil =
-        formatSheetDateDdMmYyyy(row[COL.certificateExpiry]) ||
-        String(row[COL.certificateExpiry] || "").trim()
-      const pdfUrl = String(row[COL.pdfUrl] || "").trim()
+      const existingNum = parseInt(certificateNumber, 10)
+      const needsNewNumber =
+        !certificateNumber ||
+        Number.isNaN(existingNum) ||
+        existingNum < startNum
 
-      if (!certificateNumber) {
+      if (needsNewNumber) {
         certificateNumber = String(nextNum++)
         updates.push({
           range: sheetA1(tab, `G${rowIndex}`),
           values: [[certificateNumber]],
         })
       }
-      if (!validUntil && courseDate) {
+
+      // תוקף תמיד שנתיים מתאריך ההדרכה (נכתב ל־H בהנפקה)
+      let validUntil = ""
+      if (courseDate) {
         validUntil = addTwoYearsDdMmYyyy(courseDate)
         if (validUntil) {
-          updates.push({
-            range: sheetA1(tab, `H${rowIndex}`),
-            values: [[validUntil]],
-          })
+          const existingValid =
+            formatSheetDateDdMmYyyy(row[COL.certificateExpiry]) ||
+            String(row[COL.certificateExpiry] || "").trim()
+          if (existingValid !== validUntil) {
+            updates.push({
+              range: sheetA1(tab, `H${rowIndex}`),
+              values: [[validUntil]],
+            })
+          }
         }
       }
+
+      const pdfUrl = String(row[COL.pdfUrl] || "").trim()
 
       const detail: SheetCertificateDetails = {
         rowIndex,
@@ -1380,6 +1394,61 @@ export async function ensureCertificateDetailsForParticipantIds(
  * CRM → Sheets: עדכון קישור PDF לתעודה (עמודה N) לשורות קיימות
  * לפי מזהה משתתף / מודרך.
  */
+/**
+ * מאפס עמודה J (נשלח במייל) לפני הנפקה מחדש —
+ * כדי שמחיקת N + הנפקה מחדש תשלח מייל שוב ותסמן מחדש.
+ */
+export async function resetCertificateEmailSentInSheet(
+  participantIds: string[],
+): Promise<{ ok: true; updated: number } | { ok: false; error: string }> {
+  if (!isGoogleSheetsConfigured()) return { ok: true, updated: 0 }
+  const ids = [
+    ...new Set(participantIds.map((id) => id.trim()).filter(Boolean)),
+  ]
+  if (!ids.length) return { ok: true, updated: 0 }
+
+  try {
+    const { lookupIds } = await expandCrmIdAliases(ids)
+    const sheets = await getSheetsClient()
+    const spreadsheetId = getSpreadsheetId()
+    const tab = getSheetTabName()
+    const existing = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: sheetA1(tab, SHEET_RANGE_CRM_IDS),
+    })
+    const rowById = crmIdRowMap(existing.data.values)
+    const updates: { range: string; values: string[][] }[] = []
+    const seenRows = new Set<number>()
+    for (const crmId of lookupIds) {
+      const rowIndex = rowById.get(crmId)
+      if (!rowIndex || seenRows.has(rowIndex)) continue
+      seenRows.add(rowIndex)
+      updates.push({
+        range: sheetA1(tab, `J${rowIndex}`),
+        values: [[""]],
+      })
+    }
+    if (!updates.length) return { ok: true, updated: 0 }
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: updates,
+      },
+    })
+    return { ok: true, updated: updates.length }
+  } catch (err) {
+    console.error("[resetCertificateEmailSentInSheet]", err)
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "שגיאה באיפוס סימון מייל בגיליון",
+    }
+  }
+}
+
 export async function syncCertificateUrlsForParticipantIds(
   participantIds: string[],
 ): Promise<{ ok: true; updated: number } | { ok: false; error: string }> {
@@ -1433,10 +1502,11 @@ export async function syncCertificateUrlsForParticipantIds(
     }
     if (!updates.length) return { ok: true, updated: 0 }
 
+    // RAW — לא לתת ל־Sheets «לפרש» את ה־URL של Cloudinary
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
       requestBody: {
-        valueInputOption: "USER_ENTERED",
+        valueInputOption: "RAW",
         data: updates,
       },
     })

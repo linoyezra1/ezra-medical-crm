@@ -151,8 +151,13 @@ export async function getDriveClient(): Promise<drive_v3.Drive> {
   return google.drive({ version: "v3", auth })
 }
 
+/** מספר יסוד לרצף תעודות ב־CRM (לא תלוי ב־Apps Script). ברירת מחדל: 45825 */
+export const DEFAULT_CERTIFICATE_START_NUMBER = 45825
+
 export function getCertificateStartNumber(): number {
   const raw = process.env.CERTIFICATE_START_NUMBER?.trim()
-  const n = raw ? Number(raw) : 26767
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 26767
+  const n = raw ? Number(raw) : DEFAULT_CERTIFICATE_START_NUMBER
+  return Number.isFinite(n) && n > 0
+    ? Math.floor(n)
+    : DEFAULT_CERTIFICATE_START_NUMBER
 }

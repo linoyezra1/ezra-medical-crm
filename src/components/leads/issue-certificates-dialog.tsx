@@ -128,8 +128,8 @@ export function IssueCertificatesDialog({
             {participantIds.length} משתתפים מסומנים
           </p>
           <p className="text-[11px] text-muted-foreground">
-            ההנפקה יוצרת PDF ב־CRM (לפי עורך התבנית), שומרת ב־Drive ובשיטס,
-            ושולחת מייל למודרך — בלי Google Docs.
+            תמיד נוצר PDF חדש ב־CRM → Cloudinary → עמודה N, ואז נשלח מייל.
+            אם מחקתם קישור בעמודה N — הנפקה מחדש תייצר PDF חדש ותשלח שוב.
           </p>
 
           <div className="space-y-2">

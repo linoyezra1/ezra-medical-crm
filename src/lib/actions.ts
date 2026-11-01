@@ -3011,26 +3011,44 @@ export async function triggerRemoteCertificates(input: {
     };
   }
 
-  // מייל בלבד — הסקריפט לא יוצר Docs (PDF כבר ב־Cloudinary + עמודה N)
+  // מייל בלבד — רק למי שכבר יש PDF ב־Cloudinary (לא שולחים מזהי trainee בלי URL)
+  const emailParticipants = local.items
+    .filter((item) => Boolean(item.pdfUrl?.trim()))
+    .map((item) => {
+      const base =
+        participantPayload.find(
+          (p) => p.id === item.crmId || p.crmId === item.crmId,
+        ) || ({} as (typeof participantPayload)[number]);
+      return {
+        ...base,
+        id: item.crmId,
+        crmId: item.crmId,
+        fullName: item.fullName || base.fullName || "",
+        email: item.email || base.email || "",
+        hours: item.hours || base.hours || base.hoursScope || "",
+        hoursScope: item.hours || base.hoursScope || base.hours || "",
+        certificatePdfUrl: item.pdfUrl,
+        pdfUrl: item.pdfUrl,
+        certificateUrl: item.pdfUrl,
+      };
+    });
+
+  if (!emailParticipants.length) {
+    return {
+      ok: false,
+      error: "ה־PDF הופק אך לא נמצא קישור Cloudinary לשליחת מייל",
+    };
+  }
+
   const payload = {
     action: "emailCertificates",
     skipPdfGeneration: true,
     templateType,
-    participantIds: webhookIds,
+    participantIds: emailParticipants.map((p) => p.crmId || p.id),
     authPin: pin,
     pin,
     leadId: leadIdFilter || ownedParticipants[0]?.leadId || null,
-    participants: participantPayload.map((p) => {
-      const issued = local.items.find(
-        (i) => i.crmId === p.id || i.crmId === p.crmId,
-      );
-      return {
-        ...p,
-        certificatePdfUrl: issued?.pdfUrl || p.certificatePdfUrl || "",
-        pdfUrl: issued?.pdfUrl || p.pdfUrl || "",
-        certificateUrl: issued?.pdfUrl || p.certificateUrl || "",
-      };
-    }),
+    participants: emailParticipants,
   };
 
   const missingEmail = local.items.filter((i) => !i.email?.trim());
