@@ -6,12 +6,13 @@ import { prisma } from "@/lib/db"
 import {
   buildPilotCertificatesPdf,
   certificateValidUntil,
-  pilotCertificateNumber,
+  resolveCertificateCourseDate,
   type PilotCertificateFields,
 } from "@/lib/certificate-pdf-pilot"
 import {
   certificateAssetsDir,
   certificateTemplateFilePath,
+  CERTIFICATE_NUMBER_PREVIEW_PLACEHOLDER,
   defaultCertificateTemplate,
   normalizeCertificateTemplate,
   SAMPLE_PREVIEW_FIELDS,
@@ -22,8 +23,6 @@ import {
   certificateScopeForSheet,
   resolveParticipantCertificateCourseType,
 } from "@/lib/course-type"
-import { formatSheetDateDdMmYyyy } from "@/lib/google-sheets/sheet-dates"
-import { formatInJerusalem } from "@/lib/timezone"
 
 type ActionResult<T> =
   | { ok: true; data: T }
@@ -336,23 +335,17 @@ function buildPreviewFromParticipantLike(p: {
     cert.courseType,
     cert.courseTypeOther,
   )
-  const courseDateRaw =
-    p.courseDate?.trim() ||
-    (p.lead?.scheduledStart
-      ? formatInJerusalem(p.lead.scheduledStart).date || ""
-      : "")
-  const courseDate =
-    formatSheetDateDdMmYyyy(courseDateRaw) || courseDateRaw || ""
+  const courseDate = resolveCertificateCourseDate(
+    p.courseDate,
+    p.lead?.scheduledStart,
+  )
 
   return {
     fullName: (p.fullName || "").trim() || "—",
     idNumber: (p.idNumber || "").trim(),
     courseDate,
     hoursScope: hoursScope || "",
-    certificateNumber: pilotCertificateNumber({
-      courseDate,
-      participantId: p.id,
-    }),
+    certificateNumber: CERTIFICATE_NUMBER_PREVIEW_PLACEHOLDER,
     validUntil: certificateValidUntil(courseDate),
   }
 }

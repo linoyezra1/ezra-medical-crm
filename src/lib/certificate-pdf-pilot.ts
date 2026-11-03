@@ -128,6 +128,23 @@ function drawTextElement(
   }
 }
 
+/**
+ * תאריך הדרכה לתעודה: תאריך הליד (scheduledStart) קודם —
+ * כדי שלא יישאר תאריך ישן מ־participant.courseDate אחרי עדכון הדרכה.
+ */
+export function resolveCertificateCourseDate(
+  courseDate: string | null | undefined,
+  scheduledStart: Date | string | null | undefined,
+): string {
+  if (scheduledStart) {
+    const fromLead = formatSheetDateDdMmYyyy(scheduledStart)
+    if (fromLead) return fromLead
+  }
+  const raw = String(courseDate || "").trim()
+  if (!raw) return ""
+  return formatSheetDateDdMmYyyy(raw) || raw
+}
+
 /** תוקף: +2 שנים מתאריך ההדרכה (DD/MM/YYYY או YYYY-MM-DD) */
 export function certificateValidUntil(courseDate: string): string {
   const raw = (courseDate || "").trim()

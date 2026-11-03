@@ -321,11 +321,13 @@ function trainingDateLabel(
   courseDate: string | null | undefined,
   scheduledStart: Date | null | undefined,
 ): string {
+  // תאריך הליד קודם — אחרת נשאר תאריך ישן מ־participant.courseDate אחרי עדכון הדרכה
+  if (scheduledStart) {
+    const fromLead = formatSheetDateDdMmYyyy(scheduledStart)
+    if (fromLead) return fromLead
+  }
   if (courseDate?.trim()) {
     return formatSheetDateDdMmYyyy(courseDate.trim()) || courseDate.trim()
-  }
-  if (scheduledStart) {
-    return formatSheetDateDdMmYyyy(scheduledStart)
   }
   return ""
 }

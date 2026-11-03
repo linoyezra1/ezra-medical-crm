@@ -15,6 +15,11 @@ export const CERTIFICATE_FIELD_KEYS = [
 
 export type CertificateFieldKey = (typeof CERTIFICATE_FIELD_KEYS)[number]
 
+/** שדות שמוצגים למשתמש בעורך — מספר תעודה מוקצה פנימית בהנפקה */
+export const CERTIFICATE_EDITOR_FIELD_KEYS = CERTIFICATE_FIELD_KEYS.filter(
+  (field) => field !== "certificateNumber",
+)
+
 export const CERTIFICATE_FIELD_LABELS: Record<CertificateFieldKey, string> = {
   fullName: "שם מלא",
   idNumber: "תעודת זהות",
@@ -24,6 +29,9 @@ export const CERTIFICATE_FIELD_LABELS: Record<CertificateFieldKey, string> = {
   validUntil: "תוקף עד",
   custom: "טקסט חופשי",
 }
+
+/** בתצוגת עורך — המספר האמיתי מוקצה רק בהנפקה (מ־45825+) */
+export const CERTIFICATE_NUMBER_PREVIEW_PLACEHOLDER = "—"
 
 export type CertificateTextElement = {
   id: string
@@ -79,7 +87,7 @@ export const SAMPLE_PREVIEW_FIELDS: CertificatePreviewFields = {
   idNumber: "123456789",
   courseDate: "01/01/2026",
   hoursScope: "44 שעות",
-  certificateNumber: "P-20260101-DEMO01",
+  certificateNumber: CERTIFICATE_NUMBER_PREVIEW_PLACEHOLDER,
   validUntil: "01/01/2028",
 }
 

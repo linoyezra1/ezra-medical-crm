@@ -1006,6 +1006,22 @@ export async function updateLead(
     );
   }
 
+  // סנכרון תאריך הדרכה למשתתפים — כדי שתעודות/תצוגה לא יישארו עם תאריך ישן
+  if (raw.scheduledStart !== undefined) {
+    const prevDate = existing.scheduledStart
+      ? formatInJerusalem(existing.scheduledStart).date
+      : "";
+    const nextDate = merged.scheduledStart
+      ? formatInJerusalem(merged.scheduledStart).date
+      : "";
+    if (nextDate && nextDate !== prevDate) {
+      await prisma.participant.updateMany({
+        where: { leadId },
+        data: { courseDate: nextDate },
+      });
+    }
+  }
+
   if (raw.sessionsJson !== undefined) {
     await replaceTrainingSessions(
       leadId,

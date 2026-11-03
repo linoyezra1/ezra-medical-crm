@@ -37,7 +37,7 @@ import {
   resetCertificateTemplateAction,
 } from "@/lib/certificate-template-actions"
 import {
-  CERTIFICATE_FIELD_KEYS,
+  CERTIFICATE_EDITOR_FIELD_KEYS,
   CERTIFICATE_FIELD_LABELS,
   SAMPLE_PREVIEW_FIELDS,
   newImageElementDraft,
@@ -396,7 +396,7 @@ export function CertificateEditorView() {
           <div className="space-y-2">
             <p className="text-sm font-semibold">הוספת שדה</p>
             <div className="flex flex-wrap gap-1.5">
-              {CERTIFICATE_FIELD_KEYS.map((field) => (
+              {CERTIFICATE_EDITOR_FIELD_KEYS.map((field) => (
                 <Button
                   key={field}
                   type="button"
@@ -410,6 +410,9 @@ export function CertificateEditorView() {
                 </Button>
               ))}
             </div>
+            <p className="text-xs text-muted-foreground">
+              מספר תעודה מוקצה אוטומטית בהנפקה — לא מוצג בעורך.
+            </p>
           </div>
 
           <div className="space-y-2 border-t border-border pt-3">
@@ -481,11 +484,44 @@ export function CertificateEditorView() {
           </div>
 
           {selected?.kind === "text" ? (
-            <TextElementControls
-              element={selected}
-              onChange={(patch) => updateElement(selected.id, patch)}
-              onRemove={() => removeElement(selected.id)}
-            />
+            selected.field === "certificateNumber" ? (
+              <div className="space-y-2 border-t border-border pt-3">
+                <p className="text-sm font-semibold">מספר תעודה</p>
+                <p className="text-xs text-muted-foreground">
+                  מוקצה אוטומטית בהנפקה (רצף פנימי). ניתן לגרור למיקום על התבנית;
+                  בתצוגה מוצג מקף בלבד.
+                </p>
+                <Label className="text-xs">גודל גופן</Label>
+                <Input
+                  type="number"
+                  value={selected.fontSize}
+                  onChange={(e) =>
+                    updateElement(selected.id, {
+                      fontSize: Math.max(8, Number(e.target.value) || 14),
+                    })
+                  }
+                />
+                <Label className="text-xs">רוחב מקסימלי %</Label>
+                <Input
+                  type="number"
+                  value={selected.maxWidthPct}
+                  onChange={(e) =>
+                    updateElement(selected.id, {
+                      maxWidthPct: Math.max(
+                        10,
+                        Number(e.target.value) || 40,
+                      ),
+                    })
+                  }
+                />
+              </div>
+            ) : (
+              <TextElementControls
+                element={selected}
+                onChange={(patch) => updateElement(selected.id, patch)}
+                onRemove={() => removeElement(selected.id)}
+              />
+            )
           ) : null}
 
           {selected?.kind === "image" ? (
@@ -749,7 +785,7 @@ function TextElementControls({
           onChange({ field: e.target.value as CertificateFieldKey })
         }
       >
-        {CERTIFICATE_FIELD_KEYS.map((field) => (
+        {CERTIFICATE_EDITOR_FIELD_KEYS.map((field) => (
           <option key={field} value={field}>
             {CERTIFICATE_FIELD_LABELS[field]}
           </option>

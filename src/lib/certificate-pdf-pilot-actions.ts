@@ -4,15 +4,14 @@ import { prisma } from "@/lib/db"
 import {
   buildPilotCertificatesPdf,
   certificateValidUntil,
-  pilotCertificateNumber,
+  resolveCertificateCourseDate,
   type PilotCertificateFields,
 } from "@/lib/certificate-pdf-pilot"
 import {
   certificateScopeForSheet,
   resolveParticipantCertificateCourseType,
 } from "@/lib/course-type"
-import { formatSheetDateDdMmYyyy } from "@/lib/google-sheets/sheet-dates"
-import { formatInJerusalem } from "@/lib/timezone"
+import { getCertificateStartNumber } from "@/lib/google-sheets/client"
 
 type ActionResult<T> =
   | { ok: true; data: T }
@@ -107,29 +106,24 @@ export async function generatePilotCertificatesAction(input: {
     }
   }
 
+  let nextCertNum = getCertificateStartNumber()
   const pages: PilotCertificateFields[] = participants.map((p) => {
     const cert = resolveParticipantCertificateCourseType(p)
     const hoursScope = certificateScopeForSheet(
       cert.courseType,
       cert.courseTypeOther,
     )
-    const courseDateRaw =
-      p.courseDate?.trim() ||
-      (p.lead?.scheduledStart
-        ? formatInJerusalem(p.lead.scheduledStart).date || ""
-        : "")
-    const courseDate =
-      formatSheetDateDdMmYyyy(courseDateRaw) || courseDateRaw || ""
+    const courseDate = resolveCertificateCourseDate(
+      p.courseDate,
+      p.lead?.scheduledStart,
+    )
 
     return {
       fullName: (p.fullName || "").trim() || "—",
       idNumber: (p.idNumber || "").trim(),
       courseDate,
       hoursScope: hoursScope || "",
-      certificateNumber: pilotCertificateNumber({
-        courseDate,
-        participantId: p.id,
-      }),
+      certificateNumber: String(nextCertNum++),
       validUntil: certificateValidUntil(courseDate),
     }
   })
