@@ -481,18 +481,31 @@ function resolveCertificateAttachment_(existingPdfUrl, fullName) {
   return { file: null, blob: null, error: "לא זוהה מקור PDF" };
 }
 
+/** מציג היקף מלא במייל — בלי להוסיף «שעות» אם כבר כלול במלל */
+function formatHoursLabelForEmail_(hours) {
+  var h = String(hours || "").replace(/\s+/g, " ").trim();
+  if (!h) return "";
+  if (/^BLS$/i.test(h)) return "BLS";
+  if (/[^\d.\s]/.test(h)) return h; // כבר יש מלל: «22 שעות» / «רענון 8»
+  if (/^\d+(\.\d+)?$/.test(h)) return h + " שעות";
+  return h;
+}
+
 /** שליחת מייל עם Blob (כשאין File מ־DriveApp) */
 function sendCertificateEmailBlob_(email, fullName, hours, pdfBlob) {
+  var hoursLabel = formatHoursLabelForEmail_(hours);
   var subject =
-    "תעודת מגיש עזרה ראשונה | " + fullName + " | " + hours + " שעות";
+    "תעודת מגיש עזרה ראשונה | " +
+    fullName +
+    (hoursLabel ? " | " + hoursLabel : "");
   var htmlBody =
     '<div dir="rtl" style="font-family: Arial, Helvetica, sans-serif; font-size: 15px; color: #333; line-height: 1.6; text-align: right;">' +
     "<p>שלום " +
     fullName +
     "</p>" +
-    "<p>ברכות על סיום קורס עזרה ראשונה בהיקף " +
-    hours +
-    " שעות – בהצלחה!</p>" +
+    "<p>ברכות על סיום קורס עזרה ראשונה" +
+    (hoursLabel ? " בהיקף " + hoursLabel : "") +
+    " – בהצלחה!</p>" +
     "<p>מצורפת תעודת מגיש עזרה ראשונה.</p>" +
     "<p>נהנית מההדרכה? אשמח שתדרג אותנו בגוגל ותוסיף תגובה:</p>" +
     '<p><a href="' +

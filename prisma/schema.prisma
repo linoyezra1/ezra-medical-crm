@@ -529,8 +529,13 @@ model Settings {
   lmsApiUrl     String?
   lmsLoginUrl   String?
   calendarEnabled Boolean @default(false)
-  /** תבנית עורך תעודה (JSON) — נשמר ב־DB כדי לשרוד דיפלוי */
+  /** תבנית REGULAR ישנה (תאימות לאחור) */
   certificateTemplateJson String?
+  /**
+   * כל תבניות התעודה לפי סוג (JSON):
+   * { "REGULAR": {...}, "REFRESH": {...}, "BLS": {...}, "SKIPPERS": {...} }
+   */
+  certificateTemplatesJson String?
 }
 
 /** מתעניין שעדיין לא שויך להדרכה */

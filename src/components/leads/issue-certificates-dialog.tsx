@@ -94,6 +94,7 @@ export function IssueCertificatesDialog({
       leadId: leadId || undefined,
       participantIds,
       pin,
+      templateType,
     })
     setBusy(null)
     if (!res.ok) {
@@ -153,11 +154,8 @@ export function IssueCertificatesDialog({
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              תבנית לפי סוג:{" "}
-              <code className="text-[10px]">
-                data/certificate-template-{"{type}"}.json
-              </code>{" "}
-              או ברירת המחדל מהעורך. פיילוט = הורדה מקומית בלבד.
+              כל סוג מקושר לתבנית שנשמרה ב«עריכת תעודה». ערכו ושמרו בנפרד רגיל /
+              רענון / BLS / משיטים.
             </p>
           </div>
 

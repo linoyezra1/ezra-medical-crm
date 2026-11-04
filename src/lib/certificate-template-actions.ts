@@ -19,11 +19,17 @@ import {
   type CertificateTemplate,
 } from "@/lib/certificate-template"
 import {
+  CERTIFICATE_TEMPLATE_TYPES,
+  type CertificateTemplateType,
+} from "@/lib/certificate-issuance"
+import {
+  listStoredCertificateTemplateTypes,
   loadStoredCertificateTemplate,
   saveStoredCertificateTemplate,
 } from "@/lib/certificate-template-store"
 import {
   certificateScopeForSheet,
+  formatCertificateHoursScope,
   resolveParticipantCertificateCourseType,
 } from "@/lib/course-type"
 
@@ -31,11 +37,23 @@ type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string }
 
-export async function getCertificateTemplateAction(): Promise<
-  ActionResult<CertificateTemplate>
-> {
+function normalizeType(
+  templateType?: string | null,
+): CertificateTemplateType {
+  const raw = String(templateType || "REGULAR")
+    .trim()
+    .toUpperCase()
+  const match = CERTIFICATE_TEMPLATE_TYPES.find((t) => t.value === raw)
+  return match?.value ?? "REGULAR"
+}
+
+export async function getCertificateTemplateAction(
+  templateType?: string | null,
+): Promise<ActionResult<CertificateTemplate>> {
   try {
-    const template = await loadStoredCertificateTemplate()
+    const template = await loadStoredCertificateTemplate(
+      normalizeType(templateType),
+    )
     return { ok: true, data: template }
   } catch (err) {
     return {
@@ -45,11 +63,35 @@ export async function getCertificateTemplateAction(): Promise<
   }
 }
 
+export async function listCertificateTemplateTypesAction(): Promise<
+  ActionResult<{
+    types: typeof CERTIFICATE_TEMPLATE_TYPES
+    savedTypes: CertificateTemplateType[]
+  }>
+> {
+  try {
+    const savedTypes = await listStoredCertificateTemplateTypes()
+    return {
+      ok: true,
+      data: { types: CERTIFICATE_TEMPLATE_TYPES, savedTypes },
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "טעינת סוגי תבנית נכשלה",
+    }
+  }
+}
+
 export async function saveCertificateTemplateAction(
   template: CertificateTemplate,
+  templateType?: string | null,
 ): Promise<ActionResult<CertificateTemplate>> {
   try {
-    const normalized = await saveStoredCertificateTemplate(template)
+    const normalized = await saveStoredCertificateTemplate(
+      template,
+      normalizeType(templateType),
+    )
     return { ok: true, data: normalized }
   } catch (err) {
     console.error("[saveCertificateTemplateAction]", err)
@@ -60,10 +102,17 @@ export async function saveCertificateTemplateAction(
   }
 }
 
-export async function resetCertificateTemplateAction(): Promise<
-  ActionResult<CertificateTemplate>
-> {
-  return saveCertificateTemplateAction(defaultCertificateTemplate())
+export async function resetCertificateTemplateAction(
+  templateType?: string | null,
+): Promise<ActionResult<CertificateTemplate>> {
+  const type = normalizeType(templateType)
+  const label =
+    CERTIFICATE_TEMPLATE_TYPES.find((t) => t.value === type)?.label || type
+  const base = defaultCertificateTemplate()
+  return saveCertificateTemplateAction(
+    { ...base, name: `תעודת ${label}` },
+    type,
+  )
 }
 
 function isImageFile(name: string, mime: string): boolean {
@@ -179,13 +228,15 @@ export async function uploadCertificateAssetAction(
 
 export async function setCertificateBackgroundAction(
   formData: FormData,
+  templateType?: string | null,
 ): Promise<ActionResult<CertificateTemplate>> {
   const uploaded = await uploadCertificateAssetAction(formData)
   if (!uploaded.ok) return uploaded
 
-  const current = await loadStoredCertificateTemplate()
+  const type = normalizeType(templateType)
+  const current = await loadStoredCertificateTemplate(type)
   current.backgroundUrl = uploaded.data.url
-  return saveCertificateTemplateAction(current)
+  return saveCertificateTemplateAction(current, type)
 }
 
 export async function searchTraineesForCertificatePreviewAction(
@@ -362,7 +413,7 @@ function buildPreviewFromParticipantLike(p: {
     fullName: (p.fullName || "").trim() || "—",
     idNumber: (p.idNumber || "").trim(),
     courseDate,
-    hoursScope: hoursScope || "",
+    hoursScope: formatCertificateHoursScope(hoursScope) || "",
     certificateNumber: CERTIFICATE_NUMBER_PREVIEW_PLACEHOLDER,
     validUntil: certificateValidUntil(courseDate),
   }

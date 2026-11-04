@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   getCertificateTemplateAction,
+  listCertificateTemplateTypesAction,
   previewCertificatePdfAction,
   saveCertificateTemplateAction,
   searchTraineesForCertificatePreviewAction,
@@ -36,6 +37,10 @@ import {
   uploadCertificateAssetAction,
   resetCertificateTemplateAction,
 } from "@/lib/certificate-template-actions"
+import {
+  CERTIFICATE_TEMPLATE_TYPES,
+  type CertificateTemplateType,
+} from "@/lib/certificate-issuance"
 import {
   CERTIFICATE_FIELD_KEYS,
   CERTIFICATE_FIELD_LABELS,
@@ -73,6 +78,9 @@ function downloadPdfBase64(base64: string, fileName: string) {
 }
 
 export function CertificateEditorView() {
+  const [templateType, setTemplateType] =
+    useState<CertificateTemplateType>("REGULAR")
+  const [savedTypes, setSavedTypes] = useState<CertificateTemplateType[]>([])
   const [template, setTemplate] = useState<CertificateTemplate | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -104,16 +112,23 @@ export function CertificateEditorView() {
     return () => ro.disconnect()
   }, [template])
 
+  const refreshSavedTypes = useCallback(async () => {
+    const res = await listCertificateTemplateTypesAction()
+    if (res.ok) setSavedTypes(res.data.savedTypes)
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
-    const res = await getCertificateTemplateAction()
+    setSelectedId("")
+    const res = await getCertificateTemplateAction(templateType)
     setLoading(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
     setTemplate(res.data)
-  }, [])
+    void refreshSavedTypes()
+  }, [templateType, refreshSavedTypes])
 
   useEffect(() => {
     void load()
@@ -159,7 +174,7 @@ export function CertificateEditorView() {
     if (!file || !template) return
     const fd = new FormData()
     fd.set("file", file)
-    const res = await setCertificateBackgroundAction(fd)
+    const res = await setCertificateBackgroundAction(fd, templateType)
     if (!res.ok) {
       toast.error(res.error)
       return
@@ -189,26 +204,36 @@ export function CertificateEditorView() {
   const onSave = async () => {
     if (!template) return
     setSaving(true)
-    const res = await saveCertificateTemplateAction(template)
+    const res = await saveCertificateTemplateAction(template, templateType)
     setSaving(false)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
     setTemplate(res.data)
-    toast.success("התבנית נשמרה")
+    void refreshSavedTypes()
+    const label =
+      CERTIFICATE_TEMPLATE_TYPES.find((t) => t.value === templateType)?.label ||
+      templateType
+    toast.success(`תבנית «${label}» נשמרה`)
   }
 
   const onReset = async () => {
     if (!confirm("לאפס את התבנית לברירת המחדל?")) return
-    const res = await resetCertificateTemplateAction()
+    const res = await resetCertificateTemplateAction(templateType)
     if (!res.ok) {
       toast.error(res.error)
       return
     }
     setTemplate(res.data)
     setSelectedId("")
+    void refreshSavedTypes()
     toast.success("התבנית אופסה")
+  }
+
+  const onSwitchType = (next: CertificateTemplateType) => {
+    if (next === templateType) return
+    setTemplateType(next)
   }
 
   const onPreviewPdf = async () => {
@@ -298,7 +323,7 @@ export function CertificateEditorView() {
     <div className="pb-24 md:pb-8">
       <PageHeader
         title="עריכת תעודה"
-        subtitle="מיקום שדות, לוגו ורקע — עם תצוגה לפי מודרך"
+        subtitle="4 תבניות לפי סוג הפקה — רגיל / רענון / BLS / משיטים"
         back={
           <Button
             type="button"
@@ -357,6 +382,38 @@ export function CertificateEditorView() {
 
       <div className="grid gap-4 p-4 md:grid-cols-[320px_minmax(0,1fr)] md:p-6">
         <aside className="space-y-4 rounded-2xl border border-border bg-card p-4">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">סוג תעודה לעריכה</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {CERTIFICATE_TEMPLATE_TYPES.map((opt) => {
+                const isActive = templateType === opt.value
+                const isSaved = savedTypes.includes(opt.value)
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={loading || saving}
+                    onClick={() => onSwitchType(opt.value)}
+                    className={cn(
+                      "rounded-xl border px-2 py-2 text-xs font-semibold transition-colors",
+                      isActive
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background hover:bg-muted/60",
+                    )}
+                  >
+                    <span className="block">{opt.label}</span>
+                    <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
+                      {isSaved ? "שמורה" : "טרם נשמרה"}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              בהפקה מרחוק בחירת הסוג תשתמש בתבנית ששמרתם כאן לאותו סוג.
+            </p>
+          </div>
+
           <div>
             <Label className="mb-1.5 block text-xs">שם התבנית</Label>
             <Input

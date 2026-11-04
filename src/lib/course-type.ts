@@ -207,8 +207,8 @@ export function isBlsCourseType(
 }
 
 /**
- * ערך עמודה F בגיליון תעודות — מודפס ב-PDF.
- * כשיש «רענון» בסוג הקורס: «רענון 22» · אחרת ספרות בלבד «22».
+ * ערך היקף שעות לתעודה / עמודה F — כולל מלל מלא.
+ * רענון → «רענון 8» · רגיל → «22 שעות» · BLS → «BLS».
  */
 export function certificateScopeForSheet(
   courseType?: string | null,
@@ -235,7 +235,31 @@ export function certificateScopeForSheet(
     return normalized
   }
 
-  return extractCourseHoursDigits(courseType, courseTypeOther)
+  const digits = extractCourseHoursDigits(courseType, courseTypeOther)
+  if (digits) return `${digits} שעות`
+
+  for (const s of sources) {
+    const normalized = String(s || "").replace(/\s+/g, " ").trim()
+    if (normalized) return formatCertificateHoursScope(normalized)
+  }
+  return ""
+}
+
+/**
+ * מנרמל ערך שעות לתצוגה ב־PDF (גם אם בגיליון נשמר רק «22»).
+ */
+export function formatCertificateHoursScope(
+  raw: string | null | undefined,
+): string {
+  const s = String(raw || "")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (!s) return ""
+  if (/^BLS$/i.test(s)) return "BLS"
+  // כבר יש מלל — לא נוגעים (רענון 8, 22 שעות, משיטים וכו׳)
+  if (/[^\d.\s]/.test(s)) return s
+  if (/^\d+(\.\d+)?$/.test(s)) return `${s} שעות`
+  return s
 }
 
 function normalizeKey(value: string): string {

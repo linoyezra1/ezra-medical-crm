@@ -25,6 +25,7 @@ import {
   type SheetCertificateDetails,
 } from "@/lib/google-sheets/certificates"
 import { isGoogleSheetsConfigured } from "@/lib/google-sheets/client"
+import { formatCertificateHoursScope } from "@/lib/course-type"
 
 export type LocalIssuanceItem = {
   crmId: string
@@ -211,7 +212,7 @@ export async function generateAndUploadCertificatesLocally(input: {
         fullName: row.fullName,
         idNumber: row.idNumber,
         courseDate: row.courseDate,
-        hoursScope: row.hours,
+        hoursScope: formatCertificateHoursScope(row.hours),
         certificateNumber: row.certificateNumber,
         validUntil: row.validUntil,
       }

@@ -4,11 +4,13 @@ import { prisma } from "@/lib/db"
 import {
   buildPilotCertificatesPdf,
   certificateValidUntil,
+  loadCertificateTemplateForPdf,
   resolveCertificateCourseDate,
   type PilotCertificateFields,
 } from "@/lib/certificate-pdf-pilot"
 import {
   certificateScopeForSheet,
+  formatCertificateHoursScope,
   resolveParticipantCertificateCourseType,
 } from "@/lib/course-type"
 import { getCertificateStartNumber } from "@/lib/google-sheets/client"
@@ -34,6 +36,7 @@ export async function generatePilotCertificatesAction(input: {
   leadId?: string
   participantIds: string[]
   pin: string
+  templateType?: string
 }): Promise<ActionResult<{ pdfBase64: string; fileName: string; count: number }>> {
   const pinError = verifyPin(input.pin)
   if (pinError) {
@@ -122,14 +125,15 @@ export async function generatePilotCertificatesAction(input: {
       fullName: (p.fullName || "").trim() || "—",
       idNumber: (p.idNumber || "").trim(),
       courseDate,
-      hoursScope: hoursScope || "",
+      hoursScope: formatCertificateHoursScope(hoursScope) || "",
       certificateNumber: String(nextCertNum++),
       validUntil: certificateValidUntil(courseDate),
     }
   })
 
   try {
-    const pdfBytes = await buildPilotCertificatesPdf(pages)
+    const template = await loadCertificateTemplateForPdf(input.templateType)
+    const pdfBytes = await buildPilotCertificatesPdf(pages, template)
     const pdfBase64 = Buffer.from(pdfBytes).toString("base64")
     const stamp = new Date().toISOString().slice(0, 10)
     const fileName =

@@ -403,7 +403,7 @@ function participantRow(p: {
     courseDate, // C — DD/MM/YYYY
     p.email || "", // D
     p.phone || "", // E
-    hoursScope, // F — «22» או «רענון 22» לפי סוג הקורס
+    hoursScope, // F — «22 שעות» / «רענון 8» / «BLS»
     "", // G — מספר תעודה (מילוי בגיליון)
     "", // H — תוקף תעודה (מילוי בגיליון)
     physicalStatus, // I — תעודה פיזית (טקסט סטטוס)
