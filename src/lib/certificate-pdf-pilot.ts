@@ -266,9 +266,21 @@ async function loadFontBytes(): Promise<{ regular: Buffer; bold: Buffer }> {
   return { regular, bold }
 }
 
+async function loadImageBytes(urlOrPath: string): Promise<Uint8Array> {
+  const src = String(urlOrPath || "").trim()
+  if (/^https?:\/\//i.test(src)) {
+    const resp = await fetch(src)
+    if (!resp.ok) {
+      throw new Error(`הורדת תמונה נכשלה (${resp.status}): ${src}`)
+    }
+    return new Uint8Array(await resp.arrayBuffer())
+  }
+  return readFile(publicUrlToDiskPath(src))
+}
+
 async function loadTemplateAssets(template: CertificateTemplate) {
   const [bgBytes, fontBytes] = await Promise.all([
-    readFile(publicUrlToDiskPath(template.backgroundUrl)),
+    loadImageBytes(template.backgroundUrl),
     loadFontBytes(),
   ])
   return { bgBytes, fontBytes }
@@ -294,7 +306,7 @@ async function drawCertificatePage(
     try {
       let image = imageCache.get(element.src)
       if (!image) {
-        const bytes = await readFile(publicUrlToDiskPath(element.src))
+        const bytes = await loadImageBytes(element.src)
         image = await embedImageBytes(pdfDoc, bytes)
         imageCache.set(element.src, image)
       }
@@ -314,23 +326,10 @@ async function drawCertificatePage(
 export async function loadCertificateTemplateForPdf(
   templateType?: string | null,
 ): Promise<CertificateTemplate> {
-  const {
-    certificateTemplateFilePath,
-    certificateTemplateDefaultFilePath,
-  } = await import("@/lib/certificate-template")
-  const candidates = [
-    certificateTemplateFilePath(templateType),
-    certificateTemplateDefaultFilePath(),
-  ]
-  for (const filePath of candidates) {
-    try {
-      const raw = await readFile(filePath, "utf8")
-      return normalizeCertificateTemplate(JSON.parse(raw))
-    } catch {
-      /* try next */
-    }
-  }
-  return defaultCertificateTemplate()
+  const { loadStoredCertificateTemplate } = await import(
+    "@/lib/certificate-template-store"
+  )
+  return loadStoredCertificateTemplate(templateType)
 }
 
 export async function buildPilotCertificatesPdf(

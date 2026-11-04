@@ -99,6 +99,55 @@ function uploadBuffer(
 }
 
 /**
+ * מעלה תמונת רקע/לוגו לתבנית תעודה — כדי שישרוד דיפלוי (לא רק public/ המקומי).
+ */
+export async function uploadCertificateAssetImageToCloudinary(input: {
+  bytes: Buffer
+  fileName: string
+}): Promise<CloudinaryUploadResult> {
+  const cfg = ensureCloudinaryConfig()
+  if (!cfg.ok) return cfg
+
+  const folder = `${certificatesFolder()}/assets`
+  const stamp = Date.now()
+  const rand = randomBytes(3).toString("hex")
+  const safe = String(input.fileName || "asset")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "")
+    .slice(0, 24) || "asset"
+  const publicId = `${folder}/${safe}-${stamp}-${rand}`
+
+  try {
+    const result = await uploadBuffer(input.bytes, {
+      resource_type: "image",
+      public_id: publicId,
+      overwrite: true,
+      invalidate: true,
+      unique_filename: false,
+      use_filename: false,
+      type: "upload",
+    })
+    const url = (result.secure_url || result.url || "").trim()
+    if (!url) {
+      return { ok: false, error: "העלאת תמונה ל־Cloudinary ללא URL" }
+    }
+    return {
+      ok: true,
+      url,
+      publicId: String(result.public_id || publicId),
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "שגיאה בהעלאת תמונה ל־Cloudinary",
+    }
+  }
+}
+
+/**
  * מעלה PDF ל־Cloudinary כ־image/pdf עם public_id ASCII בלבד.
  * מחזיר secure_url ציבורי שניתן להורדה ב־UrlFetchApp / דפדפן.
  */

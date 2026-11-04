@@ -1,6 +1,6 @@
 "use server"
 
-import { mkdir, readFile, writeFile } from "fs/promises"
+import { mkdir, writeFile } from "fs/promises"
 import path from "path"
 import { prisma } from "@/lib/db"
 import {
@@ -11,7 +11,6 @@ import {
 } from "@/lib/certificate-pdf-pilot"
 import {
   certificateAssetsDir,
-  certificateTemplateFilePath,
   CERTIFICATE_NUMBER_PREVIEW_PLACEHOLDER,
   defaultCertificateTemplate,
   normalizeCertificateTemplate,
@@ -19,6 +18,10 @@ import {
   type CertificatePreviewFields,
   type CertificateTemplate,
 } from "@/lib/certificate-template"
+import {
+  loadStoredCertificateTemplate,
+  saveStoredCertificateTemplate,
+} from "@/lib/certificate-template-store"
 import {
   certificateScopeForSheet,
   resolveParticipantCertificateCourseType,
@@ -28,20 +31,11 @@ type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string }
 
-async function readTemplateFromDisk(): Promise<CertificateTemplate> {
-  try {
-    const raw = await readFile(certificateTemplateFilePath(), "utf8")
-    return normalizeCertificateTemplate(JSON.parse(raw))
-  } catch {
-    return defaultCertificateTemplate()
-  }
-}
-
 export async function getCertificateTemplateAction(): Promise<
   ActionResult<CertificateTemplate>
 > {
   try {
-    const template = await readTemplateFromDisk()
+    const template = await loadStoredCertificateTemplate()
     return { ok: true, data: template }
   } catch (err) {
     return {
@@ -55,10 +49,7 @@ export async function saveCertificateTemplateAction(
   template: CertificateTemplate,
 ): Promise<ActionResult<CertificateTemplate>> {
   try {
-    const normalized = normalizeCertificateTemplate(template)
-    const filePath = certificateTemplateFilePath()
-    await mkdir(path.dirname(filePath), { recursive: true })
-    await writeFile(filePath, JSON.stringify(normalized, null, 2), "utf8")
+    const normalized = await saveStoredCertificateTemplate(template)
     return { ok: true, data: normalized }
   } catch (err) {
     console.error("[saveCertificateTemplateAction]", err)
@@ -139,6 +130,33 @@ export async function uploadCertificateAssetAction(
       .slice(0, 40) || "asset"
     const fileName = `${safeBase}-${stamp}${ext}`
 
+    // בפרודקשן: Cloudinary כדי שהרקע/לוגו ישרוד דיפלוי
+    try {
+      const { isCloudinaryConfigured, uploadCertificateAssetImageToCloudinary } =
+        await import("@/lib/cloudinary/certificates")
+      if (isCloudinaryConfigured()) {
+        const uploaded = await uploadCertificateAssetImageToCloudinary({
+          bytes: buffer,
+          fileName,
+        })
+        if (uploaded.ok) {
+          return {
+            ok: true,
+            data: { url: uploaded.url, fileName },
+          }
+        }
+        console.warn(
+          "[uploadCertificateAssetAction] Cloudinary failed, falling back to disk",
+          uploaded.error,
+        )
+      }
+    } catch (cloudErr) {
+      console.warn(
+        "[uploadCertificateAssetAction] Cloudinary unavailable",
+        cloudErr,
+      )
+    }
+
     const dir = certificateAssetsDir()
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, fileName), buffer)
@@ -165,7 +183,7 @@ export async function setCertificateBackgroundAction(
   const uploaded = await uploadCertificateAssetAction(formData)
   if (!uploaded.ok) return uploaded
 
-  const current = await readTemplateFromDisk()
+  const current = await loadStoredCertificateTemplate()
   current.backgroundUrl = uploaded.data.url
   return saveCertificateTemplateAction(current)
 }
@@ -358,7 +376,7 @@ export async function previewCertificatePdfAction(input: {
     const template =
       input.template != null
         ? normalizeCertificateTemplate(input.template)
-        : await readTemplateFromDisk()
+        : await loadStoredCertificateTemplate()
     const fields = input.fields || SAMPLE_PREVIEW_FIELDS
     const page: PilotCertificateFields = {
       fullName: fields.fullName,

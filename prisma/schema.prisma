@@ -529,6 +529,8 @@ model Settings {
   lmsApiUrl     String?
   lmsLoginUrl   String?
   calendarEnabled Boolean @default(false)
+  /** תבנית עורך תעודה (JSON) — נשמר ב־DB כדי לשרוד דיפלוי */
+  certificateTemplateJson String?
 }
 
 /** מתעניין שעדיין לא שויך להדרכה */
