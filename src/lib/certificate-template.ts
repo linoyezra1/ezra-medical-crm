@@ -15,11 +15,6 @@ export const CERTIFICATE_FIELD_KEYS = [
 
 export type CertificateFieldKey = (typeof CERTIFICATE_FIELD_KEYS)[number]
 
-/** שדות שמוצגים למשתמש בעורך — מספר תעודה מוקצה פנימית בהנפקה */
-export const CERTIFICATE_EDITOR_FIELD_KEYS = CERTIFICATE_FIELD_KEYS.filter(
-  (field) => field !== "certificateNumber",
-)
-
 export const CERTIFICATE_FIELD_LABELS: Record<CertificateFieldKey, string> = {
   fullName: "שם מלא",
   idNumber: "תעודת זהות",
@@ -30,8 +25,8 @@ export const CERTIFICATE_FIELD_LABELS: Record<CertificateFieldKey, string> = {
   custom: "טקסט חופשי",
 }
 
-/** בתצוגת עורך — המספר האמיתי מוקצה רק בהנפקה (מ־45825+) */
-export const CERTIFICATE_NUMBER_PREVIEW_PLACEHOLDER = "—"
+/** בתצוגת עורך בלבד — המספר האמיתי מוקצה בהנפקה (מ־45825+) */
+export const CERTIFICATE_NUMBER_PREVIEW_PLACEHOLDER = "45825"
 
 export type CertificateTextElement = {
   id: string
