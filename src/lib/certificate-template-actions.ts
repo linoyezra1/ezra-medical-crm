@@ -442,7 +442,16 @@ export async function previewCertificatePdfAction(input: {
       ok: true,
       data: {
         pdfBase64: Buffer.from(pdfBytes).toString("base64"),
-        fileName: `תצוגה-תעודה-${fields.fullName.replace(/\s+/g, "-") || "preview"}.pdf`,
+        fileName: [
+          fields.fullName || "תעודה",
+          fields.idNumber,
+          "תעודת מגיש עזרה ראשונה",
+        ]
+          .filter(Boolean)
+          .join(" - ")
+          .replace(/[\\/:*?"<>|]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim() + ".pdf",
       },
     }
   } catch (err) {

@@ -138,7 +138,16 @@ export async function generatePilotCertificatesAction(input: {
     const stamp = new Date().toISOString().slice(0, 10)
     const fileName =
       pages.length === 1
-        ? `תעודה-פיילוט-${pages[0].fullName.replace(/\s+/g, "-")}.pdf`
+        ? [
+            pages[0].fullName || "תעודה",
+            pages[0].idNumber,
+            "תעודת מגיש עזרה ראשונה",
+          ]
+            .filter(Boolean)
+            .join(" - ")
+            .replace(/[\\/:*?"<>|]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim() + ".pdf"
         : `תעודות-פיילוט-${pages.length}-${stamp}.pdf`
 
     return {

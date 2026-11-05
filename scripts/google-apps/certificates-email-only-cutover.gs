@@ -50,10 +50,24 @@ function getFileFromUrlOrId(urlOrId) {
   }
 }
 
-function sendCertificateEmail(email, fullName, hours, pdfFile) {
-  var blob = pdfFile.getAs(MimeType.PDF).setName(
-    String(fullName || "certificate").replace(/[\\/:*?"<>|]/g, " ") + " - תעודה.pdf",
-  );
+/** שם מצורף: «שם מלא - ת״ז - תעודת מגיש עזרה ראשונה.pdf» */
+function certificateAttachmentFileName_(fullName, idNumber) {
+  var name = String(fullName || "certificate")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  var id = String(idNumber || "")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (id) return name + " - " + id + " - תעודת מגיש עזרה ראשונה.pdf";
+  return name + " - תעודת מגיש עזרה ראשונה.pdf";
+}
+
+function sendCertificateEmail(email, fullName, hours, pdfFile, idNumber) {
+  var blob = pdfFile
+    .getAs(MimeType.PDF)
+    .setName(certificateAttachmentFileName_(fullName, idNumber));
   sendCertificateEmailBlob_(email, fullName, hours, blob);
 }
 
@@ -285,6 +299,7 @@ function doPost(e) {
         pp.certificatePdfUrl || pp.pdfUrl || pp.certificateUrl || "",
       ).trim();
       var pName = String(pp.fullName || "").trim();
+      var pIdNumber = String(pp.idNumber || "").trim();
       var pEmail = String(pp.email || "").trim();
       var pHours = String(pp.hoursScope || pp.hours || "").trim();
 
@@ -300,7 +315,7 @@ function doPost(e) {
         continue;
       }
 
-      var resolvedP = resolveCertificateAttachment_(purl, pName);
+      var resolvedP = resolveCertificateAttachment_(purl, pName, pIdNumber);
       if (!resolvedP.blob && !resolvedP.file) {
         skippedNoPdf++;
         if (resolvedP.error) fetchErrors.push(resolvedP.error);
@@ -316,7 +331,7 @@ function doPost(e) {
       }
 
       if (resolvedP.file) {
-        sendCertificateEmail(pEmail, pName, pHours, resolvedP.file);
+        sendCertificateEmail(pEmail, pName, pHours, resolvedP.file, pIdNumber);
       } else {
         sendCertificateEmailBlob_(pEmail, pName, pHours, resolvedP.blob);
       }
@@ -355,6 +370,7 @@ function doPost(e) {
           }
 
           var fullName = row[0];
+          var idNumber = row[1] ? String(row[1]).trim() : "";
           var email = row[3];
           var hours = row[5];
           var sheetPdfUrl = row[13] ? String(row[13]).trim() : "";
@@ -367,14 +383,18 @@ function doPost(e) {
             continue;
           }
 
-          var resolved = resolveCertificateAttachment_(sheetPdfUrl, fullName);
+          var resolved = resolveCertificateAttachment_(
+            sheetPdfUrl,
+            fullName,
+            idNumber,
+          );
           if (!resolved.file && !resolved.blob) {
             skippedNoPdf++;
             if (resolved.error) fetchErrors.push(resolved.error);
             continue;
           }
           if (resolved.file) {
-            sendCertificateEmail(email, fullName, hours, resolved.file);
+            sendCertificateEmail(email, fullName, hours, resolved.file, idNumber);
           } else {
             sendCertificateEmailBlob_(email, fullName, hours, resolved.blob);
           }
@@ -436,13 +456,11 @@ function existingPdfUrlHint_(urlFromPayload) {
  * קישור http(s) (Cloudinary וכו׳) → UrlFetchApp בלבד (בלי DriveApp).
  * מזהה / קישור Drive → getFileFromUrlOrId.
  */
-function resolveCertificateAttachment_(existingPdfUrl, fullName) {
+function resolveCertificateAttachment_(existingPdfUrl, fullName, idNumber) {
   var url = String(existingPdfUrl || "").trim();
   if (!url) return { file: null, blob: null, error: "URL ריק" };
 
-  var attachmentName =
-    String(fullName || "certificate").replace(/[\\/:*?"<>|]/g, " ").trim() +
-    " - תעודה.pdf";
+  var attachmentName = certificateAttachmentFileName_(fullName, idNumber);
 
   // Cloudinary / כל קישור אינטרנט — לא דרך DriveApp
   if (/^https?:\/\//i.test(url)) {

@@ -401,13 +401,13 @@ export function EquipmentView() {
                   })}
                 </tbody>
               </table>
-            </div>
+      </div>
 
             {/* —— Mobile cards —— */}
             <div className="space-y-2 md:hidden">
               {sortedInventory.map((item) => {
                 const stock = currentStockOf(item)
-                return (
+          return (
                   <div
                     key={item.id}
                     className="flex items-start gap-3 rounded-2xl border border-border bg-card p-3"
@@ -420,7 +420,7 @@ export function EquipmentView() {
                       <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <Package className="size-5" />
                       </div>
-                      <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="truncate text-sm font-semibold">
                             {item.name}
@@ -454,7 +454,7 @@ export function EquipmentView() {
                                 {c.childName}×{c.quantity}
                               </span>
                             ))}
-                          </div>
+                </div>
                         ) : (
                           <p className="mt-1 text-[11px] text-muted-foreground">
                             הוכנס {item.totalPurchased} · נמכר {item.totalSold}{" "}
@@ -469,7 +469,7 @@ export function EquipmentView() {
                             </span>
                           </p>
                         )}
-                      </div>
+              </div>
                     </button>
                     <button
                       type="button"
@@ -479,10 +479,10 @@ export function EquipmentView() {
                     >
                       <Trash2 className="size-4" />
                     </button>
-                  </div>
-                )
-              })}
-            </div>
+              </div>
+          )
+        })}
+          </div>
           </>
         )}
       </div>
@@ -788,8 +788,8 @@ export function EquipmentView() {
                 <div className="rounded-xl bg-card px-3 py-2 text-xs">
                   עלות תיק מחושבת:{" "}
                   <strong>{formatCurrency(computedCompositeCost)}</strong>
-                </div>
-              </div>
+        </div>
+      </div>
             )}
           </div>
 

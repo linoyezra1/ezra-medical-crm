@@ -44,14 +44,19 @@ export type LocalIssuanceResult =
     }
   | { ok: false; error: string }
 
-function safeFileName(fullName: string, idNumber: string, certNum: string) {
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")
-  const base =
-    `${fullName || "תעודה"} - ${idNumber || certNum} - ${stamp}`
-      .replace(/[\\/:*?"<>|]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-  return `${base || "certificate"}.pdf`
+function safeFileName(fullName: string, idNumber: string, _certNum?: string) {
+  const name = String(fullName || "תעודה")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  const id = String(idNumber || "")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  const base = id
+    ? `${name} - ${id} - תעודת מגיש עזרה ראשונה`
+    : `${name} - תעודת מגיש עזרה ראשונה`
+  return `${base}.pdf`
 }
 
 async function persistCertificateUrl(crmId: string, pdfUrl: string) {
