@@ -525,7 +525,7 @@ export async function exportLeadParticipantsToSheets(
       const row = participantRow(p)
       identityUpdates.push({
         range: sheetA1(tab, `A${rowIndex}:F${rowIndex}`),
-        values: [row.slice(0, 6)],
+        values: [row.slice(0, 6).map((v) => String(v ?? ""))],
       })
       attendanceUpdates.push({
         range: sheetA1(tab, `O${rowIndex}`),
