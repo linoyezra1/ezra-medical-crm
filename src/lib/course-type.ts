@@ -209,16 +209,26 @@ export function isBlsCourseType(
 /**
  * ערך היקף שעות לתעודה / עמודה F — כולל מלל מלא.
  * רענון → «רענון 8» · רגיל → «22 שעות» · BLS → «BLS».
+ * חשוב: לא נותנים ל־courseTypeOther ישן לדרוס את סוג הקורס הנוכחי.
  */
 export function certificateScopeForSheet(
   courseType?: string | null,
   courseTypeOther?: string | null,
 ): string {
-  const sources = [
-    formatCourseTypeLabel(courseType, { other: courseTypeOther }),
-    (courseTypeOther || "").trim(),
-    (courseType || "").trim(),
-  ]
+  const rawType = String(courseType || "").trim()
+  const rawOther = String(courseTypeOther || "").trim()
+  const usesOtherOnly =
+    !rawType ||
+    rawType === "other" ||
+    rawType === COURSE_TYPE_OTHER
+
+  // מקור ראשי = סוג הקורס הנוכחי; other רק כשבאמת נבחר «אחר»
+  const primary = usesOtherOnly
+    ? formatCourseTypeLabel(rawType || COURSE_TYPE_OTHER, { other: rawOther })
+    : formatCourseTypeLabel(rawType)
+  const sources = usesOtherOnly
+    ? [primary, rawOther, rawType]
+    : [primary, rawType]
 
   for (const s of sources) {
     if (!s) continue
@@ -229,13 +239,19 @@ export function certificateScopeForSheet(
     const refreshNum = normalized.match(/רענון\s+(\d+(?:\.\d+)?)/)
     if (refreshNum?.[1]) return `רענון ${refreshNum[1]}`
 
-    const digits = extractCourseHoursDigits(courseType, courseTypeOther)
+    const digits = extractCourseHoursDigits(
+      rawType,
+      usesOtherOnly ? rawOther : null,
+    )
     if (digits) return `רענון ${digits}`
 
     return normalized
   }
 
-  const digits = extractCourseHoursDigits(courseType, courseTypeOther)
+  const digits = extractCourseHoursDigits(
+    rawType,
+    usesOtherOnly ? rawOther : null,
+  )
   if (digits) return `${digits} שעות`
 
   for (const s of sources) {

@@ -704,6 +704,14 @@ export async function updateLead(
     merged.collectCertificateShipping = Boolean(raw.collectCertificateShipping);
   }
 
+  // כשסוג הקורס משתנה בלי «אחר» — מנקים courseTypeOther ישן (אחרת היקף שעות בתעודה נשאר מהסוג הקודם)
+  if (raw.courseType !== undefined && raw.courseTypeOther === undefined) {
+    const t = String(merged.courseType || "").trim();
+    if (t && t !== "other" && t !== "אחר") {
+      merged.courseTypeOther = null;
+    }
+  }
+
   let nextStatus = String(merged.courseStatus ?? existing.courseStatus);
 
   // אוטומציה: מעבר ל־"בוצעה" (DB completed) → "ממתין לתעודות"

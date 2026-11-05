@@ -594,7 +594,8 @@ export function LeadForm({ existing }: Props) {
         pricePerUnit: form.pricePerUnit,
         participantsCount: form.participantsCount,
         courseType: courseResolved.courseType,
-        courseTypeOther: courseResolved.courseTypeOther,
+        // תמיד שולחים ערך (גם ריק) — מונע courseTypeOther ישן שנשאר ב־DB
+        courseTypeOther: courseResolved.courseTypeOther ?? "",
         courseHours: catalog?.hours,
         category,
         categoryOther,

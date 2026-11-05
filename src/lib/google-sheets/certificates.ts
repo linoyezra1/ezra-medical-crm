@@ -1119,10 +1119,15 @@ export async function syncCertificateHoursForParticipantIds(
   if (!ids.length) return { ok: true, updated: 0 }
 
   try {
+    const { lookupIds } = await expandCrmIdAliases(ids)
+    const lookupList = [...lookupIds]
     const rows = await prisma.participant.findMany({
-      where: { id: { in: ids } },
+      where: {
+        OR: [{ id: { in: lookupList } }, { traineeId: { in: lookupList } }],
+      },
       select: {
         id: true,
+        traineeId: true,
         isExternal: true,
         courseType: true,
         lead: {
@@ -1133,12 +1138,13 @@ export async function syncCertificateHoursForParticipantIds(
         },
       },
     })
-    const hoursById = new Map(
-      rows.map((p) => {
-        const cert = resolveParticipantCertificateCourseType(p)
-        return [p.id, hoursScopeForSheet(cert.courseType, cert.courseTypeOther)]
-      }),
-    )
+    const hoursById = new Map<string, string>()
+    for (const p of rows) {
+      const cert = resolveParticipantCertificateCourseType(p)
+      const hours = hoursScopeForSheet(cert.courseType, cert.courseTypeOther)
+      hoursById.set(p.id, hours)
+      if (p.traineeId) hoursById.set(p.traineeId, hours)
+    }
 
     const sheets = await getSheetsClient()
     const spreadsheetId = getSpreadsheetId()
@@ -1412,12 +1418,15 @@ export async function ensureCertificateDetailsForParticipantIds(
             values: [[email]],
           })
         }
-        if (crm.hours && crm.hours !== hours) {
+        // היקף שעות תמיד מה־CRM (סוג קורס עדכני) — גם אם בגיליון יש ערך ישן זהה-לכאורה
+        if (crm.hours) {
+          if (crm.hours !== hours) {
+            updates.push({
+              range: sheetA1(tab, `F${rowIndex}`),
+              values: [[crm.hours]],
+            })
+          }
           hours = crm.hours
-          updates.push({
-            range: sheetA1(tab, `F${rowIndex}`),
-            values: [[hours]],
-          })
         }
       }
 
