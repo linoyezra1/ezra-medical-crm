@@ -513,6 +513,7 @@ export async function exportLeadParticipantsToSheets(
     const rowIndexFor = (p: { id: string; traineeId: string | null }) =>
       rowById.get(p.id) || (p.traineeId ? rowById.get(p.traineeId) : undefined)
 
+    const identityUpdates: { range: string; values: string[][] }[] = []
     const attendanceUpdates: { range: string; values: string[][] }[] = []
     const addressUpdates: { range: string; values: string[][] }[] = []
     const certStatusUpdates: { range: string; values: string[][] }[] = []
@@ -520,6 +521,12 @@ export async function exportLeadParticipantsToSheets(
     for (const p of participants) {
       const rowIndex = rowIndexFor(p)
       if (!rowIndex) continue
+      // A–F: שם/ת״ז/תאריך/מייל/טלפון/שעות מה־CRM (לא נשארים ערכים ישנים בגיליון)
+      const row = participantRow(p)
+      identityUpdates.push({
+        range: sheetA1(tab, `A${rowIndex}:F${rowIndex}`),
+        values: [row.slice(0, 6)],
+      })
       attendanceUpdates.push({
         range: sheetA1(tab, `O${rowIndex}`),
         values: [[attendanceCell(Boolean(p.attended))]],
@@ -543,6 +550,7 @@ export async function exportLeadParticipantsToSheets(
       }
     }
     const sheetUpdates = [
+      ...identityUpdates,
       ...attendanceUpdates,
       ...addressUpdates,
       ...certStatusUpdates,
@@ -1261,6 +1269,78 @@ export async function ensureCertificateDetailsForParticipantIds(
   try {
     const { lookupIds, aliasesByRequestId } = await expandCrmIdAliases(ids)
 
+    // מקור אמת להנפקה: CRM (שם/ת״ז/מייל/שעות/תאריך) — לא ערכים ישנים בגיליון
+    type CrmOverlay = {
+      fullName: string
+      idNumber: string
+      email: string
+      hours: string
+      courseDate: string
+    }
+    const overlayById = new Map<string, CrmOverlay>()
+    const lookupList = [...lookupIds]
+    const crmParticipants = await prisma.participant.findMany({
+      where: {
+        OR: [{ id: { in: lookupList } }, { traineeId: { in: lookupList } }],
+      },
+      select: {
+        id: true,
+        traineeId: true,
+        fullName: true,
+        idNumber: true,
+        email: true,
+        courseDate: true,
+        courseType: true,
+        isExternal: true,
+        lead: {
+          select: {
+            scheduledStart: true,
+            courseType: true,
+            courseTypeOther: true,
+          },
+        },
+        trainee: {
+          select: {
+            id: true,
+            fullName: true,
+            idNumber: true,
+            email: true,
+          },
+        },
+      },
+    })
+    for (const p of crmParticipants) {
+      const cert = resolveParticipantCertificateCourseType(p)
+      const overlay: CrmOverlay = {
+        fullName: (p.fullName || p.trainee?.fullName || "").trim(),
+        idNumber: (p.idNumber || p.trainee?.idNumber || "").trim(),
+        email: (p.email || p.trainee?.email || "").trim(),
+        hours: hoursScopeForSheet(cert.courseType, cert.courseTypeOther),
+        courseDate: trainingDateLabel(p.courseDate, p.lead?.scheduledStart),
+      }
+      overlayById.set(p.id, overlay)
+      if (p.traineeId) overlayById.set(p.traineeId, overlay)
+    }
+    const crmTrainees = await prisma.trainee.findMany({
+      where: { id: { in: lookupList } },
+      select: {
+        id: true,
+        fullName: true,
+        idNumber: true,
+        email: true,
+      },
+    })
+    for (const t of crmTrainees) {
+      if (overlayById.has(t.id)) continue
+      overlayById.set(t.id, {
+        fullName: (t.fullName || "").trim(),
+        idNumber: (t.idNumber || "").trim(),
+        email: (t.email || "").trim(),
+        hours: "",
+        courseDate: "",
+      })
+    }
+
     const sheets = await getSheetsClient()
     const spreadsheetId = getSpreadsheetId()
     const tab = getSheetTabName()
@@ -1293,14 +1373,53 @@ export async function ensureCertificateDetailsForParticipantIds(
       if (seenRows.has(rowIndex)) continue
       seenRows.add(rowIndex)
 
-      const fullName = String(row[COL.fullName] || "").trim()
-      const idNumber = String(row[COL.idNumber] || "").trim()
-      const email = String(row[COL.email] || "").trim()
-      const hours = String(row[COL.hours] || "").trim()
+      const crm = overlayById.get(crmId)
+      let fullName = String(row[COL.fullName] || "").trim()
+      let idNumber = String(row[COL.idNumber] || "").trim()
+      let email = String(row[COL.email] || "").trim()
+      let hours = String(row[COL.hours] || "").trim()
       const courseDateRaw = row[COL.courseDate]
-      const courseDate =
+      let courseDate =
         formatSheetDateDdMmYyyy(courseDateRaw) ||
         String(courseDateRaw || "").trim()
+
+      if (crm) {
+        if (crm.fullName && crm.fullName !== fullName) {
+          fullName = crm.fullName
+          updates.push({
+            range: sheetA1(tab, `A${rowIndex}`),
+            values: [[fullName]],
+          })
+        }
+        if (crm.idNumber && crm.idNumber !== idNumber) {
+          idNumber = crm.idNumber
+          updates.push({
+            range: sheetA1(tab, `B${rowIndex}`),
+            values: [[idNumber]],
+          })
+        }
+        if (crm.courseDate && crm.courseDate !== courseDate) {
+          courseDate = crm.courseDate
+          updates.push({
+            range: sheetA1(tab, `C${rowIndex}`),
+            values: [[courseDate]],
+          })
+        }
+        if (crm.email && crm.email !== email) {
+          email = crm.email
+          updates.push({
+            range: sheetA1(tab, `D${rowIndex}`),
+            values: [[email]],
+          })
+        }
+        if (crm.hours && crm.hours !== hours) {
+          hours = crm.hours
+          updates.push({
+            range: sheetA1(tab, `F${rowIndex}`),
+            values: [[hours]],
+          })
+        }
+      }
 
       let certificateNumber = String(row[COL.certificateNumber] || "").trim()
       const existingNum = parseInt(certificateNumber, 10)
