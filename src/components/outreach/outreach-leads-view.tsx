@@ -33,6 +33,7 @@ import {
   deleteAllIrrelevantOutreachLeadsAction,
   deleteOutreachLeadAction,
   deleteOutreachTemplateAction,
+  checkOutreachDuplicatePhonesAction,
   importOutreachLeadsAction,
   listOutreachLeadsAction,
   listOutreachTemplatesAction,
@@ -391,11 +392,57 @@ export function OutreachLeadsView() {
     if (!file) return
     try {
       const buf = await file.arrayBuffer()
-      const rows = parseOutreachImportFile(buf)
+      let rows = parseOutreachImportFile(buf)
       if (!rows.length) {
         toast.message("לא נמצאו שורות בקובץ")
         return
       }
+
+      // כפילויות בתוך הקובץ עצמו (הופעה שנייה ומעלה)
+      const seenInFile = new Set<string>()
+      rows = rows.map((r) => {
+        if (!r.phone || r.errors.length) return r
+        if (seenInFile.has(r.phone)) {
+          return {
+            ...r,
+            errors: [...r.errors, "כפול בקובץ — לא יועלה"],
+          }
+        }
+        seenInFile.add(r.phone)
+        return r
+      })
+
+      // כפילויות מול לידים קיימים (רלוונטי / לא רלוונטי)
+      const phonesToCheck = rows
+        .filter((r) => r.phone && !r.errors.includes("כפול בקובץ — לא יועלה"))
+        .map((r) => r.phone)
+      const dupRes = await checkOutreachDuplicatePhonesAction(phonesToCheck)
+      if (!dupRes.ok) {
+        toast.error(dupRes.error)
+      } else if (dupRes.data.duplicates.length) {
+        const byPhone = new Map(
+          dupRes.data.duplicates.map((d) => [d.phone, d]),
+        )
+        rows = rows.map((r) => {
+          if (!r.phone || r.errors.length) return r
+          const hit = byPhone.get(r.phone)
+          if (!hit) return r
+          const label = hit.irrelevant
+            ? "כבר קיים במערכת (לא רלוונטי) — לא יועלה"
+            : "כבר קיים במערכת — לא יועלה"
+          return { ...r, errors: [...r.errors, label] }
+        })
+      }
+
+      const dupCount = rows.filter((r) =>
+        r.errors.some((e) => e.includes("כבר קיים") || e.includes("כפול בקובץ")),
+      ).length
+      if (dupCount) {
+        toast.message(
+          `נמצאו ${dupCount} שורות כפולות — לא יועלו. בדקו את הרשימה לפני אישור.`,
+        )
+      }
+
       setImportPreview(rows)
     } catch (err) {
       console.error(err)
@@ -406,8 +453,15 @@ export function OutreachLeadsView() {
   const confirmImport = async () => {
     if (!importPreview?.length) return
     const valid = importPreview.filter((r) => r.errors.length === 0)
+    const blocked = importPreview.filter((r) =>
+      r.errors.some((e) => e.includes("כבר קיים") || e.includes("כפול בקובץ")),
+    ).length
     if (!valid.length) {
-      toast.error("אין שורות תקינות לייבוא")
+      toast.error(
+        blocked
+          ? "אין שורות חדשות לייבוא — כל השורות כפולות או עם שגיאה"
+          : "אין שורות תקינות לייבוא",
+      )
       return
     }
     setImporting(true)
@@ -426,10 +480,13 @@ export function OutreachLeadsView() {
       return
     }
     toast.success(
-      `יובאו ${res.data.imported} לידים` +
+      `יובאו ${res.data.imported} לידים חדשים` +
+        (res.data.duplicates
+          ? ` · ${res.data.duplicates} כפולים לא הועלו`
+          : "") +
         (res.data.skipped ? ` · דולגו ${res.data.skipped}` : "") +
-        (res.data.keptIrrelevant
-          ? ` · ${res.data.keptIrrelevant} נשארו לא רלוונטיים`
+        (blocked && !res.data.duplicates
+          ? ` · ${blocked} כפולים סומנו מראש`
           : ""),
     )
     setImportPreview(null)
@@ -834,32 +891,59 @@ export function OutreachLeadsView() {
             <div className="space-y-2 text-sm">
               <p className="text-muted-foreground">
                 {importPreview.length} שורות ·{" "}
-                {importPreview.filter((r) => !r.errors.length).length} תקינות
+                {importPreview.filter((r) => !r.errors.length).length} חדשות
+                לייבוא
+                {importPreview.some((r) =>
+                  r.errors.some(
+                    (e) => e.includes("כבר קיים") || e.includes("כפול בקובץ"),
+                  ),
+                )
+                  ? ` · ${
+                      importPreview.filter((r) =>
+                        r.errors.some(
+                          (e) =>
+                            e.includes("כבר קיים") || e.includes("כפול בקובץ"),
+                        ),
+                      ).length
+                    } כפולים לא יועלו`
+                  : ""}
               </p>
               <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-                {importPreview.slice(0, 40).map((r) => (
-                  <li
-                    key={r.key}
-                    className={cn(
-                      "rounded-lg border px-2 py-1.5 text-xs",
-                      r.errors.length
-                        ? "border-destructive/40 bg-destructive/5"
-                        : "border-border",
-                    )}
-                  >
-                    <span className="font-medium">{r.name || "—"}</span>
-                    {" · "}
-                    <span dir="ltr">{r.phone || "—"}</span>
-                    {" · "}
-                    {r.organization || "—"}
-                    {r.city ? ` · ${r.city}` : ""} · {r.category || "—"}
-                    {r.errors.length ? (
-                      <span className="mt-0.5 block text-destructive">
-                        {r.errors.join(", ")}
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
+                {importPreview.slice(0, 80).map((r) => {
+                  const isDup = r.errors.some(
+                    (e) => e.includes("כבר קיים") || e.includes("כפול בקובץ"),
+                  )
+                  return (
+                    <li
+                      key={r.key}
+                      className={cn(
+                        "rounded-lg border px-2 py-1.5 text-xs",
+                        isDup
+                          ? "border-amber-500/50 bg-amber-500/10"
+                          : r.errors.length
+                            ? "border-destructive/40 bg-destructive/5"
+                            : "border-border",
+                      )}
+                    >
+                      <span className="font-medium">{r.name || "—"}</span>
+                      {" · "}
+                      <span dir="ltr">{r.phone || "—"}</span>
+                      {" · "}
+                      {r.organization || "—"}
+                      {r.city ? ` · ${r.city}` : ""} · {r.category || "—"}
+                      {r.errors.length ? (
+                        <span
+                          className={cn(
+                            "mt-0.5 block",
+                            isDup ? "text-amber-700" : "text-destructive",
+                          )}
+                        >
+                          {r.errors.join(", ")}
+                        </span>
+                      ) : null}
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ) : null}

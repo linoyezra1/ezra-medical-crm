@@ -50,12 +50,13 @@ export const DEFAULT_COURSE_TYPE_LABELS: readonly string[] = []
 
 /**
  * אימות סוג קורס — רק:
- * מספר (22 / 44 / 8), «רענון N», «רענון N לגננות» / «22גננות»,
+ * מספר (22 / 44 / 8), «רענון N» / «רענון N שעות»,
+ * «רענון N לגננות» / «22גננות»,
  * «התנהלות בטוחה», או «רענון עזרה ראשונה +התנהלות בטוחה»
  * (+ פורמטי שעות/סלג קיימים).
  */
 export const COURSE_TYPE_FORMAT_ERROR =
-  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים הבאים: מספר בלבד (למשל: 22), 'רענון' + מספר (למשל: רענון 22), 'רענון 22 לגננות' / '22גננות', 'BLS', 'התנהלות בטוחה', או 'רענון עזרה ראשונה +התנהלות בטוחה'."
+  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים הבאים: מספר בלבד (למשל: 22), 'רענון' + מספר (למשל: רענון 22 / רענון 8 שעות), 'רענון 22 לגננות' / '22גננות', 'BLS', 'התנהלות בטוחה', או 'רענון עזרה ראשונה +התנהלות בטוחה'."
 
 export function isAllowedCourseTypeValue(raw: string): boolean {
   const v = raw.trim().replace(/\s+/g, " ")
@@ -64,9 +65,10 @@ export function isAllowedCourseTypeValue(raw: string): boolean {
   if (/^\d+(\.\d+)?\s*שעות$/.test(v)) return true
   if (/^\d+_hours$/i.test(v)) return true
   if (/^hours[_-]?\d+(\.\d+)?$/i.test(v)) return true
-  if (/^רענון\s+\d+(\.\d+)?$/.test(v)) return true
-  // רענון 22 לגננות · 22 גננות · 22גננות
-  if (/^רענון\s+\d+(\.\d+)?\s*ל?גננות$/.test(v)) return true
+  // רענון 8 · רענון 8 שעות
+  if (/^רענון\s+\d+(\.\d+)?(\s*שעות)?$/.test(v)) return true
+  // רענון 22 לגננות · רענון 22 שעות לגננות · 22 גננות · 22גננות
+  if (/^רענון\s+\d+(\.\d+)?(\s*שעות)?\s*ל?גננות$/.test(v)) return true
   if (/^\d+(\.\d+)?\s*ל?גננות$/.test(v)) return true
   if (/^\d+(\.\d+)?גננות$/.test(v.replace(/\s+/g, ""))) return true
   if (/^BLS$/i.test(v)) return true
@@ -208,7 +210,7 @@ export function isBlsCourseType(
 
 /**
  * ערך היקף שעות לתעודה / עמודה F — כולל מלל מלא.
- * רענון → «רענון 8» · רגיל → «22 שעות» · BLS → «BLS».
+ * רענון → «רענון 8 שעות» · רגיל → «22 שעות» · BLS → «BLS».
  * חשוב: לא נותנים ל־courseTypeOther ישן לדרוס את סוג הקורס הנוכחי.
  */
 export function certificateScopeForSheet(
@@ -236,14 +238,21 @@ export function certificateScopeForSheet(
     if (/^BLS$/i.test(normalized)) return "BLS"
     if (!normalized.includes("רענון")) continue
 
+    // רענון לגננות — שומרים את המלל המלא
+    if (/גננות/.test(normalized)) {
+      const n = normalized.match(/רענון\s+(\d+(?:\.\d+)?)/)?.[1]
+      if (n) return `רענון ${n} שעות לגננות`
+      return normalized
+    }
+
     const refreshNum = normalized.match(/רענון\s+(\d+(?:\.\d+)?)/)
-    if (refreshNum?.[1]) return `רענון ${refreshNum[1]}`
+    if (refreshNum?.[1]) return `רענון ${refreshNum[1]} שעות`
 
     const digits = extractCourseHoursDigits(
       rawType,
       usesOtherOnly ? rawOther : null,
     )
-    if (digits) return `רענון ${digits}`
+    if (digits) return `רענון ${digits} שעות`
 
     return normalized
   }

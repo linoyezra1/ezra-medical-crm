@@ -3,6 +3,7 @@
 import { useState } from "react"
 import {
   BookOpen,
+  CalendarDays,
   ClipboardList,
   Copy,
   FileSpreadsheet,
@@ -17,6 +18,7 @@ import {
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { BankAccountPickerDialog } from "@/components/quick-actions/bank-account-picker-dialog"
+import { ShareAvailableTrainingsDialog } from "@/components/quick-actions/share-available-trainings-dialog"
 import { TrainingPickerDialog } from "@/components/quick-actions/training-picker-dialog"
 import {
   booklet44WhatsAppMessage,
@@ -42,6 +44,7 @@ import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type QuickActionId =
+  | "share_available_trainings"
   | "share_instructor"
   | "send_yossi_amar"
   | "send_booklet"
@@ -69,6 +72,12 @@ const ACTIONS: QuickActionDef[] = [
     label: "📲 שליחת פרטי חשבון",
     description: "לינוי / יצחק — פתיחת WhatsApp לבחירת איש קשר",
     icon: Smartphone,
+  },
+  {
+    id: "share_available_trainings",
+    label: "שיתוף הדרכות פנויות",
+    description: "בחירת הדרכות מיומן ושליחה בוואטסאפ",
+    icon: CalendarDays,
   },
   {
     id: "share_instructor",
@@ -150,10 +159,15 @@ export function QuickActionsView() {
     null,
   )
   const [bankAccountOpen, setBankAccountOpen] = useState(false)
+  const [shareTrainingsOpen, setShareTrainingsOpen] = useState(false)
 
   const startAction = (action: QuickActionDef) => {
     if (action.id === "send_bank_details") {
       setBankAccountOpen(true)
+      return
+    }
+    if (action.id === "share_available_trainings") {
+      setShareTrainingsOpen(true)
       return
     }
     if (action.id === "send_booklet") {
@@ -310,6 +324,12 @@ export function QuickActionsView() {
         onSelect={(account) => {
           openBankWhatsApp(account)
         }}
+      />
+
+      <ShareAvailableTrainingsDialog
+        open={shareTrainingsOpen}
+        onOpenChange={setShareTrainingsOpen}
+        leads={leads}
       />
 
       <TrainingPickerDialog

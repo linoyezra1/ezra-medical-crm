@@ -264,6 +264,58 @@ export async function deleteAllIrrelevantOutreachLeadsAction(): Promise<
   }
 }
 
+/**
+ * בודק אילו מספרי טלפון כבר קיימים בלידי שיווק (רלוונטי או לא רלוונטי).
+ * לשימוש בתצוגה מקדימה מיד אחרי טעינת אקסל.
+ */
+export async function checkOutreachDuplicatePhonesAction(
+  phones: string[],
+): Promise<
+  ActionResult<{
+    duplicates: { phone: string; irrelevant: boolean; name: string }[]
+  }>
+> {
+  try {
+    const normalized = [
+      ...new Set(
+        phones
+          .map((p) => sanitizePhone(p || ""))
+          .filter((p) => Boolean(p)),
+      ),
+    ]
+    if (!normalized.length) {
+      return { ok: true, data: { duplicates: [] } }
+    }
+
+    const existing = await prisma.outreachLead.findMany({
+      where: { phone: { in: normalized } },
+      select: { phone: true, irrelevant: true, name: true },
+      orderBy: [{ irrelevant: "desc" }, { updatedAt: "desc" }],
+    })
+
+    // טלפון אחד → רשומה אחת (מעדיפים לא-רלוונטי אם קיים)
+    const byPhone = new Map<
+      string,
+      { phone: string; irrelevant: boolean; name: string }
+    >()
+    for (const row of existing) {
+      const prev = byPhone.get(row.phone)
+      if (!prev || (row.irrelevant && !prev.irrelevant)) {
+        byPhone.set(row.phone, {
+          phone: row.phone,
+          irrelevant: row.irrelevant,
+          name: row.name,
+        })
+      }
+    }
+
+    return { ok: true, data: { duplicates: [...byPhone.values()] } }
+  } catch (err) {
+    console.error("[checkOutreachDuplicatePhonesAction]", err)
+    return { ok: false, error: "שגיאה בבדיקת כפילויות" }
+  }
+}
+
 export async function importOutreachLeadsAction(
   rows: {
     name: string
@@ -276,14 +328,31 @@ export async function importOutreachLeadsAction(
   ActionResult<{
     imported: number
     skipped: number
-    keptIrrelevant: number
+    duplicates: number
   }>
 > {
   let imported = 0
   let skipped = 0
-  let keptIrrelevant = 0
+  let duplicates = 0
+  const seenInBatch = new Set<string>()
 
   try {
+    const phones = [
+      ...new Set(
+        rows
+          .map((r) => sanitizePhone(r.phone || ""))
+          .filter(Boolean),
+      ),
+    ]
+    const existingRows =
+      phones.length > 0
+        ? await prisma.outreachLead.findMany({
+            where: { phone: { in: phones } },
+            select: { phone: true },
+          })
+        : []
+    const existingPhones = new Set(existingRows.map((r) => r.phone))
+
     for (const row of rows) {
       const name = sheetText(row.name)
       const phone = sanitizePhone(row.phone || "")
@@ -295,50 +364,27 @@ export async function importOutreachLeadsAction(
         continue
       }
 
-      const existing = await prisma.outreachLead.findFirst({
-        where: { phone, category },
-        select: { id: true, irrelevant: true },
-      })
-
-      /** מספר שכבר סומן לא רלוונטי (גם בקטגוריה אחרת) — נשמר כלא רלוונטי */
-      const phoneWasIrrelevant = existing?.irrelevant
-        ? true
-        : Boolean(
-            await prisma.outreachLead.findFirst({
-              where: { phone, irrelevant: true },
-              select: { id: true },
-            }),
-          )
-
-      if (existing) {
-        await prisma.outreachLead.update({
-          where: { id: existing.id },
-          data: {
-            name,
-            organization,
-            city,
-            category,
-            // לא מאפסים irrelevant בייבוא חוזר
-          },
-        })
-        if (existing.irrelevant) keptIrrelevant++
-      } else {
-        await prisma.outreachLead.create({
-          data: {
-            name,
-            phone,
-            organization,
-            city,
-            category,
-            irrelevant: phoneWasIrrelevant,
-          },
-        })
-        if (phoneWasIrrelevant) keptIrrelevant++
+      if (existingPhones.has(phone) || seenInBatch.has(phone)) {
+        duplicates++
+        continue
       }
+
+      await prisma.outreachLead.create({
+        data: {
+          name,
+          phone,
+          organization,
+          city,
+          category,
+          irrelevant: false,
+        },
+      })
+      seenInBatch.add(phone)
+      existingPhones.add(phone)
       imported++
     }
     revalidatePath("/outreach-leads")
-    return { ok: true, data: { imported, skipped, keptIrrelevant } }
+    return { ok: true, data: { imported, skipped, duplicates } }
   } catch (err) {
     console.error("[importOutreachLeadsAction]", err)
     return { ok: false, error: "שגיאה בייבוא הלידים" }
