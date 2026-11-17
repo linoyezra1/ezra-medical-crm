@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowRight, Check, ContactRound } from "lucide-react"
+import { ArrowRight, Check, ContactRound, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
@@ -641,7 +641,8 @@ export function LeadForm({ existing }: Props) {
         return
       }
 
-      addLead(payload)
+      const ok = await addLead(payload)
+      if (!ok) return
       toast.success("ליד חדש נוצר")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "שמירת השינויים נכשלה")
@@ -658,22 +659,34 @@ export function LeadForm({ existing }: Props) {
         : categorySelect || OTHER
 
   return (
-    <div>
+    <div className={saving ? "pointer-events-none" : undefined} aria-busy={saving}>
       <PageHeader
         title={existing ? "עריכת ליד" : "ליד חדש"}
-        subtitle={savedFlash ? "נשמר אוטומטית" : "מלא את הפרטים"}
+        subtitle={
+          saving
+            ? "שומר…"
+            : savedFlash
+              ? "נשמר אוטומטית"
+              : "מלא את הפרטים"
+        }
         back={
           <button
             type="button"
             onClick={() => router.back()}
             aria-label="חזרה"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"
+            disabled={saving}
+            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground disabled:opacity-50"
           >
             <ArrowRight className="size-5" />
           </button>
         }
         action={
-          savedFlash ? (
+          saving ? (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              שומר ברקע…
+            </span>
+          ) : savedFlash ? (
             <span className="flex items-center gap-1 text-xs font-medium text-success">
               <Check className="size-4" /> נשמר
             </span>
@@ -682,6 +695,17 @@ export function LeadForm({ existing }: Props) {
       />
 
       <div className="mx-auto w-full max-w-xl overflow-visible p-4 md:max-w-3xl md:px-6 md:py-6">
+        {saving ? (
+          <Card className="mb-3 gap-2 border-primary/25 bg-primary/5 p-3">
+            <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+              שומר את הליד במערכת…
+            </p>
+            <p className="text-xs text-muted-foreground">
+              אל תסגרו את הדף — הפעולה עדיין רצה ברקע.
+            </p>
+          </Card>
+        ) : null}
         {dupWarn && (
           <Card className="mb-3 gap-1 border-warning/40 bg-warning/10 p-3">
             <p className="text-sm font-semibold text-warning-foreground">
@@ -1584,6 +1608,7 @@ export function LeadForm({ existing }: Props) {
                 type="button"
                 variant="outline"
                 className="flex-1 rounded-2xl py-6"
+                disabled={saving}
                 onClick={() =>
                   goToStep(
                     wizardStep === "logistics"
@@ -1601,6 +1626,7 @@ export function LeadForm({ existing }: Props) {
               <Button
                 type="button"
                 className="flex-1 rounded-2xl py-6 text-base"
+                disabled={saving}
                 onClick={() =>
                   goToStep(
                     wizardStep === "details"
@@ -1619,7 +1645,14 @@ export function LeadForm({ existing }: Props) {
                 className="flex-1 rounded-2xl py-6 text-base"
                 disabled={saving}
               >
-                {saving ? "שומר…" : "צור ליד"}
+                {saving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    שומר…
+                  </span>
+                ) : (
+                  "צור ליד"
+                )}
               </Button>
             )}
           </div>
@@ -1629,7 +1662,14 @@ export function LeadForm({ existing }: Props) {
             disabled={saving}
             className="mt-6 w-full rounded-2xl py-6 text-base"
           >
-            {saving ? "שומר…" : "שמור שינויים"}
+            {saving ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="size-4 animate-spin" />
+                שומר…
+              </span>
+            ) : (
+              "שמור שינויים"
+            )}
           </Button>
         )}
       </div>

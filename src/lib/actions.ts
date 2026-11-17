@@ -1215,6 +1215,27 @@ export async function duplicateLead(
   return { ok: true, data: { id: clone.id } };
 }
 
+/** מחיקה סופית של ליד/הדרכה (לא העברה לאבוד) */
+export async function deleteLead(
+  leadId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const existing = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true },
+  });
+  if (!existing) return { ok: false, error: "ליד לא נמצא" };
+
+  await prisma.lead.delete({ where: { id: leadId } });
+
+  revalidatePath("/");
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  revalidatePath("/trainings");
+  revalidatePath("/certificates");
+  return { ok: true, data: { id: leadId } };
+}
+
 /** החזרת סטטוס שלב אחד אחורה בציר הזמן הקבוע */
 export async function rollbackLeadStatus(
   leadId: string,

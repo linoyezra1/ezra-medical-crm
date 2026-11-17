@@ -6,7 +6,7 @@ export type LeadStatus =
   | "lost";
 
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
-  new: "ליד חדש / בטיפול",
+  new: "ליד חדש",
   closed: "סגרנו נרשם ביומן",
   pending_certificates: "הדרכה בוצעה וממתינה לתעודות",
   completed: "הסתיים",

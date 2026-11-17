@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Copy, MoreVertical, Undo2 } from "lucide-react"
+import { Copy, MoreVertical, Trash2, Undo2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useLongPress } from "@/hooks/use-long-press"
-import { duplicateLead, rollbackLeadStatus } from "@/lib/actions"
+import { deleteLead, duplicateLead, rollbackLeadStatus } from "@/lib/actions"
 import { useApp } from "@/lib/store"
 import {
   LEAD_STATUS_LABELS,
@@ -32,12 +33,13 @@ type Props = {
 }
 
 /**
- * תפריט שכפול / החזרת סטטוס — kebab בדסקטופ + Action Sheet בלחיצה ארוכה.
+ * תפריט שכפול / החזרת סטטוס / מחיקה — kebab בדסקטופ + Action Sheet בלחיצה ארוכה.
  * מחזיר bind ללחיצה ארוכה לשימוש על הכרטיס/שורה.
  */
 export function useLeadItemActions(lead: Lead) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const router = useRouter()
   const { refresh } = useApp()
@@ -80,6 +82,26 @@ export function useLeadItemActions(lead: Lead) {
     refresh()
   }
 
+  const openDeleteConfirm = () => {
+    setMenuOpen(false)
+    setSheetOpen(false)
+    setDeleteOpen(true)
+  }
+
+  const runDelete = async () => {
+    setBusy(true)
+    const res = await deleteLead(lead.id)
+    setBusy(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    setDeleteOpen(false)
+    toast.success("ההדרכה נמחקה")
+    refresh()
+    router.push("/leads")
+  }
+
   return {
     bind,
     consumeLongPress,
@@ -87,11 +109,15 @@ export function useLeadItemActions(lead: Lead) {
     setSheetOpen,
     menuOpen,
     setMenuOpen,
+    deleteOpen,
+    setDeleteOpen,
     busy,
     canRollback,
     prev,
     runDuplicate,
     runRollback,
+    openDeleteConfirm,
+    runDelete,
   }
 }
 
@@ -172,6 +198,16 @@ export function LeadItemActionsUi({
                 <Undo2 className="size-4 shrink-0" />
                 ↩️ החזרת סטטוס אחורה
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={state.busy}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-right text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                onClick={state.openDeleteConfirm}
+              >
+                <Trash2 className="size-4 shrink-0" />
+                מחק
+              </button>
             </div>
           ) : null}
         </div>
@@ -219,9 +255,29 @@ export function LeadItemActionsUi({
                 )}
               </span>
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={state.busy}
+              className="h-12 justify-start gap-3 rounded-xl text-base text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={state.openDeleteConfirm}
+            >
+              <Trash2 className="size-5" />
+              מחק
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={state.deleteOpen}
+        onOpenChange={state.setDeleteOpen}
+        title="מחיקת הדרכה"
+        description={`למחוק את "${lead.name}" לצמיתות? הפעולה אינה ניתנת לביטול ואינה מעבירה לאבוד.`}
+        confirmLabel="כן, מחק"
+        confirming={state.busy}
+        onConfirm={() => void state.runDelete()}
+      />
     </>
   )
 }

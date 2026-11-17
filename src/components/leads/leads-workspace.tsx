@@ -55,6 +55,14 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
     }
   }, [])
 
+  const statusCounts = useMemo(() => {
+    const counts: Partial<Record<LeadStatus, number>> = {}
+    for (const l of leads) {
+      counts[l.status] = (counts[l.status] ?? 0) + 1
+    }
+    return counts
+  }, [leads])
+
   const filtered = useMemo(() => {
     return leads
       .filter((l) => {
@@ -80,21 +88,27 @@ export function LeadsWorkspace({ selectedId }: { selectedId?: string }) {
 
   const filtersBar = (
     <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
-      {FILTERS.map((f) => (
-        <button
-          key={f.value}
-          type="button"
-          onClick={() => setFilter(f.value)}
-          className={cn(
-            "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
-            filter === f.value
-              ? "bg-primary text-primary-foreground"
-              : "bg-secondary text-secondary-foreground",
-          )}
-        >
-          {f.label}
-        </button>
-      ))}
+      {FILTERS.map((f) => {
+        const count =
+          f.value === "new" || f.value === "closed"
+            ? (statusCounts[f.value] ?? 0)
+            : null
+        return (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => setFilter(f.value)}
+            className={cn(
+              "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
+              filter === f.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-secondary-foreground",
+            )}
+          >
+            {count != null ? `${f.label} (${count})` : f.label}
+          </button>
+        )
+      })}
     </div>
   )
 

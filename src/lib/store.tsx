@@ -50,7 +50,8 @@ interface AppState {
   instructors: InstructorProfile[];
   tasks: Task[];
   settings: BusinessSettings;
-  addLead: (lead: Lead) => void;
+  /** מחזיר true רק אחרי שה־DB אישר יצירה ועדכון מלא */
+  addLead: (lead: Lead) => Promise<boolean>;
   /** מחזיר true רק אחרי שה־DB אישר את העדכון */
   updateLead: (id: string, patch: Partial<Lead>) => Promise<boolean>;
   getLead: (id: string) => Lead | undefined;
@@ -153,9 +154,9 @@ export function AppProvider({
   }, []);
 
   const addLead = useCallback(
-    (lead: Lead) => {
+    async (lead: Lead): Promise<boolean> => {
       setLeads((prev) => [lead, ...prev]);
-      startTransition(async () => {
+      try {
         const fd = new FormData();
         fd.set("fullName", lead.name);
         fd.set("phone", lead.phone);
@@ -165,24 +166,44 @@ export function AppProvider({
           "activityType",
           lead.activityType === "trip_escort" ? "trip_escort" : "course",
         );
-        fd.set("leadSource", lead.customerType === "existing" ? "returning" : "website");
+        fd.set(
+          "leadSource",
+          lead.customerType === "existing" ? "returning" : "website",
+        );
         fd.set("notes", lead.notes || "");
         const res = await createLead(fd);
         if (!res.ok) {
           toast.error(res.error);
+          setLeads((prev) => prev.filter((l) => l.id !== lead.id));
           refresh();
-          return;
+          return false;
         }
-        await updateLeadAction(res.data.id, leadToDbPayload(lead, {}));
-        // replace temp id
+        const updated = await updateLeadAction(
+          res.data.id,
+          leadToDbPayload(lead, {}),
+        );
+        if (!updated.ok) {
+          toast.error(updated.error);
+          setLeads((prev) => prev.filter((l) => l.id !== lead.id));
+          refresh();
+          return false;
+        }
         setLeads((prev) =>
-          prev.map((l) => (l.id === lead.id ? { ...l, id: res.data.id } : l))
+          prev.map((l) => (l.id === lead.id ? { ...l, id: res.data.id } : l)),
         );
         refresh();
         router.replace(`/leads/${res.data.id}`);
-      });
+        return true;
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "יצירת הליד נכשלה",
+        );
+        setLeads((prev) => prev.filter((l) => l.id !== lead.id));
+        refresh();
+        return false;
+      }
     },
-    [refresh, router]
+    [refresh, router],
   );
 
   const syncExpenseDiffs = useCallback(
