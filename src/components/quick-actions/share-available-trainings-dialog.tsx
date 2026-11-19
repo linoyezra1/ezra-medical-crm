@@ -38,7 +38,7 @@ export function availableTrainingPlace(lead: Lead): string {
     primary?.city?.trim() ||
     lead.address?.city?.trim() ||
     ""
-  if (city) return city
+  if (city) return `📍 ${city}`
   // לא נופלים לכתובת מלאה — רק סימון זום אם אין עיר
   if (lead.sessions?.some((s) => s.isZoom)) return "💻 בזום"
   return "—"
@@ -110,8 +110,8 @@ export function ShareAvailableTrainingsDialog({
       setSelected(new Set())
       return
     }
-    // ברירת מחדל: הכל מסומן
-    setSelected(new Set(closedTrainings.map((l) => l.id)))
+    // ברירת מחדל: ריק — המשתמש מסמן ידנית
+    setSelected(new Set())
   }, [open, closedTrainings])
 
   const filtered = useMemo(() => {
