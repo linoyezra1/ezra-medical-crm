@@ -132,7 +132,7 @@ export function TrainingsView() {
   }
 
   return (
-    <div className={cn(shareMode && "pb-24")}>
+    <div className={cn(shareMode && selected.size > 0 && "pb-36 md:pb-24")}>
       <PageHeader
         title="הדרכות"
         subtitle={
@@ -143,15 +143,29 @@ export function TrainingsView() {
         action={
           <div className="flex items-center gap-2">
             {shareMode ? (
-              <button
-                type="button"
-                onClick={exitShareMode}
-                aria-label="ביטול שיתוף"
-                title="ביטול"
-                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-colors hover:bg-secondary/80"
-              >
-                <X className="size-4" />
-              </button>
+              <>
+                {selected.size > 0 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-9 gap-1.5 rounded-full px-3"
+                    onClick={openWhatsApp}
+                  >
+                    <MessageCircle className="size-4" />
+                    <span className="hidden sm:inline">וואטסאפ</span>
+                    <span>({selected.size})</span>
+                  </Button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={exitShareMode}
+                  aria-label="ביטול שיתוף"
+                  title="ביטול"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-colors hover:bg-secondary/80"
+                >
+                  <X className="size-4" />
+                </button>
+              </>
             ) : (
               <button
                 type="button"
@@ -163,14 +177,16 @@ export function TrainingsView() {
                 <Send className="size-4" />
               </button>
             )}
-            <div className="shrink-0 rounded-xl bg-primary/10 px-2.5 py-1.5 text-left">
-              <p className="text-[10px] font-medium text-muted-foreground">
-                היום
-              </p>
-              <p className="text-xs font-bold tabular-nums text-primary">
-                {todayLabel}
-              </p>
-            </div>
+            {!shareMode ? (
+              <div className="shrink-0 rounded-xl bg-primary/10 px-2.5 py-1.5 text-left">
+                <p className="text-[10px] font-medium text-muted-foreground">
+                  היום
+                </p>
+                <p className="text-xs font-bold tabular-nums text-primary">
+                  {todayLabel}
+                </p>
+              </div>
+            ) : null}
           </div>
         }
       />
@@ -271,9 +287,12 @@ export function TrainingsView() {
         )}
       </div>
 
-      {shareMode ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
-          <div className="mx-auto flex max-w-6xl items-center gap-2">
+      {shareMode && selected.size > 0 ? (
+        <div className="fixed inset-x-0 bottom-[72px] z-50 border-t border-border bg-card/95 px-4 py-3 shadow-lg backdrop-blur-md md:bottom-0 md:px-6">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 pb-[env(safe-area-inset-bottom)] md:pb-0">
+            <p className="hidden text-sm font-semibold sm:block">
+              נבחרו {selected.size}
+            </p>
             <Button
               type="button"
               variant="outline"
@@ -284,13 +303,11 @@ export function TrainingsView() {
             </Button>
             <Button
               type="button"
-              className="flex-[1.4] gap-1.5 rounded-xl md:flex-none md:px-6"
-              disabled={!selected.size}
+              className="flex-[1.6] gap-1.5 rounded-xl md:flex-none md:min-w-48 md:px-6"
               onClick={openWhatsApp}
             >
               <MessageCircle className="size-4" />
-              פתיחה בוואטסאפ
-              {selected.size ? ` (${selected.size})` : ""}
+              פתיחה בוואטסאפ ({selected.size})
             </Button>
           </div>
         </div>
