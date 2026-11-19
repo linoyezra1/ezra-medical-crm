@@ -1310,23 +1310,26 @@ export function ParticipantsSection({
                         aria-label="בחר הכל"
                       />
                     </th>
-                    <th className="w-[16%] px-3 py-2 font-semibold">שם מודרך</th>
-                    <th className="w-[12%] px-3 py-2 font-semibold">
+                    <th className="w-[14%] px-3 py-2 font-semibold">שם מודרך</th>
+                    <th className="w-[11%] px-3 py-2 font-semibold">
                       תעודות דרך מי
                     </th>
-                    <th className="w-[12%] px-3 py-2 font-semibold">
+                    <th className="w-[10%] px-3 py-2 font-semibold">
                       הדרכה שיוך
                     </th>
-                    <th className="w-[11%] px-3 py-2 font-semibold">סוג קורס</th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">קטגוריה</th>
-                    <th className="w-[9%] px-3 py-2 font-semibold">
+                    <th className="w-[10%] px-3 py-2 font-semibold">סוג קורס</th>
+                    <th className="w-[9%] px-3 py-2 font-semibold">קטגוריה</th>
+                    <th className="w-[8%] px-3 py-2 font-semibold">
                       תעודה דיגיטלית
                     </th>
-                    <th className="w-[9%] px-3 py-2 font-semibold">
+                    <th className="w-[8%] px-3 py-2 font-semibold">
                       תעודה פיזית
                     </th>
-                    <th className="w-[11%] px-3 py-2 font-semibold">הערות</th>
-                    <th className="w-[10%] px-3 py-2 font-semibold">פעולות</th>
+                    <th className="w-[8%] px-2 py-2 font-semibold">הערות</th>
+                    <th className="w-[10%] px-2 py-2 font-semibold">
+                      משוב על המדריך
+                    </th>
+                    <th className="w-[8%] px-3 py-2 font-semibold">פעולות</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1353,6 +1356,7 @@ export function ParticipantsSection({
                     )
                     const open = expandedId === p.id
                     const notes = participantNotes(p)
+                    const instructorFeedback = p.feedback?.trim() || ""
                     const examScore = p.examScore ?? trainee?.examScore
                     const examCompletedAt =
                       p.examCompletedAt || trainee?.examCompletedAt
@@ -1454,6 +1458,12 @@ export function ParticipantsSection({
                             title={notes || undefined}
                           >
                             {notes || "—"}
+                          </td>
+                          <td
+                            className="max-w-0 truncate px-2 py-2 text-xs text-muted-foreground"
+                            title={instructorFeedback || undefined}
+                          >
+                            {instructorFeedback || "—"}
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex justify-end">
@@ -1596,7 +1606,7 @@ export function ParticipantsSection({
                           </td>
                         </tr>
                         <tr className="border-0">
-                          <td colSpan={10} className="p-0">
+                          <td colSpan={11} className="p-0">
                             <div
                               className={cn(
                                 "grid transition-[grid-template-rows] duration-300 ease-out",
@@ -1637,6 +1647,7 @@ export function ParticipantsSection({
                                       ) : null
                                     }
                                     notes={notes}
+                                    instructorFeedback={instructorFeedback}
                                     extra={
                                       p.isExternal || p.isLead ? (
                                         <ParticipantPriceLine
@@ -1755,6 +1766,14 @@ export function ParticipantsSection({
                         </p>
                       ) : (
                         <p>הערות: —</p>
+                      )}
+                      {p.feedback?.trim() ? (
+                        <p className="rounded-lg bg-secondary/50 px-2 py-1.5 text-foreground">
+                          <span className="font-semibold">משוב על המדריך: </span>
+                          {p.feedback.trim()}
+                        </p>
+                      ) : (
+                        <p>משוב על המדריך: —</p>
                       )}
                       <ExamScoreBadge
                         examScore={

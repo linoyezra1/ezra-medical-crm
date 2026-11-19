@@ -112,6 +112,7 @@ export interface Participant {
   email?: string;
   phone?: string;
   satisfaction?: string;
+  /** משוב על ההדרכה מ-Wix (עמודה K) — מוצג כ״משוב על המדריך״ */
   feedback?: string;
   kitInterest?: string;
   shippingCity?: string;

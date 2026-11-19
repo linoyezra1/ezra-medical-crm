@@ -21,6 +21,7 @@ export function TraineeContactDetailsPanel({
   notesEditable,
   onNotesChange,
   onNotesBlur,
+  instructorFeedback,
   sessionMapping,
   extra,
   className,
@@ -37,6 +38,8 @@ export function TraineeContactDetailsPanel({
   notesEditable?: boolean
   onNotesChange?: (value: string) => void
   onNotesBlur?: (value: string) => void
+  /** משוב על ההדרכה/המדריך מ-Wix (עמודה K) */
+  instructorFeedback?: string
   /** בלוק אינפורמטיבי — שיוך ״מפגש 1 / מפגש 2״ להדרכות */
   sessionMapping?: React.ReactNode
   extra?: React.ReactNode
@@ -192,6 +195,15 @@ export function TraineeContactDetailsPanel({
             {(notes || "").trim() || "—"}
           </p>
         )}
+      </div>
+
+      <div className="sm:col-span-2 lg:col-span-4">
+        <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
+          משוב על המדריך
+        </p>
+        <p className="whitespace-pre-wrap rounded-lg bg-background/60 px-2.5 py-2 text-foreground">
+          {(instructorFeedback || "").trim() || "—"}
+        </p>
       </div>
 
       {extra ? (

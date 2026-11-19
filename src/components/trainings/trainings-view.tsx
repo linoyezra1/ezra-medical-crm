@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { CalendarClock, MapPin, User, Users, Video } from "lucide-react"
+import { CalendarClock, MapPin, Send, User, Users, Video } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import {
   LeadItemActionsUi,
   useLeadItemActions,
 } from "@/components/leads/lead-item-actions"
+import { ShareAvailableTrainingsDialog } from "@/components/quick-actions/share-available-trainings-dialog"
 import { StatusBadge } from "@/components/status-badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatLeadCourseType } from "@/lib/course-type"
@@ -24,6 +25,7 @@ type Filter = "upcoming" | "pending_certificates" | "completed" | "all"
 export function TrainingsView() {
   const { leads } = useApp()
   const [filter, setFilter] = useState<Filter>("upcoming")
+  const [shareOpen, setShareOpen] = useState(false)
 
   const trainings = useMemo(
     () => leads.filter((l) => l.status !== "new" && l.status !== "lost"),
@@ -66,11 +68,32 @@ export function TrainingsView() {
         title="הדרכות"
         subtitle={`${trainings.length} הדרכות במערכת`}
         action={
-          <div className="shrink-0 rounded-xl bg-primary/10 px-2.5 py-1.5 text-left">
-            <p className="text-[10px] font-medium text-muted-foreground">היום</p>
-            <p className="text-xs font-bold tabular-nums text-primary">{todayLabel}</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              aria-label="שליחת פרטי הדרכות בוואטסאפ"
+              title="שליחת פרטי הדרכות בוואטסאפ"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary/15"
+            >
+              <Send className="size-4" />
+            </button>
+            <div className="shrink-0 rounded-xl bg-primary/10 px-2.5 py-1.5 text-left">
+              <p className="text-[10px] font-medium text-muted-foreground">
+                היום
+              </p>
+              <p className="text-xs font-bold tabular-nums text-primary">
+                {todayLabel}
+              </p>
+            </div>
           </div>
         }
+      />
+
+      <ShareAvailableTrainingsDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        leads={leads}
       />
 
       <div className="px-4 pt-3 md:mx-auto md:max-w-6xl md:px-6">

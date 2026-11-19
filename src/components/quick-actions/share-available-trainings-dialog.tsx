@@ -19,10 +19,7 @@ import {
   weekdayNameHe,
   whatsappLink,
 } from "@/lib/helpers"
-import {
-  leadCalendarSessions,
-  sessionLocationLabel,
-} from "@/lib/payment"
+import { leadCalendarSessions } from "@/lib/payment"
 import type { Lead } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -32,7 +29,22 @@ type Props = {
   leads: Lead[]
 }
 
-/** שורת הודעה: תאריך | יום | שעה | עיר/זום */
+/** עיר בלבד / בזום — בלי כתובת מלאה */
+export function availableTrainingPlace(lead: Lead): string {
+  const sessions = leadCalendarSessions(lead)
+  const primary = sessions[0]
+  if (primary?.isZoom) return "💻 בזום"
+  const city =
+    primary?.city?.trim() ||
+    lead.address?.city?.trim() ||
+    ""
+  if (city) return city
+  // לא נופלים לכתובת מלאה — רק סימון זום אם אין עיר
+  if (lead.sessions?.some((s) => s.isZoom)) return "💻 בזום"
+  return "—"
+}
+
+/** תצוגה קומפקטית ברשימת הבחירה */
 export function availableTrainingShareLine(lead: Lead): string {
   const sessions = leadCalendarSessions(lead)
   const primary = sessions[0]
@@ -41,23 +53,37 @@ export function availableTrainingShareLine(lead: Lead): string {
   const date = dateRaw ? formatDate(dateRaw) : "—"
   const day = dateRaw ? `יום ${weekdayNameHe(dateRaw)}` : "—"
   const time = timeRaw?.trim() || "—"
-  let place = "—"
-  if (primary?.isZoom) {
-    place = "זום"
-  } else if (primary?.city?.trim()) {
-    place = primary.city.trim()
-  } else if (lead.address?.city?.trim()) {
-    place = lead.address.city.trim()
-  } else if (primary) {
-    place = sessionLocationLabel(primary) || "—"
-  } else if (lead.location?.trim()) {
-    place = lead.location.trim()
-  }
-  return `${date} | ${day} | ${time} | ${place}`
+  return `${date} | ${day} | ${time} | ${availableTrainingPlace(lead)}`
 }
 
+/** בלוק הודעה להדרכה אחת — תאריך, שעה, עיר/זום */
+export function availableTrainingShareBlock(lead: Lead): string {
+  const sessions = leadCalendarSessions(lead)
+  const primary = sessions[0]
+  const dateRaw = primary?.date || lead.date || ""
+  const timeRaw = (primary?.time || lead.time || "").trim()
+  const date = dateRaw ? formatDate(dateRaw) : "—"
+  const day = dateRaw ? `יום ${weekdayNameHe(dateRaw)}` : "—"
+  const lines = [
+    `📅 ${date} | ${day}`,
+    timeRaw ? `🕡 ${timeRaw}` : null,
+    availableTrainingPlace(lead),
+  ].filter(Boolean)
+  return lines.join("\n")
+}
+
+const SHARE_SEPARATOR = "━━━━━━━━━━━━━━"
+
 export function buildAvailableTrainingsWhatsAppText(leads: Lead[]): string {
-  return leads.map(availableTrainingShareLine).join("\n")
+  if (!leads.length) return ""
+  const blocks = leads.map(availableTrainingShareBlock)
+  return [
+    "📚 הדרכות קרובות",
+    "",
+    SHARE_SEPARATOR,
+    "",
+    blocks.join(`\n\n${SHARE_SEPARATOR}\n\n`),
+  ].join("\n")
 }
 
 export function ShareAvailableTrainingsDialog({
