@@ -50,30 +50,38 @@ export const DEFAULT_COURSE_TYPE_LABELS: readonly string[] = []
 
 /**
  * אימות סוג קורס — רק:
- * מספר (22 / 44 / 8), «רענון N» / «רענון N שעות»,
- * «רענון N לגננות» / «22גננות»,
- * «התנהלות בטוחה», או «רענון עזרה ראשונה +התנהלות בטוחה»
- * (+ פורמטי שעות/סלג קיימים).
+ * «{N} שעות», «רענון {N} שעות»,
+ * «התנהלות בטוחה», «עזרה ראשונה+התנהלות בטוחה»
+ * (כולל וריאנט עם «רענון»), וסלגי שעות פנימיים / BLS.
+ * אסור: מספר בלבד («22»), או «רענון 8» בלי «שעות».
  */
 export const COURSE_TYPE_FORMAT_ERROR =
-  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים הבאים: מספר בלבד (למשל: 22), 'רענון' + מספר (למשל: רענון 22 / רענון 8 שעות), 'רענון 22 לגננות' / '22גננות', 'BLS', 'התנהלות בטוחה', או 'רענון עזרה ראשונה +התנהלות בטוחה'."
+  "פורמט סוג הקורס אינו תקין. נא להזין אחד מהפורמטים: '{מספר} שעות' (למשל: 22 שעות), 'רענון {מספר} שעות' (למשל: רענון 8 שעות), 'התנהלות בטוחה', או 'עזרה ראשונה+התנהלות בטוחה'."
+
+/** התנהלות בטוחה / עזרה ראשונה+התנהלות בטוחה — פטורים מתבנית השעות */
+export function isExemptSpecialCourseType(raw: string): boolean {
+  const n = raw
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*\+\s*/g, "+")
+  if (n === "התנהלות בטוחה") return true
+  // עזרה ראשונה+התנהלות בטוחה · רענון עזרה ראשונה+התנהלות בטוחה
+  if (/^(רענון\s+)?עזרה ראשונה\+התנהלות בטוחה$/.test(n)) return true
+  return false
+}
 
 export function isAllowedCourseTypeValue(raw: string): boolean {
   const v = raw.trim().replace(/\s+/g, " ")
   if (!v) return false
-  if (/^\d+(\.\d+)?$/.test(v)) return true
+  if (isExemptSpecialCourseType(v)) return true
+  // {מס} שעות — חובה המילה «שעות»; מספר בלבד אסור
   if (/^\d+(\.\d+)?\s*שעות$/.test(v)) return true
-  if (/^\d+_hours$/i.test(v)) return true
+  // רענון {מס} שעות — חובה «שעות»; «רענון 8» אסור
+  if (/^רענון\s+\d+(\.\d+)?\s*שעות$/.test(v)) return true
+  // סלגים פנימיים (= «N שעות»)
+  if (/^\d+(\.\d+)?[_-]hours$/i.test(v)) return true
   if (/^hours[_-]?\d+(\.\d+)?$/i.test(v)) return true
-  // רענון 8 · רענון 8 שעות
-  if (/^רענון\s+\d+(\.\d+)?(\s*שעות)?$/.test(v)) return true
-  // רענון 22 לגננות · רענון 22 שעות לגננות · 22 גננות · 22גננות
-  if (/^רענון\s+\d+(\.\d+)?(\s*שעות)?\s*ל?גננות$/.test(v)) return true
-  if (/^\d+(\.\d+)?\s*ל?גננות$/.test(v)) return true
-  if (/^\d+(\.\d+)?גננות$/.test(v.replace(/\s+/g, ""))) return true
   if (/^BLS$/i.test(v)) return true
-  if (v === "התנהלות בטוחה") return true
-  if (/^רענון עזרה ראשונה\s*\+\s*התנהלות בטוחה$/.test(v)) return true
   return false
 }
 
@@ -137,12 +145,8 @@ export function yossiAmarDetailsTaskTitle(leadName: string): string {
 function isKindergartenRefreshLabel(raw: string): boolean {
   const n = raw.replace(/\s+/g, " ").replace(/\s*\+\s*/g, "+").trim()
   if (!n) return false
-  if (n === "התנהלות בטוחה") return true
-  // רענון 22 לגננות · 22 גננות · 22גננות
-  if (/גננות/.test(n)) return true
-  if (!n.includes("התנהלות בטוחה")) return false
-  // הקורס המשולב: רענון עזרה ראשונה + התנהלות בטוחה
-  return /רענון\s*עזרה\s*ראשונה/.test(n)
+  // התנהלות בטוחה · עזרה ראשונה+התנהלות בטוחה · רענון עזרה ראשונה+התנהלות בטוחה
+  return isExemptSpecialCourseType(n)
 }
 
 /**
@@ -434,7 +438,9 @@ export function collectCourseTypeOptions(
     }
   }
 
-  return Array.from(set).sort((a, b) => a.localeCompare(b, "he"))
+  return Array.from(set)
+    .filter((label) => isAllowedCourseTypeValue(label))
+    .sort((a, b) => a.localeCompare(b, "he"))
 }
 
 function isSeededCourseSlug(raw: string): boolean {

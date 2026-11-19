@@ -974,7 +974,7 @@ export function LeadForm({ existing }: Props) {
                     setCourseTypeOther(e.target.value)
                     set("courseTypeOther", e.target.value)
                   }}
-                  placeholder='לדוגמה: 22, רענון 8, רענון 22 לגננות, התנהלות בטוחה'
+                  placeholder='לדוגמה: 22 שעות, רענון 8 שעות, התנהלות בטוחה'
                 />
               </Field>
             )}

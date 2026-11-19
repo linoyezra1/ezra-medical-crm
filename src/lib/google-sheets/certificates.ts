@@ -404,8 +404,8 @@ function participantRow(p: {
     p.email || "", // D
     p.phone || "", // E
     hoursScope, // F — «22 שעות» / «רענון 8» / «BLS»
-    "", // G — מספר תעודה (מילוי בגיליון)
-    "", // H — תוקף תעודה (מילוי בגיליון)
+    "", // G — מספר תעודה (מוקצה אוטומטית ב־ensureCertificateDetails אחרי הרישום)
+    "", // H — תוקף תעודה (מוקצה אוטומטית: תאריך הדרכה + 2 שנים)
     physicalStatus, // I — תעודה פיזית (טקסט סטטוס)
     digitalStatus, // J — תעודה דיגיטלית (טקסט סטטוס)
     p.organizerName || p.lead?.fullName || "", // K
@@ -578,6 +578,19 @@ export async function exportLeadParticipantsToSheets(
       })
     }
 
+    // מספר תעודה + תוקף מיד עם הרישום בגיליון (לא מחכים להנפקה דיגיטלית)
+    const attendedIds = participants.filter((p) => p.attended).map((p) => p.id)
+    if (attendedIds.length) {
+      const detailsRes =
+        await ensureCertificateDetailsForParticipantIds(attendedIds)
+      if (!detailsRes.ok) {
+        console.warn(
+          "[exportLeadParticipantsToSheets] ensure cert details",
+          detailsRes.error,
+        )
+      }
+    }
+
     return {
       ok: true,
       exported: toExport.length,
@@ -687,6 +700,17 @@ export async function syncParticipantAttendanceToSheets(
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [[attendanceCell(attended)]] },
       })
+      if (attended) {
+        const detailsRes = await ensureCertificateDetailsForParticipantIds([
+          participantId,
+        ])
+        if (!detailsRes.ok) {
+          console.warn(
+            "[syncParticipantAttendanceToSheets] ensure cert details",
+            detailsRes.error,
+          )
+        }
+      }
       return { ok: true }
     }
 
@@ -699,6 +723,16 @@ export async function syncParticipantAttendanceToSheets(
       where: { id: participantId },
       data: { sheetsExportedAt: new Date() },
     })
+    // הקצאת מספר תעודה + תוקף מיד עם יצירת השורה בגיליון
+    const detailsRes = await ensureCertificateDetailsForParticipantIds([
+      participantId,
+    ])
+    if (!detailsRes.ok) {
+      console.warn(
+        "[syncParticipantAttendanceToSheets] ensure cert details",
+        detailsRes.error,
+      )
+    }
     return { ok: true }
   } catch (err) {
     console.error("[syncParticipantAttendanceToSheets]", err)
@@ -1094,6 +1128,18 @@ export async function exportMissingAttendedToSheets(): Promise<
       where: { id: { in: toExport.map((p) => p.id) } },
       data: { sheetsExportedAt: new Date() },
     })
+
+    // מספר תעודה + תוקף מיד עם הרישום (לפני הנפקה דיגיטלית)
+    const detailsRes = await ensureCertificateDetailsForParticipantIds(
+      toExport.map((p) => p.id),
+    )
+    if (!detailsRes.ok) {
+      console.warn(
+        "[exportMissingAttendedToSheets] ensure cert details",
+        detailsRes.error,
+      )
+    }
+
     return { ok: true, exported: toExport.length }
   } catch (err) {
     console.error("[exportMissingAttendedToSheets]", err)
@@ -1252,8 +1298,8 @@ async function expandCrmIdAliases(
 }
 
 /**
- * אחרי ייצוא לגיליון: מוודא מספר תעודה (G) ותוקף (H) לכל משתתף ב־CRM בלבד
- * (לא תלוי ב־autoFillCertDetails בסקריפט).
+ * מוודא מספר תעודה (G) ותוקף (H) לכל משתתף בגיליון.
+ * נקרא גם ברישום/סנכרון נוכחות ל־Sheets (לא רק בהנפקה דיגיטלית).
  * מספור רץ מ־CERTIFICATE_START_NUMBER (ברירת מחדל 45825).
  * תוקף תמיד = תאריך הדרכה + 2 שנים.
  * מתאים גם כש־M מכיל participant.id והבקשה הגיעה עם trainee.id (ולהפך).

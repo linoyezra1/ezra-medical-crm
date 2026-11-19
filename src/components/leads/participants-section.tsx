@@ -1959,7 +1959,7 @@ export function ParticipantsSection({
                           courseTypeOther: e.target.value,
                         }))
                       }
-                      placeholder='לדוגמה: 22, רענון 8, BLS'
+                      placeholder='לדוגמה: 22 שעות, רענון 8 שעות, BLS'
                     />
                   </div>
                 ) : null}
